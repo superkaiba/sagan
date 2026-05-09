@@ -1,9 +1,10 @@
 import type { Config } from 'drizzle-kit';
 
-const url = process.env.DATABASE_URL;
+// Prefer the direct (non-pooled) URL for migrations because the Neon pooler
+// does not allow all DDL statements drizzle-kit generates.
+const url = process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_URL;
 if (!url) {
-  // drizzle-kit reads this at startup; if missing, fail loud.
-  throw new Error('DATABASE_URL must be set for drizzle-kit commands');
+  throw new Error('DATABASE_URL[_DIRECT] must be set for drizzle-kit commands');
 }
 
 export default {

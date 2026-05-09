@@ -3,6 +3,8 @@ import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { Comments } from '@/components/Comments';
 import { EditableBody } from '@/components/EditableBody';
 import { EntityEdges } from '@/components/EntityEdges';
+import { BeliefHistoryLink } from '@/components/BeliefHistoryLink';
+import { ProjectChildren } from '@/components/ProjectChildren';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +33,9 @@ export default async function EntityPage({
       </header>
 
       <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />
+
+      {kind === 'belief' ? <BeliefHistoryLink beliefId={entity.id} /> : null}
+      {kind === 'project' ? <ProjectChildren projectId={entity.id} /> : null}
 
       {entity.meta && entity.meta.length > 0 ? (
         <section className="rounded-lg border border-[--color-border]">

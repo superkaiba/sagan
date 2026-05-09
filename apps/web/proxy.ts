@@ -9,7 +9,10 @@ export function proxy(req: NextRequest) {
   if (
     PUBLIC_PATHS.includes(pathname) ||
     pathname.startsWith('/_next/') ||
-    pathname.startsWith('/favicon')
+    pathname.startsWith('/favicon') ||
+    pathname.startsWith('/digest/') ||
+    pathname.startsWith('/p/') ||
+    pathname.startsWith('/r/')
   ) {
     return NextResponse.next();
   }

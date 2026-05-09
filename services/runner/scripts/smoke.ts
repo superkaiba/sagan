@@ -9,7 +9,7 @@
 import '../src/env.js';
 import { eq } from 'drizzle-orm';
 import { db, schema, close } from '../src/db.js';
-import { notify } from '../src/queue.js';
+import { notifyQueued } from '../src/queue.js';
 
 const DEFAULT_REQUEST = `Add a single-line comment "// smoke" at the top of services/runner/src/index.ts. Output a short plan describing the change. Do not actually edit any files in this run.`;
 
@@ -31,7 +31,7 @@ async function main() {
   if (!runId) throw new Error('insert returned no id');
   console.log(`[smoke] enqueued ${runId}`);
 
-  await notify(runId);
+  await notifyQueued(runId);
 
   // Poll up to 5 minutes.
   const start = Date.now();

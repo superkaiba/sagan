@@ -83,14 +83,15 @@ function resolveAuth(account: RunpodAccount): AccountAuth {
     }
     return { apiKey, teamId: null };
   }
-  // account === 'team'
+  // account === 'team' — fall through empty strings, not just undefined.
   const apiKey =
-    (process.env.RUNPOD_API_KEY_TEAM ?? process.env.RUNPOD_API_KEY ?? '').trim();
-  const teamId = (
-    process.env.RUNPOD_TEAM_ID_TEAM ??
-    process.env.RUNPOD_TEAM_ID ??
-    ANTHROPIC_SAFETY_RESEARCH_TEAM_ID
-  ).trim();
+    (process.env.RUNPOD_API_KEY_TEAM?.trim() ||
+      process.env.RUNPOD_API_KEY?.trim() ||
+      '');
+  const teamId =
+    process.env.RUNPOD_TEAM_ID_TEAM?.trim() ||
+    process.env.RUNPOD_TEAM_ID?.trim() ||
+    ANTHROPIC_SAFETY_RESEARCH_TEAM_ID;
   if (!apiKey) {
     throw new RunPodError(
       'RUNPOD_API_KEY_TEAM (or legacy RUNPOD_API_KEY) is not set. Add it to .env to use account=team.',

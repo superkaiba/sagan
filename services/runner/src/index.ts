@@ -13,17 +13,30 @@ import './env.js';
 import { close } from './db.js';
 import { startQueue } from './queue.js';
 import { runSession } from './session.js';
+import { dispatchApprovedExperiment } from './dispatcher.js';
 import { log } from './log.js';
 
 const controller = new AbortController();
 
 async function main() {
   log.info('runner starting');
-  await startQueue(async (runId) => {
-    log.info('handling run', { runId });
-    const outcome = await runSession(runId);
-    log.info('run finished', { runId, outcome: outcome.ok ? outcome.status : 'failed' });
-  }, controller.signal);
+  await startQueue(
+    {
+      async onQueued(runId) {
+        log.info('handling queued run', { runId });
+        const outcome = await runSession(runId);
+        log.info('queued run finished', {
+          runId,
+          outcome: outcome.ok ? outcome.status : 'failed',
+        });
+      },
+      async onApproved(runId) {
+        log.info('handling approved run', { runId });
+        await dispatchApprovedExperiment(runId);
+      },
+    },
+    controller.signal,
+  );
 
   log.info('runner ready');
   await new Promise<void>((resolve) => {

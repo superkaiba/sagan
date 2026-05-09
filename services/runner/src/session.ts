@@ -182,6 +182,38 @@ async function markCompleted(runId: string, resultText: string, costUsd: number,
     })
     .where(eq(schema.agentRuns.id, runId));
   await emitEvent(runId, 'completed', truncate(resultText, 1000), { cost_usd: costUsd, turns: numTurns });
+  await maybePostCommentReply(runId, resultText);
+}
+
+/**
+ * If this run was triggered by a @claude comment, post the model's reply
+ * back as a child comment authored by Claude. The trigger comment is found
+ * via comments.agentRunId pointing at this run.
+ */
+async function maybePostCommentReply(runId: string, resultText: string) {
+  const trigger = await db()
+    .select()
+    .from(schema.comments)
+    .where(eq(schema.comments.agentRunId, runId))
+    .limit(1);
+  const parent = trigger[0];
+  if (!parent) return;
+  // Don't duplicate if a Claude reply already exists for this trigger.
+  const existing = await db()
+    .select({ id: schema.comments.id })
+    .from(schema.comments)
+    .where(eq(schema.comments.parentCommentId, parent.id))
+    .limit(1);
+  if (existing.length > 0) return;
+  await db().insert(schema.comments).values({
+    entityKind: parent.entityKind,
+    entityId: parent.entityId,
+    parentCommentId: parent.id,
+    authorKind: 'claude',
+    kind: 'discussion',
+    body: resultText.trim() || '(no response)',
+    agentRunId: runId,
+  });
 }
 
 async function markFailed(runId: string, error: string) {

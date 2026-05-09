@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
-import { Markdown } from '@/components/Markdown';
 import { Comments } from '@/components/Comments';
+import { EditableBody } from '@/components/EditableBody';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,11 +29,7 @@ export default async function EntityPage({
         ) : null}
       </header>
 
-      {entity.body ? (
-        <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
-          <Markdown>{entity.body}</Markdown>
-        </section>
-      ) : null}
+      <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />
 
       {entity.meta && entity.meta.length > 0 ? (
         <section className="rounded-lg border border-[--color-border]">

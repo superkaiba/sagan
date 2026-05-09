@@ -11,6 +11,7 @@ export function proxy(req: NextRequest) {
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/favicon') ||
     pathname.startsWith('/digest/') ||
+    pathname.startsWith('/d/') ||
     pathname.startsWith('/p/') ||
     pathname.startsWith('/r/')
   ) {

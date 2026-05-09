@@ -16,6 +16,7 @@ import { startQueue } from './queue.js';
 import { runSession } from './session.js';
 import { dispatchApprovedExperiment } from './dispatcher.js';
 import { runLitReview } from './jobs/lit-review.js';
+import { runWeeklyDigest } from './jobs/weekly-digest.js';
 import { log } from './log.js';
 
 const controller = new AbortController();
@@ -50,14 +51,23 @@ async function main() {
     log.info('lit-review: running on boot per RUN_LIT_REVIEW_AT_BOOT=1');
     runLitReview().catch((err) => log.error('lit-review at-boot failed', { err: String(err) }));
   }
-  // Manual trigger via the API (NOTIFY 'lit_review_run').
+  // Sunday 22:00 server time: draft the weekly advisor digest.
+  cron.schedule('0 22 * * 0', () => {
+    log.info('cron: weekly-digest starting');
+    runWeeklyDigest().catch((err) => log.error('weekly-digest failed', { err: String(err) }));
+  });
+  // Manual triggers via the API (NOTIFY).
   void (async () => {
     const conn = listener();
     await conn.listen('lit_review_run', () => {
       log.info('lit-review: manual trigger via NOTIFY');
       runLitReview().catch((err) => log.error('lit-review manual failed', { err: String(err) }));
     });
-    log.info('subscribed to lit_review_run');
+    await conn.listen('weekly_digest_run', () => {
+      log.info('weekly-digest: manual trigger via NOTIFY');
+      runWeeklyDigest().catch((err) => log.error('weekly-digest manual failed', { err: String(err) }));
+    });
+    log.info('subscribed to lit_review_run + weekly_digest_run');
   })();
 
   log.info('runner ready');

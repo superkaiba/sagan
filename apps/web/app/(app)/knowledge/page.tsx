@@ -61,7 +61,10 @@ export default async function KnowledgePage() {
       </header>
 
       <p className="text-sm text-[--color-muted]">
-        Browse view. Graph view (React Flow) lands in a follow-up commit.
+        <Link href="/knowledge/graph" className="text-[--color-accent] hover:underline">
+          → graph view
+        </Link>{' '}
+        for the visual map. Below is the kind-grouped browse.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

@@ -32,6 +32,7 @@ const createSchema = z.object({
   entityKind: z.enum(['project', 'belief', 'experiment', 'run', 'todo', 'lit_item', 'project_narrative']),
   entityId: z.string().uuid(),
   body: z.string().min(1).max(10_000),
+  parentCommentId: z.string().uuid().optional(),
 });
 
 const ASK_CLAUDE_RE = /(^|\s)@claude\b/i;
@@ -51,23 +52,56 @@ export async function POST(req: Request) {
 
   const isAskClaude = ASK_CLAUDE_RE.test(parsed.data.body);
 
+  // Inherit auto_continue_claude from the parent thread, if any.
+  let autoContinueClaude = false;
+  if (parsed.data.parentCommentId) {
+    const parentRows = await db()
+      .select({ autoContinueClaude: comments.autoContinueClaude })
+      .from(comments)
+      .where(eq(comments.id, parsed.data.parentCommentId))
+      .limit(1);
+    autoContinueClaude = parentRows[0]?.autoContinueClaude ?? false;
+  }
+
+  const shouldDispatch = isAskClaude || autoContinueClaude;
+
   // Create the human comment first.
   const inserted = await db()
     .insert(comments)
     .values({
       entityKind: parsed.data.entityKind,
       entityId: parsed.data.entityId,
+      parentCommentId: parsed.data.parentCommentId,
       authorUserId: session.user.id,
       authorKind: 'human',
       kind: isAskClaude ? 'ask_claude' : 'discussion',
       body: parsed.data.body,
+      autoContinueClaude,
     })
     .returning();
   const comment = inserted[0]!;
 
-  if (isAskClaude) {
-    // Spawn a kind=qa run scoped to the entity.
-    const runRequest = `Reply to a comment on ${parsed.data.entityKind} ${parsed.data.entityId}.\n\nThe user said:\n\n${parsed.data.body}`;
+  if (shouldDispatch) {
+    // Build context including the existing thread so Claude has continuity.
+    let threadContext = '';
+    if (parsed.data.parentCommentId) {
+      const thread = await db()
+        .select({ authorKind: comments.authorKind, body: comments.body, createdAt: comments.createdAt })
+        .from(comments)
+        .where(eq(comments.parentCommentId, parsed.data.parentCommentId));
+      const parentRows = await db()
+        .select({ authorKind: comments.authorKind, body: comments.body, createdAt: comments.createdAt })
+        .from(comments)
+        .where(eq(comments.id, parsed.data.parentCommentId))
+        .limit(1);
+      const all = [...parentRows, ...thread].sort(
+        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+      );
+      threadContext = `\n\nThread so far:\n${all
+        .map((m) => `- [${m.authorKind}] ${m.body}`)
+        .join('\n')}`;
+    }
+    const runRequest = `Reply to a comment thread on ${parsed.data.entityKind} ${parsed.data.entityId}.${threadContext}\n\nLatest message (user):\n\n${parsed.data.body}`;
     const run = await db()
       .insert(agentRuns)
       .values({

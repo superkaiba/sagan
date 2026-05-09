@@ -6,7 +6,7 @@
  * the SDKResultMessage arrives.
  */
 import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, schema } from './db.js';
 import { emitEvent } from './queue.js';
 import { env, requireEnv } from './env.js';
@@ -201,23 +201,32 @@ async function maybePostCommentReply(runId: string, resultText: string) {
     .from(schema.comments)
     .where(eq(schema.comments.agentRunId, runId))
     .limit(1);
-  const parent = trigger[0];
-  if (!parent) return;
-  // Don't duplicate if a Claude reply already exists for this trigger.
+  const triggerComment = trigger[0];
+  if (!triggerComment) return;
+  // Reply lands as a sibling of the trigger when the trigger is itself a
+  // reply, otherwise as a child of the trigger (top-level → its first reply).
+  const replyParentId = triggerComment.parentCommentId ?? triggerComment.id;
+  // Don't duplicate if we already wrote a reply for this trigger run.
   const existing = await db()
     .select({ id: schema.comments.id })
     .from(schema.comments)
-    .where(eq(schema.comments.parentCommentId, parent.id))
+    .where(
+      and(
+        eq(schema.comments.agentRunId, runId),
+        eq(schema.comments.authorKind, 'claude'),
+      ),
+    )
     .limit(1);
   if (existing.length > 0) return;
   await db().insert(schema.comments).values({
-    entityKind: parent.entityKind,
-    entityId: parent.entityId,
-    parentCommentId: parent.id,
+    entityKind: triggerComment.entityKind,
+    entityId: triggerComment.entityId,
+    parentCommentId: replyParentId,
     authorKind: 'claude',
     kind: 'discussion',
     body: resultText.trim() || '(no response)',
     agentRunId: runId,
+    autoContinueClaude: triggerComment.autoContinueClaude,
   });
 }
 

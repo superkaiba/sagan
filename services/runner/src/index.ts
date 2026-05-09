@@ -17,6 +17,7 @@ import { runSession } from './session.js';
 import { dispatchApprovedExperiment } from './dispatcher.js';
 import { runLitReview } from './jobs/lit-review.js';
 import { runWeeklyDigest } from './jobs/weekly-digest.js';
+import { runInsightScan } from './jobs/insight-scan.js';
 import { log } from './log.js';
 
 const controller = new AbortController();
@@ -51,7 +52,13 @@ async function main() {
     log.info('lit-review: running on boot per RUN_LIT_REVIEW_AT_BOOT=1');
     runLitReview().catch((err) => log.error('lit-review at-boot failed', { err: String(err) }));
   }
-  // Sunday 22:00 server time: draft the weekly advisor digest.
+  // Sunday 18:00: cross-project insight scan (proposes new edges).
+  cron.schedule('0 18 * * 0', () => {
+    log.info('cron: insight-scan starting');
+    runInsightScan().catch((err) => log.error('insight-scan failed', { err: String(err) }));
+  });
+  // Sunday 22:00: draft the weekly advisor digest (after insight-scan so the
+  // digest can mention any newly-proposed edges).
   cron.schedule('0 22 * * 0', () => {
     log.info('cron: weekly-digest starting');
     runWeeklyDigest().catch((err) => log.error('weekly-digest failed', { err: String(err) }));
@@ -67,7 +74,11 @@ async function main() {
       log.info('weekly-digest: manual trigger via NOTIFY');
       runWeeklyDigest().catch((err) => log.error('weekly-digest manual failed', { err: String(err) }));
     });
-    log.info('subscribed to lit_review_run + weekly_digest_run');
+    await conn.listen('insight_scan_run', () => {
+      log.info('insight-scan: manual trigger via NOTIFY');
+      runInsightScan().catch((err) => log.error('insight-scan manual failed', { err: String(err) }));
+    });
+    log.info('subscribed to lit_review_run + weekly_digest_run + insight_scan_run');
   })();
 
   log.info('runner ready');

@@ -62,11 +62,16 @@ async function runWithStreaming(
       if (message.type === 'assistant' && message.message?.content) {
         for (const block of message.message.content) {
           if (block.type === 'text') {
-            lastAssistantText = block.text;
+            // Track the most recent non-empty assistant text — used as a
+            // fallback if ExitPlanMode's input.plan is empty.
+            if (block.text.trim()) lastAssistantText = block.text;
           } else if (block.type === 'tool_use' && block.name === 'ExitPlanMode') {
             const input = block.input as { plan?: string } | undefined;
-            planMd = input?.plan ?? lastAssistantText;
-            log.info('captured plan', { runId, len: planMd?.length ?? 0 });
+            const fromInput = input?.plan?.trim();
+            if (fromInput) {
+              planMd = fromInput;
+              log.info('captured plan from ExitPlanMode.input', { runId, len: fromInput.length });
+            }
           }
         }
       }
@@ -75,9 +80,9 @@ async function runWithStreaming(
         if (message.subtype === 'success') {
           costUsd = message.total_cost_usd ?? 0;
           numTurns = message.num_turns ?? 0;
-          const finalText = message.result ?? lastAssistantText;
+          const finalText = (message.result?.trim()) || lastAssistantText;
           if (row.kind === 'plan' || row.kind === 'experiment') {
-            const plan = planMd ?? finalText;
+            const plan = planMd?.trim() || finalText.trim() || '(empty plan)';
             await markAwaitingApproval(runId, plan);
             return { ok: true, status: 'awaiting_approval', planMd: plan };
           }

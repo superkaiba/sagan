@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { Markdown } from '@/components/Markdown';
+import { Comments } from '@/components/Comments';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +47,8 @@ export default async function EntityPage({
           </dl>
         </section>
       ) : null}
+
+      <Comments entityKind={kind} entityId={entity.id} />
     </div>
   );
 }

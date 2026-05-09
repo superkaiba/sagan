@@ -10,10 +10,12 @@
  * Local dev: `pnpm --filter @eps/runner dev`.
  */
 import './env.js';
-import { close } from './db.js';
+import cron from 'node-cron';
+import { close, listener } from './db.js';
 import { startQueue } from './queue.js';
 import { runSession } from './session.js';
 import { dispatchApprovedExperiment } from './dispatcher.js';
+import { runLitReview } from './jobs/lit-review.js';
 import { log } from './log.js';
 
 const controller = new AbortController();
@@ -37,6 +39,26 @@ async function main() {
     },
     controller.signal,
   );
+
+  // Daily lit review at 06:00 (server local time). Manual trigger via the
+  // `RUN_LIT_REVIEW_AT_BOOT=1` env to run on startup as well.
+  cron.schedule('0 6 * * *', () => {
+    log.info('cron: lit-review starting');
+    runLitReview().catch((err) => log.error('lit-review failed', { err: String(err) }));
+  });
+  if (process.env.RUN_LIT_REVIEW_AT_BOOT === '1') {
+    log.info('lit-review: running on boot per RUN_LIT_REVIEW_AT_BOOT=1');
+    runLitReview().catch((err) => log.error('lit-review at-boot failed', { err: String(err) }));
+  }
+  // Manual trigger via the API (NOTIFY 'lit_review_run').
+  void (async () => {
+    const conn = listener();
+    await conn.listen('lit_review_run', () => {
+      log.info('lit-review: manual trigger via NOTIFY');
+      runLitReview().catch((err) => log.error('lit-review manual failed', { err: String(err) }));
+    });
+    log.info('subscribed to lit_review_run');
+  })();
 
   log.info('runner ready');
   await new Promise<void>((resolve) => {

@@ -1,0 +1,40 @@
+[Unit]
+Description=EPS Research Dashboard runner (Claude Agent SDK)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=thomasjiralerspong
+Group=thomasjiralerspong
+WorkingDirectory=/home/thomasjiralerspong/eps-research-dashboard/services/runner
+EnvironmentFile=/home/thomasjiralerspong/eps-research-dashboard/.env
+
+# Run via tsx so we don't need a build step on the VM.
+ExecStart=/home/thomasjiralerspong/.npm-global/bin/pnpm start
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eps-runner
+
+# Restart policy
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+# Resource caps (generous; runner is mostly waiting on I/O)
+LimitNOFILE=65535
+MemoryMax=2G
+CPUQuota=200%
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+# WorkingDirectory must be writable (runner edits the monorepo for self-improvement),
+# so re-allow exactly that path:
+ReadWritePaths=/home/thomasjiralerspong/eps-research-dashboard
+
+[Install]
+WantedBy=multi-user.target

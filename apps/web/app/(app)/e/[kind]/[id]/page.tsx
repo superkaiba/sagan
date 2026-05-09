@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { Comments } from '@/components/Comments';
 import { EditableBody } from '@/components/EditableBody';
+import { EntityEdges } from '@/components/EntityEdges';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,8 @@ export default async function EntityPage({
           </dl>
         </section>
       ) : null}
+
+      <EntityEdges entityKind={kind} entityId={entity.id} />
 
       <Comments entityKind={kind} entityId={entity.id} />
     </div>

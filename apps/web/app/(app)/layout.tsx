@@ -1,10 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
+import { CommandPalette } from '@/components/CommandPalette';
 
 const NAV: Array<{ label: string; href: string }> = [
   { label: 'Today', href: '/today' },
   { label: 'Tasks', href: '/tasks' },
+  { label: 'Projects', href: '/projects' },
+  { label: 'Beliefs', href: '/beliefs' },
   { label: 'Knowledge', href: '/knowledge' },
   { label: 'Library', href: '/library' },
   { label: 'Agent', href: '/agent' },
@@ -42,6 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </form>
       </aside>
       <main className="p-6">{children}</main>
+      <CommandPalette />
     </div>
   );
 }

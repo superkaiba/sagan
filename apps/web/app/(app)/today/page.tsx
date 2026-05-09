@@ -1,29 +1,56 @@
-export default function TodayPage() {
+import { and, asc, eq, isNull } from 'drizzle-orm';
+import { dailyLogEntries } from '@eps/db/schema';
+import { db } from '@/lib/db';
+import { loadBoard } from '@/lib/kanban';
+import { ResearchLog } from './ResearchLog';
+import { Kanban } from './Kanban';
+
+export const dynamic = 'force-dynamic';
+
+export default async function TodayPage() {
   const today = new Date().toISOString().slice(0, 10);
+  const [entries, board] = await Promise.all([
+    db()
+      .select()
+      .from(dailyLogEntries)
+      .where(and(eq(dailyLogEntries.day, today), isNull(dailyLogEntries.archivedAt)))
+      .orderBy(asc(dailyLogEntries.position), asc(dailyLogEntries.createdAt)),
+    loadBoard('next-steps'),
+  ]);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
         <p className="text-sm text-[--color-muted]">{today}</p>
       </header>
 
-      <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-6">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">
-          Research log
-        </h2>
-        <p className="mt-2 text-sm text-[--color-muted]">
-          Clean results land here as they come in. Hooked up in Phase 3 follow-up.
-        </p>
-      </section>
+      <ResearchLog
+        day={today}
+        initialEntries={entries.map((e) => ({
+          id: e.id,
+          kind: e.kind,
+          bodyMd: e.bodyMd,
+          createdAt: e.createdAt.toISOString(),
+        }))}
+      />
 
-      <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-6">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">
-          Next steps Kanban
-        </h2>
-        <p className="mt-2 text-sm text-[--color-muted]">
-          Drag-and-drop board over the kanban_cards table. Hooked up in Phase 3 follow-up.
-        </p>
-      </section>
+      <Kanban
+        slug={board.slug}
+        initialColumns={board.columns.map((c) => ({
+          id: c.id,
+          title: c.title,
+          color: c.color,
+          position: c.position,
+        }))}
+        initialCards={board.cards.map((c) => ({
+          id: c.id,
+          columnId: c.columnId,
+          title: c.title,
+          bodyMd: c.bodyMd,
+          position: c.position,
+        }))}
+      />
     </div>
   );
 }

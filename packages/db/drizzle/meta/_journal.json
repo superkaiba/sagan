@@ -8,6 +8,13 @@
       "when": 1778305469288,
       "tag": "0000_smiling_loki",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778306925407,
+      "tag": "0001_puzzling_blur",
+      "breakpoints": true
     }
   ]
 }

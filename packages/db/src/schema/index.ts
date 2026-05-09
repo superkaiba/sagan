@@ -164,6 +164,8 @@ export const agentRunStatusEnum = pgEnum('agent_run_status', [
 
 export const agentProviderEnum = pgEnum('agent_provider', ['claude_code', 'codex']);
 
+export const runpodAccountEnum = pgEnum('runpod_account', ['team', 'personal']);
+
 export const chatRoleEnum = pgEnum('chat_role', ['user', 'assistant', 'tool', 'system']);
 
 export const commentAuthorKindEnum = pgEnum('comment_author_kind', [
@@ -314,6 +316,7 @@ export const experiments = pgTable(
     planJson: jsonb('plan_json'),
     configYaml: text('config_yaml'),
     status: experimentStatusEnum('status').notNull().default('planning'),
+    runpodAccount: runpodAccountEnum('runpod_account').notNull().default('team'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -527,7 +530,9 @@ export const agentRuns = pgTable(
     chatSessionId: uuid('chat_session_id'),
     branchName: text('branch_name'),
     vercelDeploymentUrl: text('vercel_deployment_url'),
+    runpodAccount: runpodAccountEnum('runpod_account').notNull().default('team'),
     runpodPodId: text('runpod_pod_id'),
+    runpodPodIds: text('runpod_pod_ids').array(),
     runpodStatus: text('runpod_status'),
     transcriptLogPath: text('transcript_log_path'),
     changedFilesJson: jsonb('changed_files_json'),

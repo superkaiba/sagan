@@ -30,6 +30,7 @@ export async function runSession(runId: string): Promise<Outcome> {
     cwd: env.RUNNER_REPO_ROOT,
     permissionMode: row.kind === 'plan' || row.kind === 'experiment' ? 'plan' : 'acceptEdits',
     env: process.env as Record<string, string>,
+    pathToClaudeCodeExecutable: env.CLAUDE_CLI_PATH,
     // Conservative tool restriction: disable Bash and write tools for QA mode.
     ...(row.kind === 'qa'
       ? { allowedTools: ['Read', 'Grep', 'Glob'], disallowedTools: ['Bash', 'Edit', 'Write'] }

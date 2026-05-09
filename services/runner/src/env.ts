@@ -14,6 +14,12 @@ export const env = {
   RUNNER_LOG_LEVEL: process.env.RUNNER_LOG_LEVEL ?? 'info',
   RUNNER_REPO_ROOT:
     process.env.RUNNER_REPO_ROOT ?? path.resolve(process.cwd(), '../..'),
+  // Path to the Claude Code CLI binary the agent SDK invokes. Defaults to the
+  // user-installed binary; override to use a pinned version. The SDK's bundled
+  // platform-specific binaries are flaky on systems where glibc/musl detection
+  // misfires.
+  CLAUDE_CLI_PATH:
+    process.env.CLAUDE_CLI_PATH ?? '/home/thomasjiralerspong/.local/bin/claude',
 };
 
 export function requireEnv(key: keyof typeof env): string {

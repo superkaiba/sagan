@@ -1,2 +1,2 @@
-export * from './schema/index.js';
-export { getDb, closeDb, type Db } from './client.js';
+export * from './schema/index';
+export { getDb, closeDb, type Db } from './client';

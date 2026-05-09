@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { hash } from '@node-rs/argon2';
-import { users } from './schema/index.js';
+import { users } from './schema/index';
 
 async function main() {
   const url = process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_URL;

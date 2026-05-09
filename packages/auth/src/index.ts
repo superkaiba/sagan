@@ -6,7 +6,7 @@
 // `apps/web/app/api/auth/*` because they depend on Next.js's request/response
 // surfaces. This package owns the framework-agnostic primitives.
 
-export { hashPassword, verifyPassword } from './password.js';
+export { hashPassword, verifyPassword } from './password';
 export {
   createSession,
   validateSession,
@@ -14,7 +14,7 @@ export {
   invalidateUserSessions,
   purgeExpiredSessions,
   type SessionContext,
-} from './session.js';
+} from './session';
 
 export const SESSION_COOKIE_NAME = 'eps_session';
 export const SESSION_TTL_DAYS = 60;

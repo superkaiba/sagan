@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { Comments } from '@/components/Comments';
 import { EditableBody } from '@/components/EditableBody';
+import { EditableTitle } from '@/components/EditableTitle';
 import { EntityEdges } from '@/components/EntityEdges';
 import { BeliefHistoryLink } from '@/components/BeliefHistoryLink';
 import { ProjectChildren } from '@/components/ProjectChildren';
@@ -25,7 +26,11 @@ export default async function EntityPage({
         <p className="text-xs uppercase tracking-wide text-[--color-muted]">
           {KIND_LABELS[kind]}
         </p>
-        <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>
+        {kind === 'run' ? (
+          <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>
+        ) : (
+          <EditableTitle kind={kind} id={entity.id} initialTitle={entity.title} />
+        )}
         {entity.status ? (
           <p className="text-sm">
             <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{entity.status}</span>

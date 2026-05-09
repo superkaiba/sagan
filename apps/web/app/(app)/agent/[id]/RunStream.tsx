@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Markdown } from '@/components/Markdown';
 
 interface RunEvent {
   id: string;
@@ -97,7 +98,7 @@ export function RunStream({ runId, kind, initialStatus, initialPlanMd, initialEv
           <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-[--color-muted]">
             Plan
           </h2>
-          <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-xs leading-relaxed">{planMd}</pre>
+          <Markdown>{planMd}</Markdown>
           {showApproval ? (
             <div className="mt-4 flex gap-2">
               <button

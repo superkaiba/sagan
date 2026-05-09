@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
+import { Markdown } from '@/components/Markdown';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export default async function EntityPage({
 
       {entity.body ? (
         <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
-          <pre className="whitespace-pre-wrap text-sm leading-relaxed">{entity.body}</pre>
+          <Markdown>{entity.body}</Markdown>
         </section>
       ) : null}
 

@@ -1,0 +1,47 @@
+node_modules
+.pnpm-store
+
+# Build output
+.next
+.turbo
+dist
+build
+out
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+errors.log
+runner.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Test
+coverage
+
+# Vercel
+.vercel
+
+# Expo
+.expo
+expo-env.d.ts
+ios
+android
+
+# Drizzle
+drizzle/meta/_journal.json.bak
+
+# TS build info
+*.tsbuildinfo

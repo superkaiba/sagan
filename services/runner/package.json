@@ -1,0 +1,23 @@
+{
+  "name": "@eps/runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.137",
+    "@eps/agent-protocol": "workspace:*",
+    "@eps/db": "workspace:*",
+    "postgres": "^3.4.5",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.2"
+  }
+}

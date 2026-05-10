@@ -27,9 +27,9 @@ jobs:
         with:
           node-version: '20'
 
+      # No `version:` here — pnpm/action-setup@v4 reads it from
+      # package.json's "packageManager" field. Specifying both errors out.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Expo
         uses: expo/expo-github-action@v8

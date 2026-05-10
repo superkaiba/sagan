@@ -11,7 +11,7 @@ import { db, schema } from './db.js';
 import { emitEvent } from './queue.js';
 import { env, requireEnv } from './env.js';
 import { log } from './log.js';
-import { sendApprovalPush } from './notifications.js';
+import { pushToUser } from './lib/push.js';
 
 type AgentRunRow = typeof schema.agentRuns.$inferSelect;
 
@@ -176,7 +176,12 @@ async function markAwaitingApproval(runId: string, planMd: string) {
     .set({ status: 'awaiting_approval', planMd, updatedAt: new Date() })
     .where(eq(schema.agentRuns.id, runId));
   await emitEvent(runId, 'awaiting_approval', undefined, { plan_len: planMd.length });
-  await sendApprovalPush(runId, planMd.length);
+  await pushForUsers({
+    title: 'Plan ready for approval',
+    body: `Run ${runId.slice(0, 8)} — ${planMd.length} chars`,
+    url: `/agent/${runId}`,
+    data: { kind: 'awaiting_approval', runId },
+  });
 }
 
 async function markCompleted(runId: string, resultText: string, costUsd: number, numTurns: number) {
@@ -190,6 +195,24 @@ async function markCompleted(runId: string, resultText: string, costUsd: number,
     .where(eq(schema.agentRuns.id, runId));
   await emitEvent(runId, 'completed', truncate(resultText, 1000), { cost_usd: costUsd, turns: numTurns });
   await maybePostCommentReply(runId, resultText);
+  await pushForUsers({
+    title: 'Run completed',
+    body: truncate(resultText, 140) || `Run ${runId.slice(0, 8)} finished`,
+    url: `/agent/${runId}`,
+    data: { kind: 'completed', runId, costUsd, numTurns },
+  });
+}
+
+/**
+ * Single-user dashboard: there's only one human user. Push to every
+ * registered device regardless of which user owns it. Multi-user is a
+ * later concern; the data shape supports it.
+ */
+async function pushForUsers(message: Parameters<typeof pushToUser>[1]) {
+  const userIds = await db()
+    .selectDistinct({ userId: schema.pushDevices.userId })
+    .from(schema.pushDevices);
+  await Promise.all(userIds.map((u) => pushToUser(u.userId, message)));
 }
 
 /**

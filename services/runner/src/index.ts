@@ -18,6 +18,7 @@ import { dispatchApprovedExperiment } from './dispatcher.js';
 import { runLitReview } from './jobs/lit-review.js';
 import { runWeeklyDigest } from './jobs/weekly-digest.js';
 import { runInsightScan } from './jobs/insight-scan.js';
+import { pushToUser } from './lib/push.js';
 import { log } from './log.js';
 
 const controller = new AbortController();
@@ -78,7 +79,18 @@ async function main() {
       log.info('insight-scan: manual trigger via NOTIFY');
       runInsightScan().catch((err) => log.error('insight-scan manual failed', { err: String(err) }));
     });
-    log.info('subscribed to lit_review_run + weekly_digest_run + insight_scan_run');
+    await conn.listen('push_test', (payload) => {
+      const userId = payload?.trim();
+      if (!userId) return;
+      log.info('push_test: trigger', { userId });
+      pushToUser(userId, {
+        title: 'EPS Research',
+        body: 'Push notifications are working ✓',
+        url: '/(tabs)/agent',
+        data: { kind: 'test' },
+      }).catch((err) => log.error('push_test failed', { err: String(err) }));
+    });
+    log.info('subscribed to lit_review_run + weekly_digest_run + insight_scan_run + push_test');
   })();
 
   log.info('runner ready');

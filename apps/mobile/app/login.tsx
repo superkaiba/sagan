@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { login } from '@/lib/api';
+import { registerForPush } from '@/lib/notifications';
 import { C } from '@/lib/theme';
 
 export default function LoginScreen() {
@@ -25,6 +26,8 @@ export default function LoginScreen() {
     setErr(null);
     const ok = await login(email.trim(), password);
     if (ok) {
+      // Best-effort push registration (no-op on simulator / denied perms).
+      void registerForPush().catch(() => {});
       router.replace('/(tabs)/today');
     } else {
       setErr('Wrong email or password.');

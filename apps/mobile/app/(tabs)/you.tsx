@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { api, apiBase, logout } from '@/lib/api';
+import { unregisterCurrentToken } from '@/lib/notifications';
 import { C } from '@/lib/theme';
 
 interface Me {
@@ -35,6 +36,17 @@ export default function You() {
 
         <TouchableOpacity
           onPress={async () => {
+            const r = await api('/api/push/test', { method: 'POST' });
+            if (!r.ok) console.warn('[push test] failed', r.status);
+          }}
+          style={[s.button, { backgroundColor: C.mutedBg }]}
+        >
+          <Text style={[s.buttonText, { color: C.fg }]}>Send test push</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={async () => {
+            await unregisterCurrentToken();
             await logout();
             router.replace('/login');
           }}

@@ -1,8 +1,15 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { configureNotificationHandling } from '@/lib/notifications';
 
 export default function RootLayout() {
+  useEffect(() => {
+    const cleanup = configureNotificationHandling();
+    return cleanup;
+  }, []);
+
   return (
     <SafeAreaProvider>
       <StatusBar style="auto" />

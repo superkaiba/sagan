@@ -13,7 +13,9 @@ export function proxy(req: NextRequest) {
     pathname.startsWith('/digest/') ||
     pathname.startsWith('/d/') ||
     pathname.startsWith('/p/') ||
-    pathname.startsWith('/r/')
+    pathname.startsWith('/r/') ||
+    pathname.startsWith('/mentor/') ||
+    pathname.startsWith('/api/mentor/')
   ) {
     return NextResponse.next();
   }

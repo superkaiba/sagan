@@ -42,7 +42,7 @@ export default function LoginScreen() {
     >
       <View style={s.card}>
         <Text style={s.title}>Sign in</Text>
-        <Text style={s.subtitle}>EPS Research Dashboard</Text>
+        <Text style={s.subtitle}>Sagan</Text>
 
         <Text style={s.label}>Email</Text>
         <TextInput

@@ -52,7 +52,7 @@ function LoginForm() {
       >
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-          <p className="text-sm text-[--color-muted]">EPS Research Dashboard</p>
+          <p className="text-sm text-[--color-muted]">Sagan</p>
         </header>
 
         <div className="space-y-1.5">

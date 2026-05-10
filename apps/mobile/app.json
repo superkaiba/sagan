@@ -1,26 +1,34 @@
 {
   "expo": {
-    "name": "EPS Research",
+    "name": "Sagan",
     "slug": "eps-research-dashboard",
-    "scheme": "eps",
+    "scheme": "sagan",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0e24"
+    },
     "ios": {
-      "bundleIdentifier": "com.superkaiba.epsresearch",
+      "bundleIdentifier": "com.superkaiba.sagan",
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "EPS Research uses your microphone for voice dispatch.",
-        "NSSpeechRecognitionUsageDescription": "EPS Research transcribes spoken commands into agent prompts."
+        "NSMicrophoneUsageDescription": "Sagan uses your microphone for voice dispatch.",
+        "NSSpeechRecognitionUsageDescription": "Sagan transcribes spoken commands into agent prompts."
       }
     },
     "android": {
-      "package": "com.superkaiba.epsresearch",
+      "package": "com.superkaiba.sagan",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0e24"
+      },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "RECORD_AUDIO",
-        "android.permission.RECORD_AUDIO",
         "RECORD_AUDIO",
         "android.permission.RECORD_AUDIO"
       ],
@@ -30,7 +38,8 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "static",
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
       "expo-router",
@@ -39,8 +48,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "EPS Research uses your microphone for voice dispatch.",
-          "speechRecognitionPermission": "EPS Research transcribes spoken commands into agent prompts.",
+          "microphonePermission": "Sagan uses your microphone for voice dispatch.",
+          "speechRecognitionPermission": "Sagan transcribes spoken commands into agent prompts.",
           "androidSpeechServicePackages": [
             "com.google.android.googlequicksearchbox"
           ]

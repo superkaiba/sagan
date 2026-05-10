@@ -1,18 +1,23 @@
 {
-  "name": "EPS Research Dashboard",
-  "short_name": "EPS Research",
+  "name": "Sagan",
+  "short_name": "Sagan",
   "description": "Personal research-life dashboard.",
   "start_url": "/today",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#5b6cff",
-  "background_color": "#ffffff",
+  "theme_color": "#0a0e24",
+  "background_color": "#0a0e24",
   "icons": [
     {
       "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "32x32",
+      "type": "image/png"
     }
   ]
 }

@@ -73,7 +73,7 @@ export default async function PublicDigestPage({
       )}
 
       <footer className="border-t border-[--color-border] pt-4 text-[10px] uppercase tracking-wide text-[--color-muted]">
-        EPS Research Dashboard
+        Sagan
       </footer>
     </main>
   );

@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'EPS Research Dashboard',
+  title: 'Sagan',
   description: 'Personal research-life dashboard.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'EPS Research',
+    title: 'Sagan',
   },
 };
 

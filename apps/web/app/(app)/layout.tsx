@@ -22,7 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen md:grid md:grid-cols-[14rem_1fr]">
       {/* Mobile top-bar */}
       <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-[--color-border] bg-[--color-muted-bg] px-4 py-2 md:hidden">
-        <p className="text-xs uppercase tracking-wide text-[--color-muted]">EPS</p>
+        <p className="text-xs uppercase tracking-wide text-[--color-muted]">SAGAN</p>
         <nav className="flex flex-1 gap-1 overflow-x-auto">
           {NAV.map((item) => (
             <Link
@@ -47,7 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col border-r border-[--color-border] bg-[--color-muted-bg] p-4 gap-6">
         <div>
-          <p className="text-xs uppercase tracking-wide text-[--color-muted]">EPS Research</p>
+          <p className="text-xs uppercase tracking-wide text-[--color-muted]">Sagan</p>
           <p className="text-sm font-medium truncate">{session.user.email}</p>
         </div>
         <nav className="space-y-1">

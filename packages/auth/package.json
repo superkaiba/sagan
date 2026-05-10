@@ -1,5 +1,5 @@
 {
-  "name": "@eps/auth",
+  "name": "@sagan/auth",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@eps/db": "workspace:*",
+    "@sagan/db": "workspace:*",
     "@node-rs/argon2": "^2.0.2",
     "drizzle-orm": "^0.36.4"
   },

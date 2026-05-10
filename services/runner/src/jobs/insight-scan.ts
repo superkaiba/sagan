@@ -10,7 +10,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { eq } from 'drizzle-orm';
-import { beliefs, edges, projects } from '@eps/db/schema';
+import { beliefs, edges, projects } from '@sagan/db/schema';
 import { db } from '../db.js';
 import { env, requireEnv } from '../env.js';
 import { log } from '../log.js';

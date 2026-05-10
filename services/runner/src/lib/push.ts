@@ -9,7 +9,7 @@
  * Reference: https://docs.expo.dev/push-notifications/sending-notifications/
  */
 import { eq, inArray } from 'drizzle-orm';
-import { pushDevices } from '@eps/db/schema';
+import { pushDevices } from '@sagan/db/schema';
 import { db } from '../db.js';
 import { log } from '../log.js';
 

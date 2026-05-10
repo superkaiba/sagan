@@ -7,7 +7,7 @@ import {
   projects,
   runs,
   todos,
-} from '@eps/db/schema';
+} from '@sagan/db/schema';
 import { db } from './db';
 
 export type EntityKind =

@@ -1,5 +1,5 @@
 import { and, asc, eq, isNull } from 'drizzle-orm';
-import { dailyLogEntries } from '@eps/db/schema';
+import { dailyLogEntries } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { loadBoard } from '@/lib/kanban';
 import { ResearchLog } from './ResearchLog';

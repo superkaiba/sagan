@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { kanbanCards } from '@eps/db/schema';
+import { kanbanCards } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 

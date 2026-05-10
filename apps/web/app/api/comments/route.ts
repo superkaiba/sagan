@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { agentRuns, comments } from '@eps/db/schema';
+import { agentRuns, comments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import { isEntityKind } from '@/lib/entity';

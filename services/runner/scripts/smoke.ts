@@ -3,8 +3,8 @@
  * poll the row until it reaches `awaiting_approval`, print the captured plan.
  *
  * Run while the runner is up:
- *   pnpm --filter @eps/runner dev   # in one terminal
- *   pnpm --filter @eps/runner smoke # in another
+ *   pnpm --filter @sagan/runner dev   # in one terminal
+ *   pnpm --filter @sagan/runner smoke # in another
  */
 import '../src/env.js';
 import { eq } from 'drizzle-orm';

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { agentRuns } from '@eps/db/schema';
-import type { AgentRunKind } from '@eps/agent-protocol';
-import { runRequestSchema } from '@eps/agent-protocol';
+import { agentRuns } from '@sagan/db/schema';
+import type { AgentRunKind } from '@sagan/agent-protocol';
+import { runRequestSchema } from '@sagan/agent-protocol';
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';

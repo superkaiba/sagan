@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { desc } from 'drizzle-orm';
-import { agentRuns } from '@eps/db/schema';
+import { agentRuns } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { DispatchForm } from './DispatchForm';
 

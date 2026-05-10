@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { desc, eq } from 'drizzle-orm';
-import { beliefs, experiments, projectNarratives } from '@eps/db/schema';
+import { beliefs, experiments, projectNarratives } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 
 export async function ProjectChildren({ projectId }: { projectId: string }) {

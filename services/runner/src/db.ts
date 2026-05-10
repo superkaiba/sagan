@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import * as schema from '@eps/db/schema';
+import * as schema from '@sagan/db/schema';
 import { env, requireEnv } from './env.js';
 
 // Two clients:

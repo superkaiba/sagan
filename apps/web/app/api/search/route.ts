@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql, ilike, or } from 'drizzle-orm';
-import { beliefs, experiments, litItems, projects, todos } from '@eps/db/schema';
+import { beliefs, experiments, litItems, projects, todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import type { EntityKind } from '@/lib/entity';

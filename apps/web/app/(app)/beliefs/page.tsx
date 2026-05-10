@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { desc } from 'drizzle-orm';
-import { beliefs, projects } from '@eps/db/schema';
+import { beliefs, projects } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { NewBeliefForm } from './NewBeliefForm';
 

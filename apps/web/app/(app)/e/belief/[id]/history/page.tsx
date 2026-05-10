@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { desc, eq } from 'drizzle-orm';
 import Link from 'next/link';
-import { beliefVersions, beliefs } from '@eps/db/schema';
+import { beliefVersions, beliefs } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { Markdown } from '@/components/Markdown';
 

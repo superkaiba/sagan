@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { eq } from 'drizzle-orm';
-import { weeklyDigests } from '@eps/db/schema';
+import { weeklyDigests } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { DigestEditor } from './DigestEditor';
 

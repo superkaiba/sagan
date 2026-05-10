@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq, ne } from 'drizzle-orm';
 import { z } from 'zod';
-import { projectNarratives } from '@eps/db/schema';
+import { projectNarratives } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 

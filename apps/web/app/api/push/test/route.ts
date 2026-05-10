@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { pushDevices } from '@eps/db/schema';
+import { pushDevices } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 

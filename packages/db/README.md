@@ -1,4 +1,4 @@
-# @eps/db
+# @sagan/db
 
 Drizzle schema, client, and migration runner.
 
@@ -14,13 +14,13 @@ Drizzle schema, client, and migration runner.
 3. Generate the initial migration:
 
    ```bash
-   pnpm --filter @eps/db db:generate
+   pnpm --filter @sagan/db db:generate
    ```
 
 4. Apply migrations:
 
    ```bash
-   pnpm --filter @eps/db db:migrate
+   pnpm --filter @sagan/db db:migrate
    ```
 
 ## Notes

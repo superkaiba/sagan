@@ -18,7 +18,7 @@ import {
   projects,
   runs,
   weeklyDigests,
-} from '@eps/db/schema';
+} from '@sagan/db/schema';
 import { db } from '../db.js';
 import { env, requireEnv } from '../env.js';
 import { log } from '../log.js';

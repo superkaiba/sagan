@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { litInbox, litItems, litSources } from '@eps/db/schema';
+import { litInbox, litItems, litSources } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { RunLitReviewButton } from './RunLitReviewButton';
 

@@ -1,5 +1,5 @@
 {
-  "name": "@eps/db",
+  "name": "@sagan/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { eq } from 'drizzle-orm';
-import { agentRuns, agentRunEvents } from '@eps/db/schema';
+import { agentRuns, agentRunEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { RunStream } from './RunStream';
 

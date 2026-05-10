@@ -1,4 +1,4 @@
-# @eps/runner
+# @sagan/runner
 
 VM-side daemon that picks up queued `agent_runs` rows and executes them via
 the Claude Agent SDK.
@@ -25,10 +25,10 @@ the Claude Agent SDK.
 
 ```bash
 # Terminal A — long-running daemon
-pnpm --filter @eps/runner dev
+pnpm --filter @sagan/runner dev
 
 # Terminal B — drop a smoke-test job and wait for the plan
-pnpm --filter @eps/runner smoke
+pnpm --filter @sagan/runner smoke
 ```
 
 The daemon logs to stdout; systemd in production routes to journald.

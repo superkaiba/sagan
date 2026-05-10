@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { desc } from 'drizzle-orm';
 import { z } from 'zod';
-import { litItems } from '@eps/db/schema';
+import { litItems } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 

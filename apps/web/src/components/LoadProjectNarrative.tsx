@@ -1,5 +1,5 @@
 import { and, desc, eq } from 'drizzle-orm';
-import { projectNarratives, projects } from '@eps/db/schema';
+import { projectNarratives, projects } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { ProjectNarrativePanel } from './ProjectNarrativePanel';
 

@@ -1,5 +1,5 @@
 import { asc, eq, isNull, and } from 'drizzle-orm';
-import { kanbanCards, kanbanColumns } from '@eps/db/schema';
+import { kanbanCards, kanbanColumns } from '@sagan/db/schema';
 import { db } from './db';
 
 const DEFAULT_BOARD = 'next-steps';

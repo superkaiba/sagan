@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { dailyLogEntries } from '@eps/db/schema';
+import { dailyLogEntries } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 

@@ -7,7 +7,7 @@
  * - Persists every SDK message as an agent_run_events row
  *
  * Production: managed by systemd (see services/runner/systemd/eps-runner.service).
- * Local dev: `pnpm --filter @eps/runner dev`.
+ * Local dev: `pnpm --filter @sagan/runner dev`.
  */
 import './env.js';
 import cron from 'node-cron';

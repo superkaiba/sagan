@@ -1,6 +1,6 @@
 /**
  * One-shot seed: ensures the single owner user row exists.
- * Run with: `pnpm --filter @eps/db tsx src/seed.ts`
+ * Run with: `pnpm --filter @sagan/db tsx src/seed.ts`
  *
  * Idempotent: re-running with the same email is a no-op (does not rotate
  * the password). Pass `--rotate-password` to forcibly update the hash.

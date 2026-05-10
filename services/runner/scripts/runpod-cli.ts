@@ -1,9 +1,9 @@
 /**
  * Tiny CLI for poking the RunPod adapter without going through Claude.
  *
- *   pnpm --filter @eps/runner runpod list [--account=team|personal]
- *   pnpm --filter @eps/runner runpod get <podId> [--account=team]
- *   pnpm --filter @eps/runner runpod terminate <podId> [--account=team]
+ *   pnpm --filter @sagan/runner runpod list [--account=team|personal]
+ *   pnpm --filter @sagan/runner runpod get <podId> [--account=team]
+ *   pnpm --filter @sagan/runner runpod terminate <podId> [--account=team]
  */
 import '../src/env.js';
 import {

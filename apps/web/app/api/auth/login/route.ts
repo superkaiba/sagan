@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { users } from '@eps/db/schema';
-import { verifyPassword } from '@eps/auth';
+import { users } from '@sagan/db/schema';
+import { verifyPassword } from '@sagan/auth';
 import { db } from '@/lib/db';
 import { createSessionToken, setSessionCookie } from '@/lib/auth';
 

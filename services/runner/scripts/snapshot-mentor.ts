@@ -7,7 +7,7 @@
  * Run this when you publish a new useful result and want it visible to
  * the mentor at /mentor/updates:
  *
- *   pnpm --filter @eps/runner snapshot-mentor
+ *   pnpm --filter @sagan/runner snapshot-mentor
  *   git commit -am "snapshot: refresh mentor results"
  *
  * Requires GITHUB_TOKEN (or GH_TOKEN) in the environment for the

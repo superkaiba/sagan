@@ -7,8 +7,8 @@
  * cleaned up at the end.
  *
  * Run while the runner is up:
- *   pnpm --filter @eps/runner dev         # in one terminal
- *   pnpm --filter @eps/runner smoke-apply # in another
+ *   pnpm --filter @sagan/runner dev         # in one terminal
+ *   pnpm --filter @sagan/runner smoke-apply # in another
  */
 import '../src/env.js';
 import path from 'node:path';

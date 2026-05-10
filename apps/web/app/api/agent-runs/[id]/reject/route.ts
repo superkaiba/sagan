@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
-import { agentRuns } from '@eps/db/schema';
+import { agentRuns } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 

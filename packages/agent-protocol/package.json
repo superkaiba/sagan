@@ -1,5 +1,5 @@
 {
-  "name": "@eps/agent-protocol",
+  "name": "@sagan/agent-protocol",
   "version": "0.0.0",
   "private": true,
   "type": "module",

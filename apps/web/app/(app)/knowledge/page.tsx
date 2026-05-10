@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { desc } from 'drizzle-orm';
-import { beliefs, experiments, litItems, projects, runs, todos } from '@eps/db/schema';
+import { beliefs, experiments, litItems, projects, runs, todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { KIND_LABELS, type EntityKind } from '@/lib/entity';
 

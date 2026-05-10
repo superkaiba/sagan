@@ -6,7 +6,7 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_TTL_DAYS,
   type SessionContext,
-} from '@eps/auth';
+} from '@sagan/auth';
 import { db } from './db';
 
 const COOKIE_OPTIONS = {

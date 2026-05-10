@@ -8,7 +8,7 @@
  */
 import { XMLParser } from 'fast-xml-parser';
 import { and, eq } from 'drizzle-orm';
-import { litInbox, litItems, litSources } from '@eps/db/schema';
+import { litInbox, litItems, litSources } from '@sagan/db/schema';
 import { db } from '../db.js';
 import { log } from '../log.js';
 

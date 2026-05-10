@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { desc } from 'drizzle-orm';
-import { litItems } from '@eps/db/schema';
+import { litItems } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { NewLitItemForm } from './NewLitItemForm';
 

@@ -1,5 +1,5 @@
 import { desc, ne } from 'drizzle-orm';
-import { todos } from '@eps/db/schema';
+import { todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { TasksBoard } from './TasksBoard';
 

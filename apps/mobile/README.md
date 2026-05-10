@@ -1,4 +1,4 @@
-# @eps/mobile
+# @sagan/mobile
 
 Native iOS / Android companion to `dashboard.superkaiba.com`. Built with
 Expo SDK 54 + Expo Router.

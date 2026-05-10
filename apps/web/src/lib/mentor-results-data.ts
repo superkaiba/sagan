@@ -5,7 +5,7 @@
  * To refresh after the user resumes board work and wants to publish new
  * results to the mentor, run:
  *
- *   pnpm --filter @eps/runner snapshot-mentor
+ *   pnpm --filter @sagan/runner snapshot-mentor
  *
  * which overwrites apps/web/data/mentor-legacy-results.json. Then commit.
  */

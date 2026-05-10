@@ -1,6 +1,6 @@
 import { randomBytes, createHash } from 'node:crypto';
 import { eq, lt } from 'drizzle-orm';
-import { sessions, users, type Db, type Session, type User } from '@eps/db';
+import { sessions, users, type Db, type Session, type User } from '@sagan/db';
 
 const SESSION_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
 const SESSION_RENEW_THRESHOLD_MS = 24 * 60 * 60 * 1000; // renew if <24h since last touch

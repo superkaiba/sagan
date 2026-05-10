@@ -23,7 +23,7 @@ importers:
 
   apps/mobile:
     dependencies:
-      '@eps/agent-protocol':
+      '@sagan/agent-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-protocol
       expo:
@@ -93,21 +93,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@eps/agent-protocol':
-        specifier: workspace:*
-        version: link:../../packages/agent-protocol
-      '@eps/api':
-        specifier: workspace:*
-        version: link:../../packages/api
-      '@eps/auth':
-        specifier: workspace:*
-        version: link:../../packages/auth
-      '@eps/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@eps/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
       '@radix-ui/react-dialog':
         specifier: ^1.1.4
         version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -123,6 +108,21 @@ importers:
       '@radix-ui/react-tabs':
         specifier: ^1.1.2
         version: 1.1.13(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@sagan/agent-protocol':
+        specifier: workspace:*
+        version: link:../../packages/agent-protocol
+      '@sagan/api':
+        specifier: workspace:*
+        version: link:../../packages/api
+      '@sagan/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@sagan/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@sagan/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@xyflow/react':
         specifier: ^12.4.0
         version: 12.10.2(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -200,7 +200,7 @@ importers:
 
   packages/api:
     dependencies:
-      '@eps/db':
+      '@sagan/db':
         specifier: workspace:*
         version: link:../db
       zod:
@@ -213,12 +213,12 @@ importers:
 
   packages/auth:
     dependencies:
-      '@eps/db':
-        specifier: workspace:*
-        version: link:../db
       '@node-rs/argon2':
         specifier: ^2.0.2
         version: 2.0.2
+      '@sagan/db':
+        specifier: workspace:*
+        version: link:../db
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@types/react@19.2.14)(postgres@3.4.9)(react@19.2.6)
@@ -257,10 +257,10 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.2.137
         version: 0.2.137(zod@4.4.3)
-      '@eps/agent-protocol':
+      '@sagan/agent-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-protocol
-      '@eps/db':
+      '@sagan/db':
         specifier: workspace:*
         version: link:../../packages/db
       dotenv:

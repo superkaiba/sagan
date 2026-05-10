@@ -1,0 +1,50 @@
+name: EAS Update (preview)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: eas-update-preview
+  cancel-in-progress: true
+
+jobs:
+  update:
+    if: ${{ github.repository == 'superkaiba/eps-research-dashboard' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node + pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish update
+        working-directory: apps/mobile
+        env:
+          EAS_NO_VCS: '1'
+        run: |
+          MSG=$(git log -1 --pretty=%s)
+          eas update --branch preview --message "$MSG" --non-interactive

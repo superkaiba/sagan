@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["DOM", "ES2022"],
+    "lib": [
+      "DOM",
+      "ES2022"
+    ],
     "jsx": "react-jsx",
     "moduleResolution": "Bundler",
     "module": "ESNext",
@@ -11,9 +14,20 @@
     "sourceMap": false,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": [
+        "src/*"
+      ]
     }
   },
-  "include": ["src/**/*", "app/**/*", "*.d.ts"],
-  "exclude": ["node_modules", ".expo"]
+  "include": [
+    "src/**/*",
+    "app/**/*",
+    "*.d.ts",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".expo"
+  ]
 }

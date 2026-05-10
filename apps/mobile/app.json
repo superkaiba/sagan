@@ -18,7 +18,15 @@
     "android": {
       "package": "com.superkaiba.epsresearch",
       "edgeToEdgeEnabled": true,
-      "permissions": ["RECORD_AUDIO"]
+      "permissions": [
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "web": {
       "bundler": "metro",
@@ -33,7 +41,9 @@
         {
           "microphonePermission": "EPS Research uses your microphone for voice dispatch.",
           "speechRecognitionPermission": "EPS Research transcribes spoken commands into agent prompts.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
       ]
     ],
@@ -43,8 +53,12 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": ""
+        "projectId": "d66182e9-9173-48e9-8048-6d46e29e8cd4"
       }
+    },
+    "owner": "superkaiba",
+    "updates": {
+      "url": "https://u.expo.dev/d66182e9-9173-48e9-8048-6d46e29e8cd4"
     }
   }
 }

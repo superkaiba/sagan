@@ -9,6 +9,7 @@
     "smoke": "tsx scripts/smoke.ts",
     "smoke-apply": "tsx scripts/smoke-apply.ts",
     "runpod": "tsx scripts/runpod-cli.ts",
+    "import-mentor-results": "tsx scripts/import-mentor-results.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,16 +1,13 @@
-import { getMentorCleanResults } from '@/lib/github-mentor-results';
+import { getMentorCleanResults } from '@/lib/mentor-results-data';
 import { Markdown } from '@/components/Markdown';
-
-export const dynamic = 'force-dynamic';
-export const revalidate = 300;
 
 const STATUS_STYLES: Record<string, { bg: string; label: string }> = {
   Useful: { bg: 'oklch(0.86 0.13 150)', label: 'useful' },
   'Not useful': { bg: 'oklch(0.86 0.13 25)', label: 'not useful' },
 };
 
-export default async function MentorUpdatesPage() {
-  const results = await getMentorCleanResults().catch(() => []);
+export default function MentorUpdatesPage() {
+  const results = getMentorCleanResults();
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 space-y-6">
@@ -18,13 +15,13 @@ export default async function MentorUpdatesPage() {
         <p className="text-xs uppercase tracking-wide text-[--color-muted]">Mentor view</p>
         <h1 className="text-2xl font-semibold tracking-tight">Recent results</h1>
         <p className="text-sm text-[--color-muted]">
-          Sourced from the project board. Updated every 5 minutes.
+          Snapshot of recent useful results.
         </p>
       </header>
 
       {results.length === 0 ? (
         <p className="rounded-lg border border-dashed border-[--color-border] p-6 text-sm text-[--color-muted]">
-          No results yet — the GitHub project board may be empty or unreachable.
+          No results yet.
         </p>
       ) : (
         <ol className="space-y-4">

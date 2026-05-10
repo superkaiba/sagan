@@ -15,6 +15,13 @@
       "when": 1778306925407,
       "tag": "0001_puzzling_blur",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778384756568,
+      "tag": "0002_sudden_baron_strucker",
+      "breakpoints": true
     }
   ]
 }

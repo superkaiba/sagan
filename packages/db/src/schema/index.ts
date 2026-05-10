@@ -715,6 +715,30 @@ export const shareGrants = pgTable(
   }),
 );
 
+export const pushDevicePlatformEnum = pgEnum('push_device_platform', [
+  'ios',
+  'android',
+  'web',
+]);
+
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    platform: pushDevicePlatformEnum('platform').notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userTokenUq: unique('push_devices_user_token_uq').on(t.userId, t.token),
+    userIdx: index('push_devices_user_idx').on(t.userId),
+  }),
+);
+
 // ─── Type exports ──────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -742,6 +766,7 @@ export type KanbanCard = typeof kanbanCards.$inferSelect;
 export type DailyDigest = typeof dailyDigests.$inferSelect;
 export type WeeklyDigest = typeof weeklyDigests.$inferSelect;
 export type ShareGrant = typeof shareGrants.$inferSelect;
+export type PushDevice = typeof pushDevices.$inferSelect;
 
 // Suppress unused import warning when sql is not directly referenced here.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

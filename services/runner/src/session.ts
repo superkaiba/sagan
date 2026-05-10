@@ -11,6 +11,7 @@ import { db, schema } from './db.js';
 import { emitEvent } from './queue.js';
 import { env, requireEnv } from './env.js';
 import { log } from './log.js';
+import { sendApprovalPush } from './notifications.js';
 
 type AgentRunRow = typeof schema.agentRuns.$inferSelect;
 
@@ -175,6 +176,7 @@ async function markAwaitingApproval(runId: string, planMd: string) {
     .set({ status: 'awaiting_approval', planMd, updatedAt: new Date() })
     .where(eq(schema.agentRuns.id, runId));
   await emitEvent(runId, 'awaiting_approval', undefined, { plan_len: planMd.length });
+  await sendApprovalPush(runId, planMd.length);
 }
 
 async function markCompleted(runId: string, resultText: string, costUsd: number, numTurns: number) {

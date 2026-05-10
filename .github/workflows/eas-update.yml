@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   update:
-    if: ${{ github.repository == 'superkaiba/eps-research-dashboard' }}
+    if: ${{ github.repository == 'superkaiba/sagan' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

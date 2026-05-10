@@ -1,5 +1,5 @@
 [Unit]
-Description=EPS Research Dashboard runner (Claude Agent SDK)
+Description=Sagan runner (Claude Agent SDK)
 After=network-online.target
 Wants=network-online.target
 
@@ -15,7 +15,7 @@ EnvironmentFile=/home/thomasjiralerspong/eps-research-dashboard/.env
 ExecStart=/bin/bash -lc 'pnpm start'
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=eps-runner
+SyslogIdentifier=sagan-runner
 
 # Restart policy
 Restart=always

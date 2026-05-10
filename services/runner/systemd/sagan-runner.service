@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=simple
 User=thomasjiralerspong
 Group=thomasjiralerspong
-WorkingDirectory=/home/thomasjiralerspong/eps-research-dashboard/services/runner
-EnvironmentFile=/home/thomasjiralerspong/eps-research-dashboard/.env
+WorkingDirectory=/home/thomasjiralerspong/sagan/services/runner
+EnvironmentFile=/home/thomasjiralerspong/sagan/.env
 
 # Run via tsx so we don't need a build step on the VM. Use a login shell so
 # corepack's pnpm shim resolves through ~/.local/bin (added by ~/.bashrc).
@@ -35,7 +35,7 @@ ProtectSystem=full
 ProtectHome=read-only
 # WorkingDirectory must be writable (runner edits the monorepo for self-improvement),
 # so re-allow exactly that path:
-ReadWritePaths=/home/thomasjiralerspong/eps-research-dashboard /home/thomasjiralerspong/.claude
+ReadWritePaths=/home/thomasjiralerspong/sagan /home/thomasjiralerspong/.claude
 
 [Install]
 WantedBy=multi-user.target

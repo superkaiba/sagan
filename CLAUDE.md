@@ -16,7 +16,7 @@ surface; the VM is the agent runner and workspace.
 - Treat `https://sagan.superkaiba.com` or `NEXT_PUBLIC_SITE_URL` as live
   (the canonical domain; `dashboard.superkaiba.com` is kept as a legacy
   alias and stays attached to the same Vercel project).
-- Use the VM checkout at `/home/thomasjiralerspong/eps-research-dashboard` to
+- Use the VM checkout at `/home/thomasjiralerspong/sagan` to
   inspect, edit, test, commit, and push changes.
 - When showing a dev or preview server from this VM, bind to `0.0.0.0` and
   report the external VM URL `http://35.226.138.62:<port>/...`. Do not give

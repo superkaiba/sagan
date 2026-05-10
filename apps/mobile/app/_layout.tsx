@@ -1,29 +1,23 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import { registerForPushNotificationsAsync } from '../src/notifications';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function RootLayout() {
-  useEffect(() => {
-    registerForPushNotificationsAsync().catch(() => {
-      // Permission may have been denied — non-fatal.
-    });
-  }, []);
-
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="auto" />
       <Stack
         screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: '#0b0b0e' },
+          headerStyle: { backgroundColor: '#fbfbfd' },
+          headerTitleStyle: { fontWeight: '600' },
         }}
       >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="run/[id]" options={{ headerShown: true, title: 'Agent run' }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="login" options={{ title: 'Sign in' }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="agent/new" options={{ title: 'Dispatch' }} />
+        <Stack.Screen name="agent/[id]" options={{ title: 'Run' }} />
       </Stack>
-    </>
+    </SafeAreaProvider>
   );
 }

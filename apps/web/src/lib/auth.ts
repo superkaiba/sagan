@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import {
   createSession,
   invalidateSession,
@@ -18,10 +18,26 @@ const COOKIE_OPTIONS = {
 };
 
 export async function getSession(): Promise<SessionContext | null> {
+  // Web cookie path.
   const store = await cookies();
-  const token = store.get(SESSION_COOKIE_NAME)?.value;
-  if (!token) return null;
-  return validateSession(db(), token);
+  const cookieToken = store.get(SESSION_COOKIE_NAME)?.value;
+  if (cookieToken) {
+    const ctx = await validateSession(db(), cookieToken);
+    if (ctx) return ctx;
+  }
+  // Mobile Bearer token path.
+  const hdrs = await headers();
+  const auth = hdrs.get('authorization');
+  if (auth?.startsWith('Bearer ')) {
+    const bearer = auth.slice('Bearer '.length).trim();
+    if (bearer) return validateSession(db(), bearer);
+  }
+  return null;
+}
+
+/** Mint a fresh session token (used by mobile login). */
+export async function createSessionToken(userId: string): Promise<{ id: string; expiresAt: Date }> {
+  return createSession(db(), userId);
 }
 
 export async function requireSession(): Promise<SessionContext> {

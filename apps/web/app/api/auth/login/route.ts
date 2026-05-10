@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { users } from '@eps/db/schema';
 import { verifyPassword } from '@eps/auth';
 import { db } from '@/lib/db';
-import { setSessionCookie } from '@/lib/auth';
+import { createSessionToken, setSessionCookie } from '@/lib/auth';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -36,6 +36,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 });
   }
 
+  // Mobile clients send `x-client-mode: bearer` to receive a token in the
+  // JSON response (in addition to the cookie). They store the token in
+  // expo-secure-store and replay it as Authorization: Bearer <token>.
+  const wantsBearer = req.headers.get('x-client-mode')?.toLowerCase() === 'bearer';
+  if (wantsBearer) {
+    const { id } = await createSessionToken(user.id);
+    return NextResponse.json({
+      ok: true,
+      user: { id: user.id, email: user.email },
+      sessionToken: id,
+    });
+  }
   await setSessionCookie(user.id);
   return NextResponse.json({ ok: true, user: { id: user.id, email: user.email } });
 }

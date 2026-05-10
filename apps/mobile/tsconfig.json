@@ -9,8 +9,9 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["src/*"]
     }
   },
   "include": ["src/**/*", "app/**/*", "*.d.ts"],

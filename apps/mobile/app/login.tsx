@@ -1,122 +1,117 @@
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
-import { api, ApiError } from '../src/api';
+import { router } from 'expo-router';
+import { login } from '@/lib/api';
+import { C } from '@/lib/theme';
 
 export default function LoginScreen() {
-  const router = useRouter();
-  const [email, setEmail] = useState('thomasjiralerspong@gmail.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  async function submit() {
-    setError(null);
-    setSubmitting(true);
-    try {
-      await api('/api/auth/login', { method: 'POST', json: { email, password } });
+  async function onSubmit() {
+    if (!email.trim() || !password) return;
+    setBusy(true);
+    setErr(null);
+    const ok = await login(email.trim(), password);
+    if (ok) {
       router.replace('/(tabs)/today');
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.status === 401 ? 'wrong email or password' : `error ${err.status}`);
-      } else {
-        setError('network error');
-      }
-    } finally {
-      setSubmitting(false);
+    } else {
+      setErr('Wrong email or password.');
     }
+    setBusy(false);
   }
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={s.root}
     >
-      <View style={styles.card}>
-        <Text style={styles.title}>EPS Research</Text>
-        <Text style={styles.subtitle}>Sign in</Text>
+      <View style={s.card}>
+        <Text style={s.title}>Sign in</Text>
+        <Text style={s.subtitle}>EPS Research Dashboard</Text>
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={s.label}>Email</Text>
         <TextInput
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
-          placeholderTextColor="#666"
-          style={styles.input}
+          textContentType="username"
+          style={s.input}
+          placeholder="you@example.com"
+          placeholderTextColor={C.muted}
         />
 
-        <Text style={styles.label}>Password</Text>
+        <Text style={s.label}>Password</Text>
         <TextInput
           value={password}
           onChangeText={setPassword}
           secureTextEntry
-          placeholderTextColor="#666"
-          style={styles.input}
+          textContentType="password"
+          style={s.input}
+          placeholder="••••••••"
+          placeholderTextColor={C.muted}
         />
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {err ? <Text style={s.err}>{err}</Text> : null}
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={submit}
-          disabled={submitting || password.length < 8}
-          style={({ pressed }) => [
-            styles.button,
-            (submitting || password.length < 8) && styles.buttonDisabled,
-            pressed && styles.buttonPressed,
-          ]}
+        <TouchableOpacity
+          disabled={busy || !email.trim() || !password}
+          onPress={onSubmit}
+          style={[s.button, (busy || !email.trim() || !password) && s.buttonDisabled]}
         >
-          {submitting ? (
-            <ActivityIndicator color="#0b0b0e" />
-          ) : (
-            <Text style={styles.buttonText}>Sign in</Text>
-          )}
-        </Pressable>
+          {busy ? <ActivityIndicator color={C.accentFg} /> : <Text style={s.buttonText}>Sign in</Text>}
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#0b0b0e',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: C.mutedBg,
+    borderRadius: 12,
+    padding: 20,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  card: { width: '100%', maxWidth: 380, gap: 12 },
-  title: { color: '#fff', fontSize: 28, fontWeight: '700' },
-  subtitle: { color: '#9ca3af', fontSize: 16, marginBottom: 12 },
-  label: { color: '#9ca3af', fontSize: 13, marginTop: 8 },
+  title: { fontSize: 22, fontWeight: '700', color: C.fg },
+  subtitle: { fontSize: 13, color: C.muted, marginBottom: 8 },
+  label: { fontSize: 12, color: C.fg, fontWeight: '500', marginTop: 6 },
   input: {
-    color: '#fff',
-    backgroundColor: '#1c1c22',
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.bg,
     borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: C.fg,
     fontSize: 16,
   },
-  error: { color: '#f87171', marginTop: 8 },
+  err: { color: C.danger, marginTop: 4, fontSize: 13 },
   button: {
-    backgroundColor: '#fafafa',
-    paddingVertical: 14,
-    borderRadius: 10,
+    marginTop: 12,
+    backgroundColor: C.accent,
+    borderRadius: 8,
+    paddingVertical: 12,
     alignItems: 'center',
-    marginTop: 18,
   },
   buttonDisabled: { opacity: 0.5 },
-  buttonPressed: { opacity: 0.8 },
-  buttonText: { color: '#0b0b0e', fontSize: 16, fontWeight: '600' },
+  buttonText: { color: C.accentFg, fontWeight: '600', fontSize: 15 },
 });

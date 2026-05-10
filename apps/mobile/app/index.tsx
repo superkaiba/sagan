@@ -1,38 +1,19 @@
-import { Redirect } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { api, ApiError } from '../src/api';
-import type { Me } from '../src/types';
+import { router } from 'expo-router';
+import { getToken } from '@/lib/api';
+import { C } from '@/lib/theme';
 
-export default function Gate() {
-  const [route, setRoute] = useState<'login' | 'tabs' | null>(null);
-
+export default function Index() {
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        await api<Me>('/api/auth/me');
-        if (!cancelled) setRoute('tabs');
-      } catch (err) {
-        if (cancelled) return;
-        if (err instanceof ApiError && err.status === 401) {
-          setRoute('login');
-        } else {
-          setRoute('login');
-        }
-      }
+    void (async () => {
+      const token = await getToken();
+      router.replace(token ? '/(tabs)/today' : '/login');
     })();
-    return () => {
-      cancelled = true;
-    };
   }, []);
-
-  if (route === null) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b0b0e' }}>
-        <ActivityIndicator color="#fff" />
-      </View>
-    );
-  }
-  return <Redirect href={route === 'tabs' ? '/(tabs)/today' : '/login'} />;
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
+      <ActivityIndicator color={C.accent} />
+    </View>
+  );
 }

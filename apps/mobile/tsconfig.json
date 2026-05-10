@@ -4,8 +4,15 @@
     "lib": ["DOM", "ES2022"],
     "jsx": "react-jsx",
     "moduleResolution": "Bundler",
-    "noEmit": true
+    "module": "ESNext",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "@/*": ["./*"]
+    }
   },
-  "include": ["src/**/*", "app/**/*"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*", "app/**/*", "*.d.ts"],
+  "exclude": ["node_modules", ".expo"]
 }

@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "EPS Research",
+    "slug": "eps-research-dashboard",
+    "scheme": "eps",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.superkaiba.epsresearch",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "EPS Research uses your microphone for voice dispatch.",
+        "NSSpeechRecognitionUsageDescription": "EPS Research transcribes spoken commands into agent prompts."
+      }
+    },
+    "android": {
+      "package": "com.superkaiba.epsresearch",
+      "edgeToEdgeEnabled": true,
+      "permissions": ["RECORD_AUDIO"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "EPS Research uses your microphone for voice dispatch.",
+          "speechRecognitionPermission": "EPS Research transcribes spoken commands into agent prompts.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}

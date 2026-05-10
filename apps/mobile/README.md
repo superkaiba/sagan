@@ -1,6 +1,6 @@
 # @sagan/mobile
 
-Native iOS / Android companion to `dashboard.superkaiba.com`. Built with
+Native iOS / Android companion to `sagan.superkaiba.com`. Built with
 Expo SDK 54 + Expo Router.
 
 ## What it does today
@@ -25,7 +25,7 @@ pnpm ios              # native dev client (Mac + Xcode)
 pnpm android          # native dev client (Android Studio)
 ```
 
-`EXPO_PUBLIC_API_BASE` defaults to `https://dashboard.superkaiba.com`.
+`EXPO_PUBLIC_API_BASE` defaults to `https://sagan.superkaiba.com`.
 For local web dev, set it to `http://YOUR_VM_IP:3100`.
 
 ## Production build (EAS)

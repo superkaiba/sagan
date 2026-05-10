@@ -13,9 +13,9 @@ surface; the VM is the agent runner and workspace.
 
 ## Operating Model
 
-- Treat `https://dashboard.superkaiba.com` or `NEXT_PUBLIC_SITE_URL` as live
-  (after the Phase 5 DNS cutover; until then the new app lives at a Vercel
-  preview URL).
+- Treat `https://sagan.superkaiba.com` or `NEXT_PUBLIC_SITE_URL` as live
+  (the canonical domain; `dashboard.superkaiba.com` is kept as a legacy
+  alias and stays attached to the same Vercel project).
 - Use the VM checkout at `/home/thomasjiralerspong/eps-research-dashboard` to
   inspect, edit, test, commit, and push changes.
 - When showing a dev or preview server from this VM, bind to `0.0.0.0` and

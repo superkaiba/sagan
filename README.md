@@ -3,7 +3,7 @@
 Personal research-life dashboard. Greenfield successor to
 `explore-persona-space-dashboard`.
 
-- **Live**: https://dashboard.superkaiba.com (also at https://eps-research-dashboard.vercel.app)
+- **Live**: https://sagan.superkaiba.com (also at https://eps-research-dashboard.vercel.app)
 - **Database**: Neon Postgres 17 (us-east-1) with pgvector 0.8.0
 - **Runner**: VM-side systemd service running the Claude Agent SDK
 - **GitHub**: https://github.com/superkaiba/eps-research-dashboard
@@ -75,7 +75,7 @@ pnpm --filter @eps/runner dev
 
 ## Mobile
 
-Installable as a PWA from `dashboard.superkaiba.com` on iOS/Android.
+Installable as a PWA from `sagan.superkaiba.com` on iOS/Android.
 The full Expo wrapper is intentionally deferred — the PWA covers
 dispatch, plan approval, and Q&A in the same browser-shaped UI.
 

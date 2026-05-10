@@ -16,5 +16,8 @@ export {
   type SessionContext,
 } from './session';
 
+// Cookie name retained as 'eps_session' (not 'sagan_session') so existing
+// signed-in browser sessions keep working through the rebrand. Cookies are
+// invisible to the user; renaming would log everyone out.
 export const SESSION_COOKIE_NAME = 'eps_session';
 export const SESSION_TTL_DAYS = 60;

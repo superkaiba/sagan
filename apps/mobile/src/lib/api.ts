@@ -1,13 +1,13 @@
 import * as SecureStore from 'expo-secure-store';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://dashboard.superkaiba.com';
-const TOKEN_KEY = 'eps_session_token';
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://sagan.superkaiba.com';
+const TOKEN_KEY = 'sagan_session_token';
 
 export async function getToken(): Promise<string | null> {
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 export async function setToken(token: string): Promise<void> {
-  await SecureStore.setItemAsync(TOKEN_KEY, token, { keychainService: 'eps_research' });
+  await SecureStore.setItemAsync(TOKEN_KEY, token, { keychainService: 'sagan' });
 }
 export async function clearToken(): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY);

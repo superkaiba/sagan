@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { desc, inArray } from 'drizzle-orm';
+import { desc, inArray, sql } from 'drizzle-orm';
 import { approvalRequests, experiments, workflowEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { experimentTurn } from '@/lib/workflow';
@@ -23,19 +23,38 @@ const STATUS_COLORS: Record<string, string> = {
 export default async function ExperimentsPage() {
   const [queue, pendingApprovals, events] = await Promise.all([
     db()
-      .select()
+      .select({
+        id: experiments.id,
+        title: experiments.title,
+        hypothesis: sql<string>`left(coalesce(${experiments.hypothesis}, ''), 360)`,
+        status: experiments.status,
+        updatedAt: experiments.updatedAt,
+      })
       .from(experiments)
       .where(inArray(experiments.status, [...QUEUE_STATUSES]))
       .orderBy(desc(experiments.updatedAt))
       .limit(100),
     db()
-      .select()
+      .select({
+        id: approvalRequests.id,
+        kind: approvalRequests.kind,
+        title: approvalRequests.title,
+        requestedState: approvalRequests.requestedState,
+        createdAt: approvalRequests.createdAt,
+      })
       .from(approvalRequests)
       .where(inArray(approvalRequests.status, ['pending']))
       .orderBy(desc(approvalRequests.createdAt))
       .limit(50),
     db()
-      .select()
+      .select({
+        id: workflowEvents.id,
+        eventType: workflowEvents.eventType,
+        fromStatus: workflowEvents.fromStatus,
+        toStatus: workflowEvents.toStatus,
+        note: workflowEvents.note,
+        createdAt: workflowEvents.createdAt,
+      })
       .from(workflowEvents)
       .where(inArray(workflowEvents.entityKind, ['experiment']))
       .orderBy(desc(workflowEvents.createdAt))

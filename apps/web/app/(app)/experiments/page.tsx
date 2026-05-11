@@ -8,7 +8,7 @@ import { ExperimentStatusButton } from './ExperimentStatusButton';
 
 export const dynamic = 'force-dynamic';
 
-const QUEUE_STATUSES = ['proposed', 'planning', 'plan_pending', 'approved', 'running'] as const;
+const QUEUE_STATUSES = ['proposed', 'planning', 'plan_pending', 'approved', 'running', 'awaiting_promotion'] as const;
 
 const STATUS_COLORS: Record<string, string> = {
   proposed: 'oklch(0.90 0.05 250)',
@@ -16,6 +16,7 @@ const STATUS_COLORS: Record<string, string> = {
   plan_pending: 'oklch(0.91 0.10 65)',
   approved: 'oklch(0.88 0.09 150)',
   running: 'oklch(0.86 0.10 190)',
+  awaiting_promotion: 'oklch(0.88 0.11 75)',
   blocked: 'oklch(0.90 0.10 30)',
 };
 
@@ -60,7 +61,9 @@ export default async function ExperimentsPage() {
       <section className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">Approval queue</h2>
-          <p className="text-xs text-[--color-muted]">proposed · planning · plan_pending · approved · running</p>
+          <p className="text-xs text-[--color-muted]">
+            proposed · planning · plan_pending · approved · running · awaiting_promotion
+          </p>
         </div>
         <div className="rounded-lg border border-[--color-border] divide-y divide-[--color-border]">
           {queue.length === 0 ? (

@@ -129,12 +129,14 @@ export function MentorResultsBoard({
             onMouseDown={(event) => event.stopPropagation()}
           >
             <header
-              className="flex items-center justify-between gap-3 border-b border-[--color-border] px-4 py-3"
+              className="flex items-start justify-between gap-4 border-b border-[--color-border] px-4 py-4 md:px-6"
               style={{ backgroundColor: 'var(--color-muted-bg)' }}
             >
               <div className="min-w-0">
-                <p className="text-xs text-[--color-muted]">Useful issue #{active.number}</p>
-                <h2 className="truncate text-sm font-medium">{active.title}</h2>
+                <h2 className="max-w-4xl text-base font-semibold leading-snug md:text-lg">
+                  {active.title}
+                </h2>
+                <p className="mt-1 text-xs text-[--color-muted]">Useful issue #{active.number}</p>
               </div>
               <button
                 type="button"

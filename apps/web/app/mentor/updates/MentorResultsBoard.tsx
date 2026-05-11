@@ -78,8 +78,9 @@ export function MentorResultsBoard({
               <button
                 type="button"
                 data-clickable="true"
+                aria-label={`Open details for GitHub issue #${result.number}`}
                 onClick={() => openOverlay(result.id)}
-                className="flex min-h-[14rem] w-full flex-col border border-[--color-border] bg-[--color-panel] p-4 text-left hover:bg-[--color-hover] focus:outline-none focus:ring-2 focus:ring-[--color-focus]"
+                className="group flex min-h-[14rem] w-full cursor-pointer flex-col border-2 border-[--color-border] bg-[--color-panel] p-4 text-left hover:border-[--color-accent] hover:bg-[--color-hover] focus:outline-none focus:ring-2 focus:ring-[--color-focus]"
               >
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span
@@ -99,11 +100,11 @@ export function MentorResultsBoard({
                 <p className="mt-2 line-clamp-3 text-sm leading-6 text-[--color-muted]">
                   {excerptText(result.excerpt)}
                 </p>
-                <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-xs text-[--color-muted]">
+                <div className="mt-auto flex items-center justify-between gap-3 border-t border-[--color-border] pt-3 text-xs text-[--color-muted] group-hover:border-[--color-accent]">
                   <span>Issue #{result.number}</span>
-                  <span className="inline-flex items-center gap-1 font-medium text-[--color-fg]">
+                  <span className="inline-flex min-h-8 items-center gap-1 border border-[--color-accent] bg-[--color-accent] px-2.5 py-1 font-semibold text-[--color-accent-fg]">
+                    Open details
                     <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
-                    Open
                   </span>
                 </div>
               </button>
@@ -149,12 +150,6 @@ export function MentorResultsBoard({
             <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_22rem]">
               <main className="min-h-0 overflow-y-auto p-4 md:p-6">
                 <div className="mb-4 flex flex-wrap gap-2 text-xs">
-                  <a
-                    href={`/mentor/updates?result=${active.id}`}
-                    className="inline-flex min-h-8 items-center gap-1 border border-[--color-border] px-2 py-1 font-medium hover:bg-[--color-hover]"
-                  >
-                    Mentor link
-                  </a>
                   <a
                     href={active.url}
                     target="_blank"

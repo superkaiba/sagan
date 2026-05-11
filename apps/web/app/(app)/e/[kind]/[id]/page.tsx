@@ -9,7 +9,6 @@ import { ProjectChildren } from '@/components/ProjectChildren';
 import { LoadProjectNarrative } from '@/components/LoadProjectNarrative';
 import { LiteratureIntelligencePanel } from '@/components/LiteratureIntelligencePanel';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
-import { InviteAccessForm } from '@/components/InviteAccessForm';
 import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
 import { isIdeationSourceKind } from '@/lib/ideation';
@@ -75,8 +74,6 @@ export default async function EntityPage({
             <StartIdeationButton sourceKind={kind} sourceId={entity.id} />
           ) : null}
         </header>
-
-        {owner ? <InviteAccessForm entityKind={kind} entityId={entity.id} /> : null}
 
         {owner && canEditBody(kind) ? (
           <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />

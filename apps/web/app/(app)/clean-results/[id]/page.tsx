@@ -6,7 +6,6 @@ import { Markdown } from '@/components/Markdown';
 import { Comments } from '@/components/Comments';
 import { EntityEdges } from '@/components/EntityEdges';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
-import { InviteAccessForm } from '@/components/InviteAccessForm';
 import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
 import { CleanResultActions } from './CleanResultActions';
@@ -66,8 +65,6 @@ export default async function CleanResultPage({ params }: { params: Promise<{ id
             </div>
           ) : null}
         </header>
-
-        {owner ? <InviteAccessForm entityKind="clean_result" entityId={result.id} /> : null}
 
         <section className="rounded-lg border border-[--color-border] bg-[--color-panel] p-4">
           <p className="text-sm font-medium text-[--color-muted]">Claim</p>

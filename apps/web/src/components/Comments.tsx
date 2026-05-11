@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { Markdown } from './Markdown';
 
+const CODEX_REPLY_MARKER = '<!-- agent:codex -->';
+
 interface Comment {
   id: string;
   entityKind: string;
@@ -119,10 +121,40 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
 
   const visibleRoots = showResolved ? roots : roots.filter((r) => !r.resolvedAt);
 
+  function visibleBody(c: Comment) {
+    return c.body.startsWith(CODEX_REPLY_MARKER)
+      ? c.body.slice(CODEX_REPLY_MARKER.length).trimStart()
+      : c.body;
+  }
+
+  function authorLabel(c: Comment) {
+    if (c.authorKind === 'claude') return c.body.startsWith(CODEX_REPLY_MARKER) ? 'Codex' : 'Claude';
+    return c.authorKind === 'system' ? 'System' : 'You';
+  }
+
+  function autoContinueLabel(c: Comment) {
+    return /(^|\s)@codex\b/i.test(c.body) ? 'Codex auto-continues' : 'Claude auto-continues';
+  }
+
+  function summarizeComment(c: Comment) {
+    const text = visibleBody(c)
+      .replace(/```[\s\S]*?```/g, ' code ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[#*_>~-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!text) return `${authorLabel(c)} reply`;
+    const sentence = text.match(/^.{1,96}(?:[.!?](?=\s|$)|$)/)?.[0] ?? text.slice(0, 96);
+    const summary = sentence.trim();
+    return summary.length < text.length ? `${summary.replace(/[.!?]$/, '')}...` : summary;
+  }
+
   function renderComment(c: Comment, isReply = false, replyCount = 0) {
-    const isClaude = c.authorKind === 'claude';
+    const isAgent = c.authorKind === 'claude';
     const collapsed = collapsedIds.has(c.id);
-    const wrap = `group p-3 ${c.resolvedAt ? 'opacity-60' : ''} ${isClaude ? 'bg-[--color-muted-bg]' : ''} ${isReply ? 'border-l-2 border-[--color-border] ml-4' : ''}`;
+    const displayBody = visibleBody(c);
+    const wrap = `group p-3 ${c.resolvedAt ? 'opacity-60' : ''} ${isAgent ? 'bg-[--color-muted-bg]' : ''} ${isReply ? 'border-l-2 border-[--color-border] ml-4' : ''}`;
     return (
       <article key={c.id} className={wrap}>
         <header className="mb-1 flex flex-wrap items-baseline gap-2 text-xs text-[--color-muted]">
@@ -135,11 +167,19 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
           >
             {collapsed ? '+' : '-'}
           </button>
-          <span className={isClaude ? 'font-medium text-[--color-accent]' : 'font-medium text-[--color-fg]'}>
-            {isClaude ? 'Claude' : c.authorKind === 'system' ? 'System' : 'You'}
+          <span className={isAgent ? 'font-medium text-[--color-accent]' : 'font-medium text-[--color-fg]'}>
+            {authorLabel(c)}
           </span>
           <span>·</span>
           <time>{new Date(c.createdAt).toLocaleString()}</time>
+          {collapsed ? (
+            <>
+              <span>·</span>
+              <span className="min-w-0 flex-1 truncate text-[--color-muted]">
+                <span className="font-medium text-[--color-fg]">AI summary:</span> {summarizeComment(c)}
+              </span>
+            </>
+          ) : null}
           {!isReply && replyCount > 0 ? (
             <span className="text-[10px] text-[--color-muted]">
               {replyCount} repl{replyCount === 1 ? 'y' : 'ies'}
@@ -155,7 +195,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
           ) : null}
           {!isReply && c.autoContinueClaude ? (
             <span className="ml-auto rounded-md border border-[--color-border] bg-[--color-muted-bg] px-2 py-0.5 text-[10px] font-medium text-[--color-muted]">
-              Claude auto-continues
+              {autoContinueLabel(c)}
             </span>
           ) : null}
           <button
@@ -173,7 +213,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
                 resolved · {c.resolvedSummaryMd}
               </p>
             ) : null}
-            <Markdown>{c.body}</Markdown>
+            <Markdown>{displayBody}</Markdown>
             <div className="mt-2">
               {replyTo === c.id ? (
                 <form onSubmit={(e) => onReplySubmit(e, c.id)} className="space-y-1">
@@ -251,17 +291,22 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
         )}
       </div>
 
-      <form onSubmit={onTopLevelSubmit} className="space-y-2 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-3">
+      <form
+        onSubmit={onTopLevelSubmit}
+        className="space-y-2 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-3"
+      >
         <textarea
           rows={3}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder="Add a comment. Mention @claude to spawn a Q&A run."
+          placeholder="Add a comment. Mention @claude or @codex to spawn a Q&A run."
           className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
         />
         <div className="flex items-center justify-between">
           <p className="text-xs text-[--color-muted]">
-            <kbd className="rounded border border-[--color-border] px-1 text-[10px]">@claude</kbd> starts Claude; replies in that thread continue automatically.
+            <kbd className="rounded border border-[--color-border] px-1 text-[10px]">@claude</kbd> or{' '}
+            <kbd className="rounded border border-[--color-border] px-1 text-[10px]">@codex</kbd> starts an
+            agent; replies in that thread continue automatically.
           </p>
           <button
             type="submit"

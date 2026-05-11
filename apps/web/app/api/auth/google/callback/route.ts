@@ -4,7 +4,6 @@ import { eq } from 'drizzle-orm';
 import { users } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { setSessionCookieOnResponse } from '@/lib/auth';
-import { acceptInvite, loadPendingInviteByToken, loadPendingInvitesByEmail } from '@/lib/invites';
 import { getRequestOrigin } from '@/lib/request-origin';
 import { createPublicMentorAccount } from '@/lib/public-signup';
 
@@ -15,7 +14,6 @@ const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 interface OAuthState {
   state: string;
   next?: string;
-  inviteToken?: string;
   signup?: boolean;
 }
 
@@ -40,9 +38,9 @@ function safeRelativePath(value: string | undefined): string {
   return value;
 }
 
-function redirectWithError(req: Request, error: string, inviteToken?: string, signup?: boolean) {
+function redirectWithError(req: Request, error: string, signup?: boolean) {
   const origin = getRequestOrigin(req);
-  const target = inviteToken ? `/invite/${encodeURIComponent(inviteToken)}` : signup ? '/signup' : '/login';
+  const target = signup ? '/signup' : '/login';
   const url = new URL(target, origin);
   url.searchParams.set('error', error);
   const res = NextResponse.redirect(url);
@@ -62,7 +60,7 @@ export async function GET(req: Request) {
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   if (!code || !stateCookie || stateCookie.state !== state) {
-    return redirectWithError(req, 'google_state_invalid', stateCookie?.inviteToken, stateCookie?.signup);
+    return redirectWithError(req, 'google_state_invalid', stateCookie?.signup);
   }
 
   const redirectUri =
@@ -78,46 +76,29 @@ export async function GET(req: Request) {
       grant_type: 'authorization_code',
     }),
   });
-  if (!tokenRes.ok) return redirectWithError(req, 'google_token_failed', stateCookie.inviteToken, stateCookie.signup);
+  if (!tokenRes.ok) return redirectWithError(req, 'google_token_failed', stateCookie.signup);
   const tokenData = (await tokenRes.json()) as { access_token?: string };
-  if (!tokenData.access_token) return redirectWithError(req, 'google_token_failed', stateCookie.inviteToken, stateCookie.signup);
+  if (!tokenData.access_token) return redirectWithError(req, 'google_token_failed', stateCookie.signup);
 
   const infoRes = await fetch(GOOGLE_USERINFO_URL, {
     headers: { authorization: `Bearer ${tokenData.access_token}` },
   });
-  if (!infoRes.ok) return redirectWithError(req, 'google_profile_failed', stateCookie.inviteToken, stateCookie.signup);
+  if (!infoRes.ok) return redirectWithError(req, 'google_profile_failed', stateCookie.signup);
   const profile = (await infoRes.json()) as GoogleUserInfo;
   const email = profile.email?.toLowerCase();
   const emailVerified = profile.email_verified === true || profile.email_verified === 'true';
   if (!email || !emailVerified) {
-    return redirectWithError(req, 'google_email_unverified', stateCookie.inviteToken, stateCookie.signup);
+    return redirectWithError(req, 'google_email_unverified', stateCookie.signup);
   }
 
   let redirectTo = safeRelativePath(stateCookie.next);
   let user = (await db().select().from(users).where(eq(users.email, email)).limit(1))[0];
   let createdPublicAccount = false;
 
-  if (stateCookie.inviteToken) {
-    const invite = await loadPendingInviteByToken(stateCookie.inviteToken);
-    if (!invite) return redirectWithError(req, 'invite_expired', stateCookie.inviteToken, stateCookie.signup);
-    if (invite.email !== email) {
-      return redirectWithError(req, 'google_email_mismatch', stateCookie.inviteToken, stateCookie.signup);
-    }
-    const accepted = await acceptInvite({ invite, displayName: profile.name });
-    user = accepted.user;
-    redirectTo = `/e/${accepted.membership.entityKind}/${accepted.membership.entityId}`;
-  } else {
-    const invites = await loadPendingInvitesByEmail(email);
-    if (!user && invites.length === 0) {
-      const created = await createPublicMentorAccount({ email, displayName: profile.name });
-      user = created.user;
-      createdPublicAccount = created.created;
-    }
-    for (const invite of invites) {
-      const accepted = await acceptInvite({ invite, displayName: profile.name });
-      user = accepted.user;
-      redirectTo = `/e/${accepted.membership.entityKind}/${accepted.membership.entityId}`;
-    }
+  if (!user) {
+    const created = await createPublicMentorAccount({ email, displayName: profile.name });
+    user = created.user;
+    createdPublicAccount = created.created;
   }
 
   if (!user) return redirectWithError(req, 'google_no_account');

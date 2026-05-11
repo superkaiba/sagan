@@ -25,7 +25,6 @@ export async function GET(req: Request) {
   const statePayload = {
     state,
     next: safeRelativePath(url.searchParams.get('next')),
-    inviteToken: url.searchParams.get('inviteToken') ?? undefined,
     signup,
   };
 

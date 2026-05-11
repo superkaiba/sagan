@@ -65,6 +65,16 @@ const createSchema = z.object({
 });
 
 const ASK_CLAUDE_RE = /(^|\s)@claude\b/i;
+const ASK_CODEX_RE = /(^|\s)@codex\b/i;
+const CODEX_REPLY_MARKER = '<!-- agent:codex -->';
+
+type CommentAgentName = 'Claude' | 'Codex';
+
+function requestedCommentAgent(body: string): CommentAgentName | null {
+  if (ASK_CODEX_RE.test(body)) return 'Codex';
+  if (ASK_CLAUDE_RE.test(body)) return 'Claude';
+  return null;
+}
 
 export async function POST(req: Request) {
   let session;
@@ -87,7 +97,7 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  const isAskClaude = ASK_CLAUDE_RE.test(parsed.data.body);
+  const requestedAgent = requestedCommentAgent(parsed.data.body);
 
   let parentInfo: ResolvedParentComment | null = null;
   if (parsed.data.parentCommentId) {
@@ -103,8 +113,10 @@ export async function POST(req: Request) {
   }
 
   const normalizedParentCommentId = parentInfo?.rootCommentId;
-  const autoContinueClaude = Boolean(parentInfo?.autoContinueClaude || isAskClaude);
-  const shouldDispatch = isAskClaude || autoContinueClaude;
+  const autoContinueClaude = Boolean(parentInfo?.autoContinueClaude || requestedAgent);
+  const dispatchAgent: CommentAgentName | null =
+    requestedAgent ?? (autoContinueClaude ? (parentInfo?.autoContinueAgent ?? 'Claude') : null);
+  const shouldDispatch = Boolean(dispatchAgent);
   const commentContext = shouldDispatch
     ? await buildCommentContext({
         entityKind: parsed.data.entityKind,
@@ -122,14 +134,14 @@ export async function POST(req: Request) {
       parentCommentId: normalizedParentCommentId,
       authorUserId: session.user.id,
       authorKind: 'human',
-      kind: isAskClaude ? 'ask_claude' : 'discussion',
+      kind: requestedAgent ? 'ask_claude' : 'discussion',
       body: parsed.data.body,
       autoContinueClaude,
     })
     .returning();
   const comment = inserted[0]!;
   const rootCommentId = normalizedParentCommentId ?? comment.id;
-  if (isAskClaude && normalizedParentCommentId && !parentInfo?.autoContinueClaude) {
+  if (requestedAgent && normalizedParentCommentId && !parentInfo?.autoContinueClaude) {
     await db()
       .update(comments)
       .set({ autoContinueClaude: true, updatedAt: new Date() })
@@ -140,7 +152,7 @@ export async function POST(req: Request) {
     entityKind: parsed.data.entityKind,
     entityId: parsed.data.entityId,
     rootCommentId,
-    reason: isAskClaude ? 'asked_claude' : 'commented',
+    reason: requestedAgent ? 'asked_claude' : 'commented',
   });
   await subscribeMentionedUsers({
     body: parsed.data.body,
@@ -160,6 +172,7 @@ export async function POST(req: Request) {
 
   if (shouldDispatch) {
     try {
+      const agentName = dispatchAgent ?? 'Claude';
       const chatSessionId = await loadOrCreateCommentChatSession({
         entityKind: parsed.data.entityKind,
         entityId: parsed.data.entityId,
@@ -167,7 +180,11 @@ export async function POST(req: Request) {
         userId: session.user.id,
       });
       const runRequest = [
+        `${agentName} was asked from this comment thread.`,
         `Reply to the latest comment on ${parsed.data.entityKind} ${parsed.data.entityId}.`,
+        agentName === 'Codex'
+          ? `The user mentioned @codex. Use a concise Codex-style engineering assistant voice.`
+          : '',
         commentContext,
         `Latest message (user):\n\n${parsed.data.body}`,
       ]
@@ -200,7 +217,7 @@ export async function POST(req: Request) {
       await notifyUsers({
         userIds: [session.user.id, ...participants],
         kind: 'claude_started',
-        title: 'Claude started answering',
+        title: `${agentName} started answering`,
         body: parsed.data.body.slice(0, 500),
         entityKind: parsed.data.entityKind,
         entityId: parsed.data.entityId,
@@ -208,7 +225,7 @@ export async function POST(req: Request) {
         agentRunId: runId,
       });
       await appendDailyLogTrailBestEffort({
-        action: `Asked Claude from a comment thread (${runId.slice(0, 8)})`,
+        action: `Asked ${agentName} from a comment thread (${runId.slice(0, 8)})`,
         why: `The comment asked for agent help on ${parsed.data.entityKind} ${parsed.data.entityId}.`,
         entityKind: parsed.data.entityKind,
         entityId: parsed.data.entityId,
@@ -221,15 +238,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ comment: { ...comment, agentRunId: runId }, runId, dispatch: { ok: true } });
     } catch (err) {
       const message = dispatchErrorMessage(err);
+      const agentName = dispatchAgent ?? 'Claude';
       await insertSystemReply({
         entityKind: parsed.data.entityKind,
         entityId: parsed.data.entityId,
         parentCommentId: rootCommentId,
-        body: `Claude dispatch failed after saving the comment: ${message}`,
+        body: `${agentName} dispatch failed after saving the comment: ${message}`,
       });
       await appendDailyLogTrailBestEffort({
-        action: 'Claude comment dispatch failed',
-        why: `The user asked Claude for help, but the app could not queue the agent run after saving the comment.`,
+        action: `${agentName} comment dispatch failed`,
+        why: `The user asked ${agentName} for help, but the app could not queue the agent run after saving the comment.`,
         entityKind: parsed.data.entityKind,
         entityId: parsed.data.entityId,
         detail: message,
@@ -276,6 +294,7 @@ async function loadOrCreateCommentChatSession(input: {
 type ResolvedParentComment = {
   rootCommentId: string;
   autoContinueClaude: boolean;
+  autoContinueAgent: CommentAgentName;
 };
 
 async function resolveParentComment(input: {
@@ -290,6 +309,7 @@ async function resolveParentComment(input: {
       entityId: comments.entityId,
       parentCommentId: comments.parentCommentId,
       autoContinueClaude: comments.autoContinueClaude,
+      body: comments.body,
     })
     .from(comments)
     .where(eq(comments.id, input.parentCommentId))
@@ -302,7 +322,13 @@ async function resolveParentComment(input: {
 
   const rootCommentId = parent.parentCommentId ?? parent.id;
   if (!parent.parentCommentId) {
-    return { parent: { rootCommentId, autoContinueClaude: parent.autoContinueClaude } };
+    return {
+      parent: {
+        rootCommentId,
+        autoContinueClaude: parent.autoContinueClaude,
+        autoContinueAgent: requestedCommentAgent(parent.body) ?? 'Claude',
+      },
+    };
   }
 
   const rootRows = await db()
@@ -311,6 +337,7 @@ async function resolveParentComment(input: {
       entityKind: comments.entityKind,
       entityId: comments.entityId,
       autoContinueClaude: comments.autoContinueClaude,
+      body: comments.body,
     })
     .from(comments)
     .where(eq(comments.id, rootCommentId))
@@ -319,7 +346,13 @@ async function resolveParentComment(input: {
   if (!root || root.entityKind !== input.entityKind || root.entityId !== input.entityId) {
     return { error: 'parent_root_not_found', status: 400 };
   }
-  return { parent: { rootCommentId: root.id, autoContinueClaude: root.autoContinueClaude } };
+  return {
+    parent: {
+      rootCommentId: root.id,
+      autoContinueClaude: root.autoContinueClaude,
+      autoContinueAgent: requestedCommentAgent(parent.body) ?? requestedCommentAgent(root.body) ?? 'Claude',
+    },
+  };
 }
 
 type CommentContextRow = {
@@ -367,9 +400,21 @@ function formatCommentContext(title: string, rows: CommentContextRow[]) {
 }
 
 function formatCommentContextRow(row: CommentContextRow) {
-  const author = row.authorKind === 'claude' ? 'Claude' : row.authorKind === 'system' ? 'System' : 'User';
+  const body = stripCodexReplyMarker(row.body);
+  const author =
+    row.authorKind === 'claude'
+      ? row.body.startsWith(CODEX_REPLY_MARKER)
+        ? 'Codex'
+        : 'Claude'
+      : row.authorKind === 'system'
+        ? 'System'
+        : 'User';
   const position = row.parentCommentId ? 'reply' : 'root';
-  return `- ${row.createdAt.toISOString()} [${author}, ${position}]\n  ${indentForPrompt(truncateForPrompt(row.body, 1500))}`;
+  return `- ${row.createdAt.toISOString()} [${author}, ${position}]\n  ${indentForPrompt(truncateForPrompt(body, 1500))}`;
+}
+
+function stripCodexReplyMarker(body: string) {
+  return body.startsWith(CODEX_REPLY_MARKER) ? body.slice(CODEX_REPLY_MARKER.length).trimStart() : body;
 }
 
 function indentForPrompt(text: string) {

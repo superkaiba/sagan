@@ -9,7 +9,6 @@ const PUBLIC_PATHS = [
   '/api/auth/me',
   '/api/auth/google/start',
   '/api/auth/google/callback',
-  '/api/collaborators/accept',
 ];
 
 export function proxy(req: NextRequest) {
@@ -21,7 +20,6 @@ export function proxy(req: NextRequest) {
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/favicon') ||
     pathname === '/manifest.webmanifest' ||
-    pathname.startsWith('/invite/') ||
     pathname.startsWith('/digest/') ||
     pathname.startsWith('/d/') ||
     pathname.startsWith('/p/') ||

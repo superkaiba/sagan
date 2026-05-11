@@ -11,6 +11,7 @@
   --color-accent-fg: #ffffff;
   --color-danger: #ad3434;
   --color-success: #27734f;
+  --color-info: #2563eb;
 
   --font-sans: Aptos, "SF Pro Text", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Liberation Mono", monospace;
@@ -28,6 +29,7 @@
   --color-accent-fg: #ffffff;
   --color-danger: #ad3434;
   --color-success: #27734f;
+  --color-info: #2563eb;
   --color-hover: #e6ece5;
   --color-active: #dce5db;
   --color-focus: #5d8f80;
@@ -45,6 +47,7 @@
   --color-accent-fg: #102019;
   --color-danger: #ff8a8a;
   --color-success: #8fd2ad;
+  --color-info: #93c5fd;
   --color-hover: #312d27;
   --color-active: #3a352e;
   --color-focus: #9ed6bb;
@@ -63,6 +66,7 @@
     --color-accent-fg: #102019;
     --color-danger: #ff8a8a;
     --color-success: #8fd2ad;
+    --color-info: #93c5fd;
     --color-hover: #312d27;
     --color-active: #3a352e;
     --color-focus: #9ed6bb;

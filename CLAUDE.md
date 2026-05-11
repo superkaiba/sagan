@@ -16,6 +16,9 @@ surface; the VM is the agent runner and workspace.
 - Treat `https://sagan.superkaiba.com` or `NEXT_PUBLIC_SITE_URL` as live
   (the canonical domain; `dashboard.superkaiba.com` is kept as a legacy
   alias and stays attached to the same Vercel project).
+- The agent runs on a VM. The user cannot access `localhost` or `127.0.0.1`
+  from their browser. The main user-facing view is
+  `https://sagan.superkaiba.com`.
 - Use the VM checkout at `/home/thomasjiralerspong/sagan` to
   inspect, edit, test, commit, and push changes.
 - When showing a dev or preview server from this VM, bind to `0.0.0.0` and

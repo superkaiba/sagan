@@ -4,7 +4,13 @@ import { CommandPalette } from '@/components/CommandPalette';
 import { AppNav } from '@/components/AppNav';
 import { ThemeControl } from '@/components/ThemeControl';
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+  modal,
+}: {
+  children: React.ReactNode;
+  modal?: React.ReactNode;
+}) {
   const session = await getSession();
   if (!session) redirect('/login');
 
@@ -57,6 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <main id="main-content" className="mx-auto w-full max-w-[88rem] p-4 md:p-6">
         {children}
       </main>
+      {modal}
       <CommandPalette />
     </div>
   );

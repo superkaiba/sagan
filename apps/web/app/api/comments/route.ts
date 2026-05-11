@@ -8,6 +8,7 @@ import { isEntityKind } from '@/lib/entity';
 import type { EntityKind } from '@/lib/entity';
 import { ForbiddenError, requireEntityComment, requireEntityRead } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
+import { getMentorCleanResultById } from '@/lib/mentor-results-data';
 import {
   collectEntityParticipantUserIds,
   collectFullDashboardUserIds,
@@ -395,6 +396,7 @@ async function buildCommentContext(input: {
   entityId: string;
   rootCommentId?: string;
 }) {
+  const entityContext = mentorSnapshotContext(input);
   const selection = {
     id: comments.id,
     parentCommentId: comments.parentCommentId,
@@ -409,7 +411,10 @@ async function buildCommentContext(input: {
       .from(comments)
       .where(or(eq(comments.id, input.rootCommentId), eq(comments.parentCommentId, input.rootCommentId)))
       .orderBy(asc(comments.createdAt));
-    return formatCommentContext('Comment thread before the latest message', rows);
+    return joinPromptSections(
+      entityContext,
+      formatCommentContext('Comment thread before the latest message', rows),
+    );
   }
 
   const rows = await db()
@@ -418,7 +423,32 @@ async function buildCommentContext(input: {
     .where(and(eq(comments.entityKind, input.entityKind), eq(comments.entityId, input.entityId)))
     .orderBy(desc(comments.createdAt))
     .limit(40);
-  return formatCommentContext('Recent prior comments on this record before the latest message', [...rows].reverse());
+  return joinPromptSections(
+    entityContext,
+    formatCommentContext('Recent prior comments on this record before the latest message', [...rows].reverse()),
+  );
+}
+
+function mentorSnapshotContext(input: { entityKind: EntityKind; entityId: string }) {
+  if (input.entityKind !== 'clean_result') return '';
+  const result = getMentorCleanResultById(input.entityId);
+  if (!result) return '';
+  return [
+    'Record context:',
+    `- Title: ${result.title}`,
+    `- GitHub issue: #${result.number} (${result.url})`,
+    `- Status: ${result.statusName}`,
+    result.confidence ? `- Confidence: ${result.confidence}` : null,
+    '',
+    'Record body:',
+    indentForPrompt(truncateForPrompt(result.body, 12_000)),
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n');
+}
+
+function joinPromptSections(...sections: string[]) {
+  return sections.filter(Boolean).join('\n\n');
 }
 
 function formatCommentContext(title: string, rows: CommentContextRow[]) {

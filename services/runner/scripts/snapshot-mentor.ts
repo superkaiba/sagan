@@ -1,6 +1,6 @@
 /**
  * One-shot: scrape the legacy GitHub project board for the mentor's
- * "Useful" / "Not useful" results and write the snapshot to
+ * "Useful" results and write the snapshot to
  * apps/web/data/mentor-legacy-results.json.
  *
  * The runtime dashboard reads only the snapshot — it never hits GitHub.
@@ -20,7 +20,8 @@ import path from 'node:path';
 const PROJECT_URL =
   process.env.GITHUB_RESULTS_PROJECT_URL ?? 'https://github.com/users/superkaiba/projects/1';
 const REPO_PATH = process.env.GITHUB_RESULTS_REPO ?? 'superkaiba/explore-persona-space';
-const CURRENT_USEFUL_DONE_DAY = process.env.GITHUB_RESULTS_USEFUL_DONE_DAY ?? '2026-05-07';
+const SOURCE_COLUMN = 'Useful';
+const USEFUL_DONE_DAY = process.env.GITHUB_RESULTS_USEFUL_DONE_DAY;
 
 interface MemexColumn {
   id: string;
@@ -108,7 +109,7 @@ async function main() {
     const statusVal = item.memexProjectColumnValues?.find((v) => v.memexProjectColumnId === 'Status')
       ?.value as { id?: string } | undefined;
     const statusName = statusVal?.id ? statusOptions.get(statusVal.id) : null;
-    if (statusName !== 'Useful' && statusName !== 'Not useful') continue;
+    if (statusName !== SOURCE_COLUMN) continue;
     const number = titleVal?.number;
     const title = titleVal?.title?.raw;
     const createdAt = item.issueCreatedAt;
@@ -140,9 +141,7 @@ async function main() {
       const body =
         iss.body.trim() ||
         `GitHub issue #${iss.number} is in the ${iss.statusName} column of the project board.`;
-      const doneAt = iss.useful
-        ? withDayPreservingUtcTime(iss.createdAt, CURRENT_USEFUL_DONE_DAY)
-        : iss.updatedAt;
+      const doneAt = USEFUL_DONE_DAY ? withDayPreservingUtcTime(iss.createdAt, USEFUL_DONE_DAY) : iss.updatedAt;
       return {
         id: stableId(iss.number),
         number: iss.number,
@@ -161,7 +160,24 @@ async function main() {
 
   const out = path.resolve(process.cwd(), '../../apps/web/data/mentor-legacy-results.json');
   await mkdir(path.dirname(out), { recursive: true });
-  await writeFile(out, JSON.stringify({ results }, null, 2) + '\n');
+  await writeFile(
+    out,
+    JSON.stringify(
+      {
+        weeklyUpdate: {
+          title: 'Weekly update',
+          sourceRepo: REPO_PATH,
+          sourceProjectUrl: PROJECT_URL,
+          sourceColumn: SOURCE_COLUMN,
+          generatedAt: new Date().toISOString(),
+          issueCount: results.length,
+        },
+        results,
+      },
+      null,
+      2,
+    ) + '\n',
+  );
   console.log(`wrote ${results.length} result(s) to ${out}`);
 }
 

@@ -5,6 +5,7 @@ import { requireSession } from './auth';
 import { db } from './db';
 import type { EntityKind } from './entity';
 import { hasFullDashboardAccess } from './full-dashboard-access';
+import { isMentorCleanResultId } from './mentor-results-data';
 
 export class ForbiddenError extends Error {
   constructor(message = 'forbidden') {
@@ -64,6 +65,7 @@ export async function canCommentOnEntity(
 
 async function canReadSharedEntity(entityKind: EntityKind, entityId: string): Promise<boolean> {
   if (entityKind !== 'clean_result') return false;
+  if (isMentorCleanResultId(entityId)) return true;
   const rows = await db()
     .select({ status: cleanResults.status })
     .from(cleanResults)

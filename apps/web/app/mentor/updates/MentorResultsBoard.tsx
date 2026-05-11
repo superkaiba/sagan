@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { X } from 'lucide-react';
+import { ExternalLink, MessageSquare, X } from 'lucide-react';
 import { Comments } from '@/components/Comments';
 import { Markdown } from '@/components/Markdown';
 import type { CleanResult } from '@/lib/mentor-results-data';
@@ -61,7 +61,7 @@ export function MentorResultsBoard({
 
   return (
     <>
-      <ol className="space-y-3">
+      <ol className="grid gap-3 md:grid-cols-2">
         {results.map((result) => {
           const style = STATUS_STYLES[result.statusName] ?? STATUS_STYLES.Useful!;
           return (
@@ -70,11 +70,11 @@ export function MentorResultsBoard({
                 type="button"
                 data-clickable="true"
                 onClick={() => openOverlay(result.id)}
-                className="block w-full rounded-lg border border-[--color-border] bg-[--color-panel] p-4 text-left hover:bg-[--color-hover] focus:outline-none focus:ring-2 focus:ring-[--color-focus]"
+                className="flex min-h-[14rem] w-full flex-col border border-[--color-border] bg-[--color-panel] p-4 text-left hover:bg-[--color-hover] focus:outline-none focus:ring-2 focus:ring-[--color-focus]"
               >
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span
-                    className="rounded-md px-2 py-0.5 font-medium"
+                    className="px-2 py-0.5 font-medium"
                     style={{ background: style.bg, color: 'oklch(0.20 0.04 270)' }}
                   >
                     {style.label}
@@ -86,10 +86,17 @@ export function MentorResultsBoard({
                     {new Date(result.doneAt).toLocaleDateString()}
                   </time>
                 </div>
-                <h2 className="mt-3 text-base font-medium leading-snug">{result.title}</h2>
-                <p className="mt-2 line-clamp-2 text-sm text-[--color-muted]">
+                <h2 className="mt-3 line-clamp-3 text-base font-medium leading-snug">{result.title}</h2>
+                <p className="mt-2 line-clamp-3 text-sm leading-6 text-[--color-muted]">
                   {result.excerpt}
                 </p>
+                <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-xs text-[--color-muted]">
+                  <span>Issue #{result.number}</span>
+                  <span className="inline-flex items-center gap-1 font-medium text-[--color-fg]">
+                    <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                    Open
+                  </span>
+                </div>
               </button>
             </li>
           );
@@ -112,7 +119,7 @@ export function MentorResultsBoard({
           >
             <header className="flex items-center justify-between gap-3 border-b border-[--color-border] bg-[--color-muted-bg] px-4 py-3">
               <div className="min-w-0">
-                <p className="text-xs text-[--color-muted]">Mentor result #{active.number}</p>
+                <p className="text-xs text-[--color-muted]">Useful issue #{active.number}</p>
                 <h2 className="truncate text-sm font-medium">{active.title}</h2>
               </div>
               <button
@@ -129,14 +136,8 @@ export function MentorResultsBoard({
               <main className="min-h-0 overflow-y-auto p-4 md:p-6">
                 <div className="mb-4 flex flex-wrap gap-2 text-xs">
                   <a
-                    href={`/clean-results/${active.id}`}
-                    className="rounded-md border border-[--color-border] px-2 py-1 hover:bg-[--color-hover]"
-                  >
-                    Dashboard version
-                  </a>
-                  <a
                     href={`/mentor/updates?result=${active.id}`}
-                    className="rounded-md border border-[--color-border] px-2 py-1 hover:bg-[--color-hover]"
+                    className="inline-flex min-h-8 items-center gap-1 border border-[--color-border] px-2 py-1 font-medium hover:bg-[--color-hover]"
                   >
                     Mentor link
                   </a>
@@ -144,9 +145,10 @@ export function MentorResultsBoard({
                     href={active.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-md border border-[--color-border] px-2 py-1 hover:bg-[--color-hover]"
+                    className="inline-flex min-h-8 items-center gap-1 border border-[--color-border] px-2 py-1 font-medium hover:bg-[--color-hover]"
                   >
                     GitHub issue
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                   </a>
                 </div>
                 <Markdown>{active.body}</Markdown>

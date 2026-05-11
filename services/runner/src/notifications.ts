@@ -10,6 +10,7 @@ export async function notifyClaudeFinished(input: {
   rootCommentId: string;
   commentId: string;
   agentRunId: string;
+  agentName?: 'Claude' | 'Codex';
   body: string;
   fallbackUserId?: string | null;
 }) {
@@ -32,7 +33,7 @@ export async function notifyClaudeFinished(input: {
     return {
       userId,
       kind: 'claude_finished' as const,
-      title: 'Claude answered a comment',
+      title: `${input.agentName ?? 'Claude'} answered a comment`,
       body: truncate(input.body, 500),
       entityKind: input.entityKind,
       entityId: input.entityId,

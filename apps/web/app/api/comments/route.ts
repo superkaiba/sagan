@@ -76,6 +76,11 @@ function requestedCommentAgent(body: string): CommentAgentName | null {
   return null;
 }
 
+function stripLeadingAgentMention(body: string) {
+  const stripped = body.replace(/^\s*(?:hey\s+)?@(claude|codex)\b[:,]?\s*/i, '').trim();
+  return stripped || body.trim();
+}
+
 export async function POST(req: Request) {
   let session;
   try {
@@ -180,13 +185,12 @@ export async function POST(req: Request) {
         userId: session.user.id,
       });
       const runRequest = [
-        `${agentName} was asked from this comment thread.`,
-        `Reply to the latest comment on ${parsed.data.entityKind} ${parsed.data.entityId}.`,
-        agentName === 'Codex'
-          ? `The user mentioned @codex. Use a concise Codex-style engineering assistant voice.`
-          : '',
+        `Comment responder: ${agentName}`,
+        `Entity: ${parsed.data.entityKind} ${parsed.data.entityId}`,
+        `Task: Write the reply that should be posted to this Sagan comment thread.`,
+        `The @claude/@codex mention is only a routing command; answer the comment content itself.`,
         commentContext,
-        `Latest message (user):\n\n${parsed.data.body}`,
+        `Latest human comment:\n\n${stripLeadingAgentMention(parsed.data.body)}`,
       ]
         .filter(Boolean)
         .join('\n\n');

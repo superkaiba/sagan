@@ -22,6 +22,7 @@ import type { JobContext, JobOutcome } from './job-runs.js';
 
 const ARXIV_RSS = 'https://rss.arxiv.org/rss';
 const CLAUDE_DISCOVERY_TIMEOUT_MS = 120_000;
+const CLAUDE_ANNOTATION_TIMEOUT_MS = 60_000;
 
 interface ArxivConfig {
   /** arxiv category (e.g. cs.LG) or full search query string */
@@ -534,6 +535,9 @@ Return only JSON:
     model: 'claude-sonnet-4-6',
     max_tokens: 6000,
     messages: [{ role: 'user', content: prompt }],
+  }, {
+    timeout: CLAUDE_ANNOTATION_TIMEOUT_MS,
+    maxRetries: 0,
   });
   const text = completion.content
     .map((block) => (block.type === 'text' ? block.text : ''))

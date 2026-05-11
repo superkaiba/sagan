@@ -5,7 +5,7 @@ import { agentRuns } from '@sagan/db/schema';
 import { agentRunKindSchema, agentRunStatusSchema, runRequestSchema } from '@sagan/agent-protocol';
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { requireOwner } from '@/lib/access';
+import { requireSession } from '@/lib/auth';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 const QUEUED_CHANNEL = 'agent_run_queued';
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'invalid_input', detail: z.treeifyError(parsed.error) }, { status: 400 });
   }
-  const { kind, request, scopeEntityKind, scopeEntityId, approvalRequired } = parsed.data;
+  const { kind, request, scopeEntityKind, scopeEntityId, chatSessionId, approvalRequired } = parsed.data;
   const inserted = await db()
     .insert(agentRuns)
     .values({
@@ -64,6 +64,7 @@ export async function POST(req: Request) {
       request,
       scopeEntityKind,
       scopeEntityId,
+      chatSessionId,
       approvalRequired,
     })
     .returning({ id: agentRuns.id });
@@ -85,8 +86,8 @@ export async function POST(req: Request) {
 
 async function getSessionOrResponse() {
   try {
-    return await requireOwner();
+    return await requireSession();
   } catch {
-    return NextResponse.json({ error: 'owner_required' }, { status: 403 });
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { agentRuns, agentRunEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { requireOwner } from '@/lib/access';
+import { requireSession } from '@/lib/auth';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 function truncate(s: string | null | undefined, n: number) {
@@ -13,9 +13,9 @@ function truncate(s: string | null | undefined, n: number) {
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   let session;
   try {
-    session = await requireOwner();
+    session = await requireSession();
   } catch {
-    return NextResponse.json({ error: 'owner_required' }, { status: 403 });
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   const { id } = await ctx.params;
   const runRows = await db().select().from(agentRuns).where(eq(agentRuns.id, id)).limit(1);

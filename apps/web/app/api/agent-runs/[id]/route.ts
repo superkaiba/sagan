@@ -2,13 +2,15 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { agentRuns, agentRunEvents, podLifecycle, runArtifacts } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { requireOwner } from '@/lib/access';
+import { isOwner } from '@/lib/access';
+import { requireSession } from '@/lib/auth';
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  let session;
   try {
-    await requireOwner();
+    session = await requireSession();
   } catch {
-    return NextResponse.json({ error: 'owner_required' }, { status: 403 });
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   const { id } = await ctx.params;
 
@@ -33,5 +35,5 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     .where(eq(runArtifacts.agentRunId, id))
     .orderBy(runArtifacts.createdAt);
 
-  return NextResponse.json({ run, events, pods, artifacts });
+  return NextResponse.json({ run, events, pods, artifacts, canManageRun: isOwner(session) });
 }

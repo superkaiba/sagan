@@ -39,6 +39,7 @@ export const runRequestSchema = z.object({
   request: z.string().min(1).max(12_000),
   scopeEntityKind: entityKindSchema.optional(),
   scopeEntityId: z.string().uuid().optional(),
+  chatSessionId: z.string().uuid().optional(),
   approvalRequired: z.boolean().default(true),
 });
 export type RunRequest = z.infer<typeof runRequestSchema>;

@@ -58,6 +58,7 @@ interface RunPayload {
   events: RunEvent[];
   pods?: RunPodLifecycle[];
   artifacts?: RunArtifact[];
+  canManageRun?: boolean;
 }
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'rejected', 'blocked']);
@@ -168,7 +169,9 @@ export default function RunDetail() {
   const { run, events } = data;
   const pods = data.pods ?? [];
   const artifacts = data.artifacts ?? [];
-  const showApproval = run.status === 'awaiting_approval' && (run.kind === 'plan' || run.kind === 'experiment');
+  const canManageRun = data.canManageRun === true;
+  const showApproval =
+    canManageRun && run.status === 'awaiting_approval' && (run.kind === 'plan' || run.kind === 'experiment');
   const hasActivePods = pods.some((pod) => ['deploying', 'running', 'retrying'].includes(pod.status));
   const sourceRunId = continuationSource(run.request);
   const continuationEvents = events.filter((e) => e.eventType === 'auto_continuation_queued');
@@ -227,7 +230,7 @@ export default function RunDetail() {
               <Text style={s.cardTitle}>RunPod lifecycle</Text>
               <Text style={s.workflowText}>Stop preserves the attached volume.</Text>
             </View>
-            {hasActivePods ? (
+            {canManageRun && hasActivePods ? (
               <TouchableOpacity disabled={busy} onPress={stopRunPod} style={s.smallButton}>
                 <Text style={s.smallButtonText}>{busy ? 'Stopping' : 'Stop'}</Text>
               </TouchableOpacity>

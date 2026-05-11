@@ -62,6 +62,7 @@ interface Props {
   initialEvents: RunEvent[];
   initialPods: RunPodLifecycle[];
   initialArtifacts: RunArtifact[];
+  canManageRun: boolean;
 }
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'rejected', 'blocked']);
@@ -89,6 +90,7 @@ export function RunStream({
   initialEvents,
   initialPods,
   initialArtifacts,
+  canManageRun,
 }: Props) {
   const [events, setEvents] = useState<RunEvent[]>(initialEvents);
   const [pods, setPods] = useState<RunPodLifecycle[]>(initialPods);
@@ -199,7 +201,7 @@ export function RunStream({
     window.setTimeout(() => setCopiedReview(false), 1500);
   }
 
-  const showApproval = status === 'awaiting_approval' && (kind === 'plan' || kind === 'experiment');
+  const showApproval = canManageRun && status === 'awaiting_approval' && (kind === 'plan' || kind === 'experiment');
   const latestEvent = events.at(-1);
   const latestEventAt = latestEvent ? new Date(latestEvent.createdAt).getTime() : null;
   const active = !TERMINAL.has(status);
@@ -293,7 +295,7 @@ export function RunStream({
                 Stop requests preserve the attached RunPod volume.
               </p>
             </div>
-            {hasActivePods ? (
+            {canManageRun && hasActivePods ? (
               <button
                 type="button"
                 disabled={busy}

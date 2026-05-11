@@ -1,7 +1,7 @@
 import { and, eq, gt } from 'drizzle-orm';
 import { agentRuns, agentRunEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { requireOwner } from '@/lib/access';
+import { requireSession } from '@/lib/auth';
 
 const TERMINAL_STATUSES = new Set([
   'completed',
@@ -27,9 +27,9 @@ const TERMINAL_STATUSES = new Set([
  */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    await requireOwner();
+    await requireSession();
   } catch {
-    return new Response('owner_required', { status: 403 });
+    return new Response('unauthorized', { status: 401 });
   }
   const { id } = await ctx.params;
 

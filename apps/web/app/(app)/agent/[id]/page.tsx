@@ -2,11 +2,14 @@ import { notFound } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import { agentRuns, agentRunEvents, podLifecycle, runArtifacts } from '@sagan/db/schema';
 import { db } from '@/lib/db';
+import { isOwner } from '@/lib/access';
+import { requireSession } from '@/lib/auth';
 import { RunStream } from './RunStream';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AgentRunPage({ params }: { params: Promise<{ id: string }> }) {
+  const session = await requireSession();
   const { id } = await params;
   const runs = await db().select().from(agentRuns).where(eq(agentRuns.id, id)).limit(1);
   const run = runs[0];
@@ -75,6 +78,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
           verifiedAt: artifact.verifiedAt?.toISOString() ?? null,
           createdAt: artifact.createdAt.toISOString(),
         }))}
+        canManageRun={isOwner(session)}
       />
     </div>
   );

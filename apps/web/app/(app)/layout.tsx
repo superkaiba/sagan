@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { CommandPalette } from '@/components/CommandPalette';
 import { AppNav } from '@/components/AppNav';
 import { ThemeControl } from '@/components/ThemeControl';
+import { ConversationDock } from '@/components/ConversationDock';
 
 export default async function AppLayout({
   children,
@@ -65,6 +66,7 @@ export default async function AppLayout({
       </main>
       {modal}
       <CommandPalette />
+      <ConversationDock />
     </div>
   );
 }

@@ -81,6 +81,28 @@ function confidenceFromTitle(title: string): 'HIGH' | 'MODERATE' | 'LOW' | null 
   return m?.[1] ? (m[1].toUpperCase() as 'HIGH' | 'MODERATE' | 'LOW') : null;
 }
 
+function normalizeGitHubMarkdown(value: string) {
+  return value
+    .replace(
+      /<details(?:\s+open)?\s*>\s*<summary>\s*([\s\S]*?)\s*<\/summary>/gi,
+      (_, summary: string) => `\n\n${summary.replace(/<b>/gi, '**').replace(/<\/b>/gi, '**').trim()}\n\n`,
+    )
+    .replace(/<\/details>/gi, '\n\n')
+    .replace(/<details(?:\s+open)?\s*>/gi, '\n\n')
+    .replace(/<summary>\s*/gi, '\n\n')
+    .replace(/\s*<\/summary>/gi, '\n\n');
+}
+
+function excerptFor(body: string) {
+  return normalizeGitHubMarkdown(body)
+    .replace(/!\[[^\]]*]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/[`*_>#-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 320);
+}
+
 async function main() {
   const res = await fetch(PROJECT_URL, {
     headers: { Accept: 'text/html', 'User-Agent': 'eps-research-dashboard-snapshot' },
@@ -147,7 +169,7 @@ async function main() {
         number: iss.number,
         title: iss.title,
         body,
-        excerpt: body.replace(/\s+/g, ' ').slice(0, 320),
+        excerpt: excerptFor(body),
         confidence: confidenceFromTitle(iss.title),
         useful: iss.useful,
         statusName: iss.statusName,

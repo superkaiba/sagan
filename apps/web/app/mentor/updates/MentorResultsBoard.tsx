@@ -4,13 +4,22 @@ import { useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ExternalLink, MessageSquare, X } from 'lucide-react';
 import { Comments } from '@/components/Comments';
-import { Markdown } from '@/components/Markdown';
+import { Markdown, normalizeGitHubMarkdown } from '@/components/Markdown';
 import type { CleanResult } from '@/lib/mentor-results-data';
 
 const STATUS_STYLES: Record<string, { bg: string; label: string }> = {
   Useful: { bg: 'oklch(0.86 0.13 150)', label: 'useful' },
   'Not useful': { bg: 'oklch(0.86 0.13 25)', label: 'not useful' },
 };
+
+function excerptText(value: string) {
+  return normalizeGitHubMarkdown(value)
+    .replace(/!\[[^\]]*]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/[`*_>#-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export function MentorResultsBoard({
   results,
@@ -88,7 +97,7 @@ export function MentorResultsBoard({
                 </div>
                 <h2 className="mt-3 line-clamp-3 text-base font-medium leading-snug">{result.title}</h2>
                 <p className="mt-2 line-clamp-3 text-sm leading-6 text-[--color-muted]">
-                  {result.excerpt}
+                  {excerptText(result.excerpt)}
                 </p>
                 <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-xs text-[--color-muted]">
                   <span>Issue #{result.number}</span>
@@ -114,10 +123,14 @@ export function MentorResultsBoard({
             role="dialog"
             aria-modal="true"
             aria-label={active.title}
-            className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-lg border border-[--color-border] bg-[--color-bg] text-[--color-fg] shadow-lg"
+            className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-lg border border-[--color-border] text-[--color-fg] shadow-lg"
+            style={{ backgroundColor: 'var(--color-bg)', opacity: 1 }}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <header className="flex items-center justify-between gap-3 border-b border-[--color-border] bg-[--color-muted-bg] px-4 py-3">
+            <header
+              className="flex items-center justify-between gap-3 border-b border-[--color-border] px-4 py-3"
+              style={{ backgroundColor: 'var(--color-muted-bg)' }}
+            >
               <div className="min-w-0">
                 <p className="text-xs text-[--color-muted]">Useful issue #{active.number}</p>
                 <h2 className="truncate text-sm font-medium">{active.title}</h2>
@@ -126,7 +139,8 @@ export function MentorResultsBoard({
                 type="button"
                 onClick={closeOverlay}
                 aria-label="Close overlay"
-                className="rounded-md border border-[--color-border] bg-[--color-bg] p-1.5 text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                className="rounded-md border border-[--color-border] p-1.5 text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                style={{ backgroundColor: 'var(--color-bg)' }}
               >
                 <X aria-hidden="true" className="h-4 w-4" />
               </button>

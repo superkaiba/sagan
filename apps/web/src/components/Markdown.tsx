@@ -22,6 +22,18 @@ const PROSE = [
   '[&_hr]:my-3 [&_hr]:border-[--color-border]',
 ];
 
+export function normalizeGitHubMarkdown(value: string) {
+  return value
+    .replace(
+      /<details(?:\s+open)?\s*>\s*<summary>\s*([\s\S]*?)\s*<\/summary>/gi,
+      (_, summary: string) => `\n\n${summary.replace(/<b>/gi, '**').replace(/<\/b>/gi, '**').trim()}\n\n`,
+    )
+    .replace(/<\/details>/gi, '\n\n')
+    .replace(/<details(?:\s+open)?\s*>/gi, '\n\n')
+    .replace(/<summary>\s*/gi, '\n\n')
+    .replace(/\s*<\/summary>/gi, '\n\n');
+}
+
 export function Markdown({ children, className }: { children: string; className?: string }) {
   return (
     <div className={cn(PROSE, className)}>
@@ -35,7 +47,7 @@ export function Markdown({ children, className }: { children: string; className?
           ),
         }}
       >
-        {children}
+        {normalizeGitHubMarkdown(children)}
       </ReactMarkdown>
     </div>
   );

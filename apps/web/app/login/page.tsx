@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ThemeControl } from '@/components/ThemeControl';
 
@@ -21,6 +21,20 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(() => loginErrorMessage(providerError));
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/auth/me')
+      .then(async (res) => (res.ok ? ((await res.json()) as { user?: { role?: string } }) : null))
+      .then((data) => {
+        if (cancelled || !data?.user) return;
+        window.location.replace(data.user.role === 'mentor' && next === '/today' ? '/mentor/updates' : next);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [next]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -56,7 +70,7 @@ function LoginForm() {
         className="w-full max-w-sm space-y-4 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-6 shadow-sm"
       >
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Sign in with Google</h1>
           <p className="text-sm text-[--color-muted]">Sagan</p>
         </header>
 
@@ -69,7 +83,7 @@ function LoginForm() {
 
         <div className="flex items-center gap-3 text-xs text-[--color-muted]">
           <span className="h-px flex-1 bg-[--color-border]" />
-          or use email
+          password fallback
           <span className="h-px flex-1 bg-[--color-border]" />
         </div>
 
@@ -129,7 +143,7 @@ function loginErrorMessage(error: string | null) {
     case 'google_not_configured':
       return 'Google sign-in is not configured on this server yet.';
     case 'google_no_account':
-      return 'No Sagan account or pending invite exists for that Google account.';
+      return 'Google sign-in could not create an account. Try again.';
     case 'google_state_invalid':
       return 'The Google sign-in attempt expired. Try again.';
     case 'google_token_failed':

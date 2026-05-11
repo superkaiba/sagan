@@ -1,9 +1,7 @@
 import { randomBytes, createHash } from 'node:crypto';
 import { eq, lt } from 'drizzle-orm';
 import { sessions, users, type Db, type Session, type User } from '@sagan/db';
-
-const SESSION_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
-const SESSION_RENEW_THRESHOLD_MS = 24 * 60 * 60 * 1000; // renew if <24h since last touch
+import { SESSION_RENEW_THRESHOLD_MS, SESSION_TTL_MS } from './constants';
 
 export interface SessionContext {
   session: Session;
@@ -52,7 +50,7 @@ export async function validateSession(
     return null;
   }
 
-  // Sliding expiration: renew if more than 24h since last expiry update.
+  // Sliding expiration: renew after the session has gone untouched for the threshold.
   if (expires - now < SESSION_TTL_MS - SESSION_RENEW_THRESHOLD_MS) {
     const newExpiresAt = new Date(now + SESSION_TTL_MS);
     await db.update(sessions).set({ expiresAt: newExpiresAt }).where(eq(sessions.id, hashedId));

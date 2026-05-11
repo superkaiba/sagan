@@ -95,6 +95,7 @@ export async function GET(req: Request) {
 
   let redirectTo = safeRelativePath(stateCookie.next);
   let user = (await db().select().from(users).where(eq(users.email, email)).limit(1))[0];
+  let createdPublicAccount = false;
 
   if (stateCookie.inviteToken) {
     const invite = await loadPendingInviteByToken(stateCookie.inviteToken);
@@ -107,12 +108,11 @@ export async function GET(req: Request) {
     redirectTo = `/e/${accepted.membership.entityKind}/${accepted.membership.entityId}`;
   } else {
     const invites = await loadPendingInvitesByEmail(email);
-    if (!user && invites.length === 0 && stateCookie.signup) {
+    if (!user && invites.length === 0) {
       const created = await createPublicMentorAccount({ email, displayName: profile.name });
       user = created.user;
-      redirectTo = safeRelativePath(stateCookie.next || '/mentor/updates');
+      createdPublicAccount = created.created;
     }
-    if (!user && invites.length === 0) return redirectWithError(req, 'google_no_account');
     for (const invite of invites) {
       const accepted = await acceptInvite({ invite, displayName: profile.name });
       user = accepted.user;
@@ -121,6 +121,9 @@ export async function GET(req: Request) {
   }
 
   if (!user) return redirectWithError(req, 'google_no_account');
+  if (createdPublicAccount || (user.role === 'mentor' && redirectTo === '/today')) {
+    redirectTo = '/mentor/updates';
+  }
 
   const res = NextResponse.redirect(new URL(redirectTo, origin));
   await setSessionCookieOnResponse(res, user.id);

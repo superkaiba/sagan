@@ -35,7 +35,9 @@ export async function GET(req: Request) {
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', 'openid email profile');
   authUrl.searchParams.set('state', state);
-  authUrl.searchParams.set('prompt', 'select_account');
+  const loginHint = url.searchParams.get('email');
+  if (loginHint) authUrl.searchParams.set('login_hint', loginHint);
+  if (url.searchParams.get('selectAccount') === '1') authUrl.searchParams.set('prompt', 'select_account');
 
   const res = NextResponse.redirect(authUrl);
   res.cookies.set(STATE_COOKIE, Buffer.from(JSON.stringify(statePayload)).toString('base64url'), {

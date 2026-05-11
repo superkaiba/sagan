@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface Props {
-  kind: 'project' | 'belief' | 'todo' | 'lit_item' | 'project_narrative' | 'experiment';
+  kind: 'project' | 'belief' | 'todo' | 'lit_item' | 'project_narrative' | 'experiment' | 'clean_result';
   id: string;
   initialTitle: string;
 }
@@ -16,6 +16,7 @@ const TITLE_FIELD: Record<Props['kind'], string> = {
   lit_item: 'title',
   project_narrative: 'title',
   experiment: 'title',
+  clean_result: 'title',
 };
 const ENDPOINT_PLURAL: Record<Props['kind'], string> = {
   project: 'projects',
@@ -24,6 +25,7 @@ const ENDPOINT_PLURAL: Record<Props['kind'], string> = {
   lit_item: 'lit-items',
   project_narrative: 'project-narratives',
   experiment: 'experiments',
+  clean_result: 'clean-results',
 };
 
 export function EditableTitle({ kind, id, initialTitle }: Props) {

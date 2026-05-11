@@ -5,6 +5,7 @@ import { users } from '@sagan/db/schema';
 import { verifyPassword } from '@sagan/auth';
 import { db } from '@/lib/db';
 import { createSessionToken, setSessionCookie } from '@/lib/auth';
+import { hasFullDashboardAccessEmail } from '@/lib/full-dashboard-access';
 
 const loginSchema = z.object({
   email: z.string().trim().email(),
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
   const email = parsed.data.email.toLowerCase();
 
   const rows = await db().select().from(users).where(eq(users.email, email)).limit(1);
-  const user = rows[0];
+  let user = rows[0];
 
   // Constant-time-ish: verify even if user is null to avoid leaking existence.
   const dummyHash =
@@ -35,6 +36,15 @@ export async function POST(req: Request) {
 
   if (!ok || !user) {
     return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 });
+  }
+
+  if (hasFullDashboardAccessEmail(email) && user.role !== 'owner') {
+    const updated = await db()
+      .update(users)
+      .set({ role: 'owner', updatedAt: new Date() })
+      .where(eq(users.id, user.id))
+      .returning();
+    user = updated[0] ?? user;
   }
 
   // Mobile clients send `x-client-mode: bearer` to receive a token in the

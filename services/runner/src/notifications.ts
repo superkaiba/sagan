@@ -1,5 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from './db.js';
+import { sendEmail } from './email.js';
 
 type CommentRow = typeof schema.comments.$inferSelect;
 type EntityKind = CommentRow['entityKind'];
@@ -27,9 +28,38 @@ export async function notifyClaudeFinished(input: {
     .from(schema.notificationPreferences)
     .where(inArray(schema.notificationPreferences.userId, userIds));
   const prefs = new Map(preferenceRows.map((row) => [row.userId, row]));
+  const recipientRows = await db()
+    .select({ id: schema.users.id, email: schema.users.email })
+    .from(schema.users)
+    .where(inArray(schema.users.id, userIds));
+  const recipientEmails = new Map(recipientRows.map((row) => [row.id, row.email]));
   const now = new Date();
-  const rows = userIds.map((userId) => {
+  const rows = await Promise.all(userIds.map(async (userId) => {
     const emailAllowed = prefs.get(userId)?.emailClaudeReplies ?? true;
+    let emailStatus = emailAllowed ? 'pending' : 'disabled';
+    let emailedAt: Date | undefined;
+    const recipientEmail = recipientEmails.get(userId);
+    if (emailAllowed && recipientEmail) {
+      const result = await sendEmail({
+        to: recipientEmail,
+        subject: `${input.agentName ?? 'Claude'} answered a comment`,
+        text: formatNotificationEmail({
+          title: `${input.agentName ?? 'Claude'} answered a comment`,
+          body: truncate(input.body, 500),
+          entityKind: input.entityKind,
+          entityId: input.entityId,
+        }),
+      });
+      emailStatus = result.status;
+      emailedAt = result.status === 'sent' ? now : undefined;
+      if (result.status === 'failed') {
+        console.error('[email-failed]', {
+          userId,
+          kind: 'claude_finished',
+          error: result.error,
+        });
+      }
+    }
     return {
       userId,
       kind: 'claude_finished' as const,
@@ -39,10 +69,10 @@ export async function notifyClaudeFinished(input: {
       entityId: input.entityId,
       commentId: input.commentId,
       agentRunId: input.agentRunId,
-      emailStatus: emailAllowed ? 'logged' : 'disabled',
-      emailedAt: emailAllowed ? now : undefined,
+      emailStatus,
+      emailedAt,
     };
-  });
+  }));
 
   const existingRows = await db()
     .select({ userId: schema.notifications.userId })
@@ -58,17 +88,6 @@ export async function notifyClaudeFinished(input: {
   const newRows = rows.filter((row) => !alreadyNotified.has(row.userId));
   if (newRows.length === 0) return;
 
-  for (const row of newRows) {
-    if (row.emailStatus === 'logged') {
-      console.info('[dev-email]', {
-        userId: row.userId,
-        kind: row.kind,
-        title: row.title,
-        entityKind: row.entityKind,
-        entityId: row.entityId,
-      });
-    }
-  }
   await db().insert(schema.notifications).values(newRows);
 }
 
@@ -105,4 +124,29 @@ function isString(value: string | null | undefined): value is string {
 
 function truncate(value: string, max: number) {
   return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function formatNotificationEmail(input: {
+  title: string;
+  body?: string;
+  entityKind?: EntityKind;
+  entityId?: string;
+}) {
+  const lines = [input.title, ''];
+  if (input.body) lines.push(input.body, '');
+  const ownerUrl = entityUrl(input.entityKind, input.entityId, 'owner');
+  const mentorUrl = entityUrl(input.entityKind, input.entityId, 'mentor');
+  if (ownerUrl) lines.push(`Dashboard: ${ownerUrl}`);
+  if (mentorUrl && mentorUrl !== ownerUrl) lines.push(`Mentor view: ${mentorUrl}`);
+  return lines.join('\n').trim();
+}
+
+function entityUrl(entityKind?: EntityKind, entityId?: string, audience?: 'owner' | 'mentor') {
+  if (!entityKind || !entityId) return null;
+  const base = (process.env.NEXT_PUBLIC_SITE_URL || 'https://sagan.superkaiba.com').replace(/\/+$/, '');
+  if (audience === 'mentor' && entityKind === 'clean_result') {
+    return `${base}/mentor/updates?result=${encodeURIComponent(entityId)}`;
+  }
+  if (entityKind === 'clean_result') return `${base}/clean-results/${entityId}`;
+  return `${base}/e/${entityKind}/${entityId}`;
 }

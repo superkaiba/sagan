@@ -610,6 +610,7 @@ export const litInbox = pgTable(
     sourceId: uuid('source_id').references(() => litSources.id, { onDelete: 'set null' }),
     surfacedOn: date('surfaced_on').notNull(),
     score: integer('score'),
+    category: text('category').notNull().default('new_research'),
     reasonMd: text('reason_md'),
     dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

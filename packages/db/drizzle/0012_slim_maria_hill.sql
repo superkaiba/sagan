@@ -1,0 +1,1 @@
+ALTER TABLE "lit_inbox" ADD COLUMN "category" text DEFAULT 'new_research' NOT NULL;

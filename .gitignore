@@ -18,6 +18,7 @@ out
 *.log
 errors.log
 runner.log
+.codex/
 
 # OS
 .DS_Store

@@ -4,19 +4,28 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
 
-const NAV: Array<{ label: string; href: string }> = [
-  { label: 'Today', href: '/today' },
-  { label: 'Tasks', href: '/tasks' },
-  { label: 'Experiments', href: '/experiments' },
-  { label: 'Clean Results', href: '/clean-results' },
-  { label: 'Ideation', href: '/ideation' },
-  { label: 'Projects', href: '/projects' },
-  { label: 'Beliefs', href: '/beliefs' },
-  { label: 'Knowledge', href: '/knowledge' },
-  { label: 'Library', href: '/library' },
-  { label: 'Agent', href: '/agent' },
-  { label: 'Health', href: '/admin/health' },
-  { label: 'Digests', href: '/digests' },
+const NAV: Array<{ label: string; href: string; match: string[] }> = [
+  { label: 'Today', href: '/today', match: ['/today', '/e/daily_log_entry'] },
+  {
+    label: 'Work',
+    href: '/work',
+    match: [
+      '/work',
+      '/tasks',
+      '/projects',
+      '/experiments',
+      '/clean-results',
+      '/ideation',
+      '/e/project',
+      '/e/experiment',
+      '/e/clean_result',
+      '/e/todo',
+      '/e/project_narrative',
+    ],
+  },
+  { label: 'Knowledge', href: '/knowledge', match: ['/knowledge', '/beliefs', '/library', '/e/belief', '/e/lit_item'] },
+  { label: 'Agent', href: '/agent', match: ['/agent', '/e/run'] },
+  { label: 'More', href: '/more', match: ['/more', '/admin/health', '/digests', '/mentor/updates', '/e/weekly_digest'] },
 ];
 
 export function AppNav({ compact = false }: { compact?: boolean }) {
@@ -24,7 +33,7 @@ export function AppNav({ compact = false }: { compact?: boolean }) {
   return (
     <nav className={compact ? 'flex flex-1 gap-1 overflow-x-auto' : 'space-y-1'}>
       {NAV.map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const active = item.match.some((href) => pathname === href || pathname.startsWith(`${href}/`));
         return (
           <Link
             key={item.href}

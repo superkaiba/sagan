@@ -5,15 +5,15 @@
  * Claude for summaries and relevance judgments, then inserts/updates lit_items
  * plus a lit_inbox entry surfaced for today.
  *
- * On first run with no lit_sources rows, seeds two reasonable defaults:
- * cs.LG (Machine Learning) and cs.CL (Computation and Language).
+ * Seeds a compact default arxiv source set covering ML, NLP, AI, security,
+ * and statistical ML, while preserving any user-added sources.
  */
 import { XMLParser } from 'fast-xml-parser';
 import Anthropic from '@anthropic-ai/sdk';
 import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
-import { beliefs, cleanResults, experiments, litInbox, litItems, litSources } from '@sagan/db/schema';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { beliefs, cleanResults, edges, experiments, litInbox, litItems, litSources } from '@sagan/db/schema';
 import { db } from '../db.js';
 import { env, requireEnv } from '../env.js';
 import { log } from '../log.js';
@@ -21,6 +21,7 @@ import { recordTrail } from '../trail.js';
 import type { JobContext, JobOutcome } from './job-runs.js';
 
 const ARXIV_RSS = 'https://rss.arxiv.org/rss';
+const CLAUDE_DISCOVERY_TIMEOUT_MS = 120_000;
 
 interface ArxivConfig {
   /** arxiv category (e.g. cs.LG) or full search query string */
@@ -48,23 +49,54 @@ interface FetchedEntry {
 
 interface RankedEntry extends FetchedEntry {
   score: number;
+  category: LitReviewCategory;
+  linkedContexts: LinkedContext[];
   summaryMd: string;
   relevanceReasonMd: string;
   threatReasonMd?: string | null;
   sourceTitle: string;
 }
 
+const LIT_REVIEW_CATEGORIES = [
+  'new_research',
+  'linked_to_results',
+  'foundational',
+  'methods',
+  'threats',
+  'general_important',
+] as const;
+type LitReviewCategory = (typeof LIT_REVIEW_CATEGORIES)[number];
+const LIT_REVIEW_CATEGORY_SET = new Set<string>(LIT_REVIEW_CATEGORIES);
+
+type LitReviewEdgeType = 'supports' | 'contradicts' | 'method' | 'background' | 'threat' | 'cites';
+
 interface ResearchContext {
   kind: 'clean_result' | 'belief' | 'experiment';
   id: string;
   label: string;
+  summary: string;
   terms: string[];
+}
+
+interface LinkedContext {
+  kind: ResearchContext['kind'];
+  id: string;
+  edgeType: LitReviewEdgeType;
+  reasonMd?: string | null;
 }
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@',
 });
+
+const DEFAULT_ARXIV_SOURCES: Array<{ title: string; config: ArxivConfig }> = [
+  { title: 'arxiv cs.LG (Machine Learning)', config: { query: 'cs.LG', maxResults: 40 } },
+  { title: 'arxiv cs.CL (NLP)', config: { query: 'cs.CL', maxResults: 40 } },
+  { title: 'arxiv cs.AI (Artificial Intelligence)', config: { query: 'cs.AI', maxResults: 30 } },
+  { title: 'arxiv cs.CR (Cryptography and Security)', config: { query: 'cs.CR', maxResults: 30 } },
+  { title: 'arxiv stat.ML (Machine Learning)', config: { query: 'stat.ML', maxResults: 30 } },
+];
 
 const discoveredItemSchema = z.object({
   title: z.string().min(1).max(500),
@@ -79,6 +111,8 @@ const discoveredItemSchema = z.object({
   arxivId: z.string().max(64).nullable().optional(),
   doi: z.string().max(200).nullable().optional(),
   score: z.number().int().min(0).max(100).default(50),
+  category: z.enum(LIT_REVIEW_CATEGORIES).default('new_research'),
+  relatedContextIds: z.array(z.string()).max(8).default([]),
 });
 
 const discoverySchema = z.object({
@@ -90,6 +124,8 @@ const annotationSchema = z.object({
     z.object({
       externalId: z.string(),
       score: z.number().int().min(0).max(100),
+      category: z.enum(LIT_REVIEW_CATEGORIES).default('new_research'),
+      relatedContextIds: z.array(z.string()).max(8).default([]),
       summaryMd: z.string().min(1).max(4_000),
       relevanceReasonMd: z.string().min(1).max(4_000),
       threatReasonMd: z.string().max(4_000).nullable().optional(),
@@ -208,23 +244,21 @@ function arxivIdFromIdField(id: string): string | null {
 }
 
 async function ensureDefaultSources() {
-  const existing = await db().select().from(litSources).limit(1);
-  if (existing.length > 0) return;
-  await db()
-    .insert(litSources)
-    .values([
-      {
-        kind: 'arxiv',
-        title: 'arxiv cs.LG (Machine Learning)',
-        config: { query: 'cs.LG', maxResults: 30 } satisfies ArxivConfig,
-      },
-      {
-        kind: 'arxiv',
-        title: 'arxiv cs.CL (NLP)',
-        config: { query: 'cs.CL', maxResults: 30 } satisfies ArxivConfig,
-      },
-    ]);
-  log.info('lit-review: seeded default arxiv sources');
+  const existing = await db()
+    .select({ title: litSources.title })
+    .from(litSources)
+    .where(eq(litSources.kind, 'arxiv'));
+  const existingTitles = new Set(existing.map((source) => source.title));
+  const missing = DEFAULT_ARXIV_SOURCES.filter((source) => !existingTitles.has(source.title));
+  if (missing.length === 0) return;
+  await db().insert(litSources).values(
+    missing.map((source) => ({
+      kind: 'arxiv' as const,
+      title: source.title,
+      config: source.config,
+    })),
+  );
+  log.info('lit-review: seeded default arxiv sources', { inserted: missing.length });
 }
 
 async function ensureClaudeDiscoverySource() {
@@ -320,51 +354,79 @@ export async function runLitReview(context: JobContext = {}): Promise<JobOutcome
 
 async function discoverWithClaudeCode(contexts: ResearchContext[]): Promise<RankedEntry[]> {
   const prompt = buildDiscoveryPrompt(contexts);
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), CLAUDE_DISCOVERY_TIMEOUT_MS);
   const options: Options = {
-    cwd: env.RUNNER_REPO_ROOT,
+    cwd: '/tmp',
     env: process.env as Record<string, string>,
     pathToClaudeCodeExecutable: env.CLAUDE_CLI_PATH,
-    permissionMode: 'acceptEdits',
+    abortController,
+    permissionMode: 'dontAsk',
     tools: ['Bash'],
     allowedTools: ['Bash'],
     disallowedTools: ['Read', 'Grep', 'Glob', 'Edit', 'Write'],
+    mcpServers: {},
+    strictMcpConfig: true,
+    settingSources: [],
     model: 'claude-sonnet-4-6',
     maxTurns: 10,
     maxBudgetUsd: 3,
     persistSession: false,
   };
 
-  let lastAssistantText = '';
-  for await (const message of query({ prompt, options })) {
-    lastAssistantText = lastAssistantTextFromMessage(message) || lastAssistantText;
-    if (message.type !== 'result') continue;
-    if (message.subtype !== 'success') {
-      throw new Error(`Claude Code discovery failed: ${message.subtype}`);
+  try {
+    let lastAssistantText = '';
+    for await (const message of query({ prompt, options })) {
+      lastAssistantText = lastAssistantTextFromMessage(message) || lastAssistantText;
+      if (message.type !== 'result') continue;
+      if (message.subtype !== 'success') {
+        throw new Error(`Claude Code discovery failed: ${message.subtype}`);
+      }
+      const finalText = message.result?.trim() || lastAssistantText.trim();
+      return parseDiscoveredItems(finalText, contexts);
     }
-    const finalText = message.result?.trim() || lastAssistantText.trim();
-    return parseDiscoveredItems(finalText);
+    throw new Error('Claude Code discovery ended without a result');
+  } catch (err) {
+    if (abortController.signal.aborted) {
+      throw new Error(`Claude Code discovery timed out after ${CLAUDE_DISCOVERY_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  throw new Error('Claude Code discovery ended without a result');
 }
 
 function buildDiscoveryPrompt(contexts: ResearchContext[]) {
   const contextJson = contexts.slice(0, 24).map((ctx) => ({
+    id: ctx.id,
     kind: ctx.kind,
     label: ctx.label,
+    summary: ctx.summary,
     terms: ctx.terms.slice(0, 10),
   }));
   return `You are running Sagan's daily literature discovery job.
 
-Use Bash with curl/python as needed to query public sources for new or important AI/ML research:
+Use Bash with curl/python as needed to query public sources for new or important AI/ML research.
+Do not write files, edit repositories, or mutate external state; only make read-only HTTP queries.
+
+Query sources such as:
 - arxiv, especially cs.LG, cs.CL, cs.AI, cs.CR, stat.ML
 - Semantic Scholar
 - OpenReview
 - Hugging Face Papers
 - reputable lab blogs or paper pages when they point to papers
 
-Find papers relevant to the current research context AND generally important papers the researcher should know about.
-Prefer items released in the last 14 days, but include older items only if they are newly important or directly relevant.
+Build a daily reading queue across these categories:
+- new_research: new papers from the last 14 days
+- linked_to_results: papers, including older papers, directly connected to a clean result, belief, or experiment below
+- foundational: older background papers worth reading because they explain or precede a current result
+- methods: method, evaluation, tooling, benchmark, or implementation papers likely to be useful
+- threats: papers that challenge, caveat, contradict, or stress-test current results
+- general_important: broadly important AI/ML papers worth knowing about even without a direct context link
+
+Surface clearly relevant new research first, but include older/foundational papers when they are linked to the research context.
 Do not include duplicates. Do not invent bibliographic details.
+Set relatedContextIds to ids from the current research context only when the paper is actually linked.
 
 Current research context:
 ${JSON.stringify(contextJson, null, 2)}
@@ -381,6 +443,8 @@ Return only JSON with this exact shape:
       "arxivId": "2501.12345 or null",
       "doi": "doi or null",
       "abstract": "abstract text if available",
+      "category": "new_research",
+      "relatedContextIds": ["context uuid if directly linked"],
       "summaryMd": "1-2 sentence LLM summary of the actual contribution",
       "relevanceReasonMd": "1 concise sentence explaining why this is relevant or generally important",
       "threatReasonMd": "1 concise caveat/threat/null",
@@ -389,7 +453,8 @@ Return only JSON with this exact shape:
   ]
 }
 
-Score 0-100, where 70+ means read soon. Return at most 20 items.`;
+Allowed category values are: ${LIT_REVIEW_CATEGORIES.join(', ')}.
+Score 0-100, where 70+ means read soon. Return at most 24 items.`;
 }
 
 function lastAssistantTextFromMessage(message: SDKMessage) {
@@ -401,25 +466,34 @@ function lastAssistantTextFromMessage(message: SDKMessage) {
     .trim();
 }
 
-function parseDiscoveredItems(text: string): RankedEntry[] {
+function parseDiscoveredItems(text: string, contexts: ResearchContext[]): RankedEntry[] {
   const jsonText = extractJson(text);
   const parsed = discoverySchema.parse(JSON.parse(jsonText));
-  return parsed.items.map((item) => ({
-    externalId: item.arxivId ? `arxiv:${item.arxivId}` : item.doi ? `doi:${item.doi}` : item.url ?? item.title,
-    title: item.title,
-    summary: item.abstract ?? '',
-    authors: item.authors,
-    url: item.url ?? '',
-    pdfUrl: item.pdfUrl ?? null,
-    arxivId: item.arxivId ?? null,
-    doi: item.doi ?? null,
-    releasedOn: item.releasedOn ?? null,
-    score: item.score,
-    summaryMd: item.summaryMd,
-    relevanceReasonMd: item.relevanceReasonMd,
-    threatReasonMd: item.threatReasonMd ?? null,
-    sourceTitle: 'Claude Code literature discovery',
-  }));
+  return parsed.items.map((item) => {
+    const category = coerceCategory(item.category);
+    const entry: FetchedEntry = {
+      externalId: item.arxivId ? `arxiv:${item.arxivId}` : item.doi ? `doi:${item.doi}` : item.url ?? item.title,
+      title: item.title,
+      summary: item.abstract ?? '',
+      authors: item.authors,
+      url: item.url ?? '',
+      pdfUrl: item.pdfUrl ?? null,
+      arxivId: item.arxivId ?? null,
+      doi: item.doi ?? null,
+      releasedOn: item.releasedOn ?? null,
+    };
+    const matchedContexts = matchContextsForEntry(entry, contexts).matchedContexts;
+    return {
+      ...entry,
+      score: item.score,
+      category,
+      linkedContexts: linkedContextsFromIds(item.relatedContextIds, contexts, category, item.relevanceReasonMd, matchedContexts),
+      summaryMd: item.summaryMd,
+      relevanceReasonMd: item.relevanceReasonMd,
+      threatReasonMd: item.threatReasonMd ?? null,
+      sourceTitle: 'Claude Code literature discovery',
+    };
+  });
 }
 
 async function annotateEntriesWithClaude(
@@ -450,9 +524,11 @@ ${JSON.stringify(
   2,
 )}
 
-For each candidate, write a brief LLM-generated summary, a relevance/general-importance reason, a caveat if useful, and a 0-100 score.
+For each candidate, write a brief LLM-generated summary, a relevance/general-importance reason, a caveat if useful, a category, directly related context ids, and a 0-100 score.
+Category must be one of: ${LIT_REVIEW_CATEGORIES.join(', ')}.
+Use relatedContextIds only for ids from the current research context that the paper directly informs, supports, contradicts, or contextualizes.
 Return only JSON:
-{"items":[{"externalId":"...","score":72,"summaryMd":"...","relevanceReasonMd":"...","threatReasonMd":null}]}`;
+{"items":[{"externalId":"...","score":72,"category":"linked_to_results","relatedContextIds":["context uuid"],"summaryMd":"...","relevanceReasonMd":"...","threatReasonMd":null}]}`;
 
   const completion = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -471,6 +547,14 @@ Return only JSON:
     return {
       ...entry,
       score: annotation.score,
+      category: coerceCategory(annotation.category),
+      linkedContexts: linkedContextsFromIds(
+        annotation.relatedContextIds,
+        contexts,
+        coerceCategory(annotation.category),
+        annotation.relevanceReasonMd,
+        matchContextsForEntry(entry, contexts).matchedContexts,
+      ),
       summaryMd: annotation.summaryMd,
       relevanceReasonMd: annotation.relevanceReasonMd,
       threatReasonMd: annotation.threatReasonMd ?? null,
@@ -533,12 +617,39 @@ async function upsertRankedEntry(entry: RankedEntry, surfacedOn: string, sourceI
       sourceId,
       surfacedOn,
       score: entry.score,
+      category: entry.category,
       reasonMd: entry.relevanceReasonMd,
     })
-    .onConflictDoNothing()
+    .onConflictDoUpdate({
+      target: [litInbox.litItemId, litInbox.surfacedOn],
+      set: {
+        score: sql<number>`GREATEST(COALESCE(${litInbox.score}, 0), ${entry.score})`,
+        category: sql<string>`CASE WHEN ${entry.score} >= COALESCE(${litInbox.score}, -1) THEN ${entry.category} ELSE ${litInbox.category} END`,
+        reasonMd: sql<string>`CASE WHEN ${entry.score} >= COALESCE(${litInbox.score}, -1) THEN ${entry.relevanceReasonMd} ELSE ${litInbox.reasonMd} END`,
+      },
+    })
     .returning({ id: litInbox.id });
 
+  await upsertContextEdges(litItemId, entry);
+
   return { inserted, surfaced: Boolean(inboxed[0]) };
+}
+
+async function upsertContextEdges(litItemId: string, entry: RankedEntry) {
+  if (entry.linkedContexts.length === 0) return;
+  await db()
+    .insert(edges)
+    .values(
+      entry.linkedContexts.map((ctx) => ({
+        fromKind: 'lit_item' as const,
+        fromId: litItemId,
+        toKind: ctx.kind,
+        toId: ctx.id,
+        type: ctx.edgeType,
+        note: ctx.reasonMd ?? entry.relevanceReasonMd,
+      })),
+    )
+    .onConflictDoNothing();
 }
 
 async function findExistingLitItem(entry: FetchedEntry, arxivId: string | null) {
@@ -611,38 +722,36 @@ async function loadRankingContext(): Promise<ResearchContext[]> {
       kind: 'clean_result',
       id: row.id,
       label: `clean result "${row.title}"`,
+      summary: truncate(cleanText([row.title, row.claim, row.bodyMd].filter(Boolean).join('\n')), 1200),
       terms: keyTerms([row.title, row.claim, row.bodyMd].join(' ')),
     })),
     ...beliefRows.map((row): ResearchContext => ({
       kind: 'belief',
       id: row.id,
       label: `belief "${row.title}"`,
+      summary: truncate(
+        cleanText([row.title, row.currentBelief, row.evidence, row.counterevidence].filter(Boolean).join('\n')),
+        1200,
+      ),
       terms: keyTerms([row.title, row.currentBelief, row.evidence, row.counterevidence].join(' ')),
     })),
     ...experimentRows.map((row): ResearchContext => ({
       kind: 'experiment',
       id: row.id,
       label: `experiment "${row.title}"`,
+      summary: truncate(cleanText([row.title, row.hypothesis].filter(Boolean).join('\n')), 1200),
       terms: keyTerms([row.title, row.hypothesis].join(' ')),
     })),
   ].filter((ctx) => ctx.terms.length > 0);
 }
 
 function heuristicRankEntry(entry: FetchedEntry, contexts: ResearchContext[], sourceTitle: string): RankedEntry {
-  const text = `${entry.title}\n${entry.summary}`.toLowerCase();
-  const matchedTerms = new Set<string>();
-  const matchedContexts: ResearchContext[] = [];
-  for (const ctx of contexts) {
-    const matches = ctx.terms.filter((term) => text.includes(term));
-    if (matches.length === 0) continue;
-    matchedContexts.push(ctx);
-    matches.forEach((term) => matchedTerms.add(term));
-  }
-  const threatTerms = THREAT_TERMS.filter((term) => text.includes(term));
+  const { matchedTerms, matchedContexts, threatTerms } = matchContextsForEntry(entry, contexts);
   const score = Math.min(
     100,
     30 + matchedContexts.length * 12 + matchedTerms.size * 4 + (threatTerms.length > 0 ? 18 : 0),
   );
+  const category = inferHeuristicCategory(entry, matchedContexts, threatTerms);
   const topContexts = matchedContexts.slice(0, 3).map((ctx) => ctx.label);
   const topTerms = Array.from(matchedTerms).slice(0, 8);
   const reasonMd =
@@ -657,11 +766,103 @@ function heuristicRankEntry(entry: FetchedEntry, contexts: ResearchContext[], so
   return {
     ...entry,
     score,
+    category,
+    linkedContexts: linkedContextsFromContexts(matchedContexts, category, reasonMd),
     summaryMd: summarizeEntry(entry),
     relevanceReasonMd: reasonMd,
     threatReasonMd,
     sourceTitle,
   };
+}
+
+function matchContextsForEntry(entry: FetchedEntry, contexts: ResearchContext[]) {
+  const text = `${entry.title}\n${entry.summary}`.toLowerCase();
+  const matchedTerms = new Set<string>();
+  const matchedContexts: ResearchContext[] = [];
+  for (const ctx of contexts) {
+    const matches = ctx.terms.filter((term) => text.includes(term));
+    if (matches.length === 0) continue;
+    matchedContexts.push(ctx);
+    matches.forEach((term) => matchedTerms.add(term));
+  }
+  const threatTerms = THREAT_TERMS.filter((term) => text.includes(term));
+  return { matchedTerms, matchedContexts, threatTerms };
+}
+
+function inferHeuristicCategory(
+  entry: FetchedEntry,
+  matchedContexts: ResearchContext[],
+  threatTerms: string[],
+): LitReviewCategory {
+  if (threatTerms.length > 0 && matchedContexts.length > 0) return 'threats';
+  if (matchedContexts.some((ctx) => ctx.kind === 'clean_result')) return 'linked_to_results';
+  if (matchedContexts.length > 0) return 'linked_to_results';
+  if (isOlderThanDays(entry.releasedOn, 90)) return 'foundational';
+  return 'new_research';
+}
+
+function linkedContextsFromIds(
+  ids: string[],
+  contexts: ResearchContext[],
+  category: LitReviewCategory,
+  reasonMd: string | null | undefined,
+  fallbackContexts: ResearchContext[] = [],
+): LinkedContext[] {
+  const contextById = new Map(contexts.map((ctx) => [ctx.id, ctx]));
+  const linked: ResearchContext[] = [];
+  const seen = new Set<string>();
+  for (const rawId of ids) {
+    const ctx = contextById.get(rawId.trim());
+    if (!ctx || seen.has(ctx.id)) continue;
+    seen.add(ctx.id);
+    linked.push(ctx);
+  }
+  for (const ctx of fallbackContexts) {
+    if (seen.has(ctx.id)) continue;
+    seen.add(ctx.id);
+    linked.push(ctx);
+  }
+  return linkedContextsFromContexts(linked, category, reasonMd);
+}
+
+function linkedContextsFromContexts(
+  contexts: ResearchContext[],
+  category: LitReviewCategory,
+  reasonMd: string | null | undefined,
+): LinkedContext[] {
+  return contexts.slice(0, 5).map((ctx) => ({
+    kind: ctx.kind,
+    id: ctx.id,
+    edgeType: edgeTypeForCategory(category),
+    reasonMd,
+  }));
+}
+
+function edgeTypeForCategory(category: LitReviewCategory): LitReviewEdgeType {
+  switch (category) {
+    case 'threats':
+      return 'threat';
+    case 'methods':
+      return 'method';
+    case 'foundational':
+      return 'background';
+    case 'linked_to_results':
+      return 'supports';
+    case 'general_important':
+    case 'new_research':
+      return 'cites';
+  }
+}
+
+function coerceCategory(value: string): LitReviewCategory {
+  return LIT_REVIEW_CATEGORY_SET.has(value) ? (value as LitReviewCategory) : 'new_research';
+}
+
+function isOlderThanDays(value: string | null | undefined, days: number) {
+  if (!value) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return false;
+  return Date.now() - date.getTime() > days * 24 * 60 * 60 * 1000;
 }
 
 function summarizeEntry(entry: FetchedEntry) {

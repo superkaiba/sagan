@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import { setSessionCookieOnResponse } from '@/lib/auth';
 import { getRequestOrigin } from '@/lib/request-origin';
 import { createPublicMentorAccount } from '@/lib/public-signup';
+import { hasFullDashboardAccessEmail } from '@/lib/full-dashboard-access';
 
 const STATE_COOKIE = 'sagan_google_oauth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -99,6 +100,13 @@ export async function GET(req: Request) {
     const created = await createPublicMentorAccount({ email, displayName: profile.name });
     user = created.user;
     createdPublicAccount = created.created;
+  } else if (hasFullDashboardAccessEmail(email) && user.role !== 'owner') {
+    const updated = await db()
+      .update(users)
+      .set({ role: 'owner', updatedAt: new Date() })
+      .where(eq(users.id, user.id))
+      .returning();
+    user = updated[0] ?? user;
   }
 
   if (!user) return redirectWithError(req, 'google_no_account');

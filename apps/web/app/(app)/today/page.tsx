@@ -1,13 +1,14 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import Link from 'next/link';
-import { agentRuns, approvalRequests, cleanResults, dailyLogEntries, experiments, weeklyDigests } from '@sagan/db/schema';
+import { agentRuns, approvalRequests, cleanResults, dailyLogEntries, experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { loadBoard } from '@/lib/kanban';
 import { ResearchLog } from './ResearchLog';
-import { Kanban } from './Kanban';
 import { CleanResultAssistant } from '@/components/today/CleanResultAssistant';
 
 export const dynamic = 'force-dynamic';
+
+const ACTION_PREFIX_RE = /^\s*(?:\*\*)?Action:/;
 
 export default async function TodayPage() {
   const now = new Date();
@@ -15,13 +16,10 @@ export default async function TodayPage() {
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const [
     entries,
-    yesterdayEntries,
-    activeExperiments,
     activeRuns,
     pendingApprovals,
     blockedExperiments,
     reviewResults,
-    latestWeeklyRows,
     board,
   ] = await Promise.all([
     db()
@@ -29,16 +27,6 @@ export default async function TodayPage() {
       .from(dailyLogEntries)
       .where(and(eq(dailyLogEntries.day, today), isNull(dailyLogEntries.archivedAt)))
       .orderBy(asc(dailyLogEntries.position), asc(dailyLogEntries.createdAt)),
-    db()
-      .select()
-      .from(dailyLogEntries)
-      .where(and(eq(dailyLogEntries.day, yesterday), isNull(dailyLogEntries.archivedAt)))
-      .orderBy(asc(dailyLogEntries.position), asc(dailyLogEntries.createdAt)),
-    db()
-      .select({ id: experiments.id, title: experiments.title, status: experiments.status })
-      .from(experiments)
-      .where(eq(experiments.status, 'running'))
-      .limit(5),
     db()
       .select({
         id: agentRuns.id,
@@ -79,13 +67,10 @@ export default async function TodayPage() {
       .where(inArray(cleanResults.status, ['reviewing', 'blocked']))
       .orderBy(desc(cleanResults.updatedAt))
       .limit(5),
-    db().select().from(weeklyDigests).orderBy(desc(weeklyDigests.weekStart)).limit(1),
     loadBoard('next-steps'),
   ]);
   const cleanResultCount = entries.filter((e) => e.kind === 'clean_result').length;
-  const actionTrailCount = entries.filter((e) => e.bodyMd.startsWith('**Action:**')).length;
-  const yesterdayCleanResults = yesterdayEntries.filter((e) => e.kind === 'clean_result').length;
-  const latestWeekly = latestWeeklyRows[0] ?? null;
+  const researchEntryCount = entries.filter((e) => e.kind !== 'clean_result' && !ACTION_PREFIX_RE.test(e.bodyMd)).length;
   const activeRunIds = new Set(activeRuns.map((run) => run.id));
   const activeExperimentApprovalIds = new Set(
     activeRuns
@@ -128,48 +113,30 @@ export default async function TodayPage() {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-[--color-border] pb-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
           <p className="mt-1 text-sm text-[--color-muted]">
-            {today} · {actionTrailCount} trail note{actionTrailCount === 1 ? '' : 's'}
+            {today} · {researchEntryCount} research entr{researchEntryCount === 1 ? 'y' : 'ies'} ·{' '}
+            {cleanResultCount} result{cleanResultCount === 1 ? '' : 's'}
           </p>
         </div>
-        <a
-          href={`/mentor/daily/${today}`}
-          className="rounded-md border border-[--color-border] bg-[--color-panel] px-3 py-1.5 text-xs font-medium hover:bg-[--color-hover]"
-        >
-          Mentor clean log
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/today/${yesterday}`}
+            className="rounded-md border border-[--color-border] bg-[--color-panel] px-3 py-1.5 text-xs font-medium hover:bg-[--color-hover]"
+          >
+            Yesterday
+          </Link>
+          <a
+            href={`/mentor/daily/${today}`}
+            className="rounded-md border border-[--color-border] bg-[--color-panel] px-3 py-1.5 text-xs font-medium hover:bg-[--color-hover]"
+          >
+            Mentor clean log
+          </a>
+        </div>
       </header>
-
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          label="Running experiments"
-          value={String(activeExperiments.length)}
-          detail={activeExperiments[0]?.title ?? 'No running experiments'}
-          href="/experiments"
-        />
-        <SummaryCard
-          label="Owner approvals"
-          value={String(activeRuns.length + visiblePendingApprovals.length)}
-          detail={activeRuns[0]?.request ?? visiblePendingApprovals[0]?.title ?? 'Nothing waiting'}
-          href="/agent"
-        />
-        <SummaryCard
-          label="Yesterday"
-          value={`${yesterdayCleanResults} result${yesterdayCleanResults === 1 ? '' : 's'}`}
-          detail={yesterday}
-          href={`/today/${yesterday}`}
-        />
-        <SummaryCard
-          label="Weekly review"
-          value={latestWeekly ? (latestWeekly.sentAt ? 'sent' : latestWeekly.editedAt ? 'edited' : 'draft') : 'none'}
-          detail={latestWeekly ? `Week of ${latestWeekly.weekStart}` : 'Generate from Digests'}
-          href={latestWeekly ? `/digests/${latestWeekly.id}` : '/digests'}
-        />
-      </section>
 
       <ReviewQueue
         planApprovals={planApprovals}
@@ -195,12 +162,10 @@ export default async function TodayPage() {
         <CleanResultAssistant day={today} cleanResultCount={cleanResultCount} />
       </div>
 
-      <Kanban
-        slug={board.slug}
+      <NextActions
         initialColumns={board.columns.map((c) => ({
           id: c.id,
           title: c.title,
-          color: c.color,
           position: c.position,
         }))}
         initialCards={board.cards.map((c) => ({
@@ -217,20 +182,6 @@ export default async function TodayPage() {
   );
 }
 
-function SummaryCard({ label, value, detail, href }: { label: string; value: string; detail: string; href: string }) {
-  return (
-    <Link
-      href={href}
-      data-clickable="true"
-      className="block rounded-lg border border-[--color-border] bg-[--color-panel] p-3 hover:border-[--color-accent] hover:bg-[--color-hover]"
-    >
-      <p className="text-sm font-semibold">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-      <p className="mt-1 truncate text-xs text-[--color-muted]">{detail}</p>
-    </Link>
-  );
-}
-
 function ReviewQueue({
   planApprovals,
   blockedItems,
@@ -241,50 +192,42 @@ function ReviewQueue({
   cleanResults: Array<{ id: string; title: string; href: string; updatedAt: string }>;
 }) {
   const total = planApprovals.length + blockedItems.length + cleanResults.length;
+  if (total === 0) return null;
+
   return (
-    <section
-      className={`rounded-lg border p-4 ${
-        total > 0
-          ? 'border-[--color-border] bg-[--color-panel]'
-          : 'border-[--color-border] bg-[--color-panel]'
-      }`}
-    >
+    <section className="rounded-lg border border-[--color-border] bg-[--color-panel] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[--color-border] pb-3">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Needs approval or review</h2>
           <p className="mt-1 text-sm text-[--color-muted]">
-            {total === 0 ? 'Nothing is waiting on you.' : `${total} item${total === 1 ? '' : 's'} waiting across approval, blockers, and polish.`}
+            {total} item{total === 1 ? '' : 's'} waiting across approval, blockers, and polish.
           </p>
         </div>
-        {total > 0 ? (
-          <Link
-            href="/agent"
-            className="rounded-md bg-[--color-accent] px-3 py-2 text-sm font-medium text-[--color-accent-fg] hover:opacity-90"
-          >
-            Review queue
-          </Link>
-        ) : null}
+        <Link
+          href="/agent"
+          className="rounded-md bg-[--color-accent] px-3 py-2 text-sm font-medium text-[--color-accent-fg] hover:opacity-90"
+        >
+          Review queue
+        </Link>
       </div>
-      {total > 0 ? (
-        <div className="mt-3 grid gap-2 lg:grid-cols-3">
-          {planApprovals.map((item) => (
-            <QueueCard key={item.id} tone="success" href={item.href} label="plan awaiting approval" title={item.title} detail={item.detail} />
-          ))}
-          {blockedItems.map((item) => (
-            <QueueCard key={item.id} tone="danger" href={item.href} label="blocked" title={item.title} detail={item.detail} />
-          ))}
-          {cleanResults.map((result) => (
-            <QueueCard
-              key={result.id}
-              tone="info"
-              href={result.href}
-              label="clean results awaiting polishing"
-              title={result.title}
-              detail={new Date(result.updatedAt).toLocaleString()}
-            />
-          ))}
-        </div>
-      ) : null}
+      <div className="mt-3 grid gap-2 lg:grid-cols-3">
+        {planApprovals.map((item) => (
+          <QueueCard key={item.id} tone="success" href={item.href} label="plan awaiting approval" title={item.title} detail={item.detail} />
+        ))}
+        {blockedItems.map((item) => (
+          <QueueCard key={item.id} tone="danger" href={item.href} label="blocked" title={item.title} detail={item.detail} />
+        ))}
+        {cleanResults.map((result) => (
+          <QueueCard
+            key={result.id}
+            tone="info"
+            href={result.href}
+            label="clean result awaiting polish"
+            title={result.title}
+            detail={new Date(result.updatedAt).toLocaleString()}
+          />
+        ))}
+      </div>
     </section>
   );
 }
@@ -329,4 +272,69 @@ function formatQueueDetail(detail: string) {
   const [prefix, timestamp] = detail.split(' · ');
   if (!timestamp) return detail;
   return `${prefix} · ${new Date(timestamp).toLocaleString()}`;
+}
+
+function NextActions({
+  initialColumns,
+  initialCards,
+}: {
+  initialColumns: Array<{ id: string; title: string; position: number }>;
+  initialCards: Array<{
+    id: string;
+    columnId: string;
+    title: string;
+    bodyMd: string | null;
+    linkedKind: string | null;
+    linkedId: string | null;
+    position: number;
+  }>;
+}) {
+  const columnById = new Map(initialColumns.map((column) => [column.id, column]));
+  const nextCards = initialCards
+    .map((card) => ({ ...card, column: columnById.get(card.columnId) }))
+    .sort((a, b) => {
+      const rank = nextActionRank(a.column?.title) - nextActionRank(b.column?.title);
+      if (rank !== 0) return rank;
+      return a.position - b.position;
+    })
+    .slice(0, 3);
+
+  return (
+    <section className="space-y-2">
+      <header className="flex items-baseline justify-between border-b border-[--color-border] pb-2">
+        <h2 className="text-lg font-semibold tracking-tight">Next actions</h2>
+        <Link href="/tasks" className="text-sm text-[--color-accent] hover:underline">
+          Open tasks
+        </Link>
+      </header>
+      <div className="divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-panel]">
+        {nextCards.length === 0 ? (
+          <p className="p-4 text-sm text-[--color-muted]">No next actions.</p>
+        ) : (
+          nextCards.map((card) => (
+            <Link
+              key={card.id}
+              href={card.linkedKind && card.linkedId ? `/e/${card.linkedKind}/${card.linkedId}` : '/tasks'}
+              className="block px-4 py-3 hover:bg-[--color-muted-bg]"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="min-w-0 flex-1 truncate text-sm font-medium">{card.title}</h3>
+                <span className="text-xs text-[--color-muted]">{card.column?.title ?? 'Next'}</span>
+              </div>
+              {card.bodyMd ? <p className="mt-1 line-clamp-1 text-sm text-[--color-muted]">{card.bodyMd}</p> : null}
+            </Link>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function nextActionRank(title: string | undefined) {
+  const normalized = title?.toLowerCase() ?? '';
+  if (normalized.includes('today')) return 0;
+  if (normalized.includes('doing')) return 1;
+  if (normalized.includes('await')) return 2;
+  if (normalized.includes('backlog')) return 3;
+  return 4;
 }

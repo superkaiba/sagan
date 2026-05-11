@@ -62,12 +62,17 @@ export default async function KnowledgePage() {
         <p className="text-sm text-[--color-muted]">{items.length} entities</p>
       </header>
 
-      <p className="text-sm text-[--color-muted]">
-        <Link href="/knowledge/graph" className="text-[--color-accent] hover:underline">
-          → graph view
-        </Link>{' '}
-        for the visual map. Below is the kind-grouped browse.
-      </p>
+      <div className="flex flex-wrap gap-2 text-sm">
+        <Link href="/knowledge/graph" className="rounded-md border border-[--color-border] px-3 py-1.5 hover:bg-[--color-hover]">
+          Graph
+        </Link>
+        <Link href="/beliefs" className="rounded-md border border-[--color-border] px-3 py-1.5 hover:bg-[--color-hover]">
+          Beliefs
+        </Link>
+        <Link href="/library" className="rounded-md border border-[--color-border] px-3 py-1.5 hover:bg-[--color-hover]">
+          Library
+        </Link>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {kinds.map((k) => {

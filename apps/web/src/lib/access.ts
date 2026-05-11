@@ -1,9 +1,10 @@
 import { and, eq } from 'drizzle-orm';
-import { entityMemberships } from '@sagan/db/schema';
+import { cleanResults, entityMemberships } from '@sagan/db/schema';
 import type { SessionContext } from '@sagan/auth';
 import { requireSession } from './auth';
 import { db } from './db';
 import type { EntityKind } from './entity';
+import { hasFullDashboardAccess } from './full-dashboard-access';
 
 export class ForbiddenError extends Error {
   constructor(message = 'forbidden') {
@@ -13,7 +14,7 @@ export class ForbiddenError extends Error {
 }
 
 export function isOwner(session: SessionContext): boolean {
-  return session.user.role === 'owner';
+  return hasFullDashboardAccess(session);
 }
 
 export async function requireOwner(): Promise<SessionContext> {
@@ -47,7 +48,8 @@ export async function canReadEntity(
   entityId: string,
 ): Promise<boolean> {
   if (isOwner(session)) return true;
-  return Boolean(await getEntityMembershipRole(session.user.id, entityKind, entityId));
+  if (await getEntityMembershipRole(session.user.id, entityKind, entityId)) return true;
+  return canReadSharedEntity(entityKind, entityId);
 }
 
 export async function canCommentOnEntity(
@@ -57,7 +59,17 @@ export async function canCommentOnEntity(
 ): Promise<boolean> {
   if (isOwner(session)) return true;
   const role = await getEntityMembershipRole(session.user.id, entityKind, entityId);
-  return role === 'owner' || role === 'collaborator' || role === 'mentor';
+  return role === 'owner' || role === 'collaborator' || role === 'mentor' || (await canReadSharedEntity(entityKind, entityId));
+}
+
+async function canReadSharedEntity(entityKind: EntityKind, entityId: string): Promise<boolean> {
+  if (entityKind !== 'clean_result') return false;
+  const rows = await db()
+    .select({ status: cleanResults.status })
+    .from(cleanResults)
+    .where(eq(cleanResults.id, entityId))
+    .limit(1);
+  return rows[0]?.status === 'shared';
 }
 
 export async function requireEntityRead(

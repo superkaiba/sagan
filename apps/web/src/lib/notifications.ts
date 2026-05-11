@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import {
   commentSubscriptions,
   entityMemberships,
@@ -8,6 +8,8 @@ import {
 } from '@sagan/db/schema';
 import { db } from './db';
 import type { EntityKind } from './entity';
+import { sendEmail } from './email';
+import { getFullDashboardEmails } from './full-dashboard-access';
 
 type NotificationInsert = typeof notifications.$inferInsert;
 type NotificationKind = NotificationInsert['kind'];
@@ -81,6 +83,20 @@ export async function collectEntityParticipantUserIds(input: {
   return [...new Set([...memberRows, ...subscriptionRows].map((row) => row.userId))];
 }
 
+export async function collectFullDashboardUserIds(): Promise<string[]> {
+  const fullAccessEmails = getFullDashboardEmails();
+  const conditions = [
+    eq(users.role, 'owner' as const),
+    fullAccessEmails.length ? inArray(users.email, fullAccessEmails) : undefined,
+  ].filter((condition): condition is NonNullable<typeof condition> => Boolean(condition));
+  if (conditions.length === 0) return [];
+  const rows = await db()
+    .select({ id: users.id })
+    .from(users)
+    .where(conditions.length === 1 ? conditions[0]! : or(...conditions));
+  return rows.map((row) => row.id);
+}
+
 export async function notifyUsers(input: {
   userIds: string[];
   actorUserId?: string;
@@ -101,9 +117,14 @@ export async function notifyUsers(input: {
     .from(notificationPreferences)
     .where(inArray(notificationPreferences.userId, userIds));
   const prefs = new Map(preferenceRows.map((row) => [row.userId, row]));
+  const recipientRows = await db()
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(inArray(users.id, userIds));
+  const recipientEmails = new Map(recipientRows.map((row) => [row.id, row.email]));
 
   const now = new Date();
-  const rows = userIds.map((userId) => {
+  const rows = await Promise.all(userIds.map(async (userId) => {
     const preference = prefs.get(userId);
     const emailAllowed =
       input.emailTopic === 'comment'
@@ -112,7 +133,31 @@ export async function notifyUsers(input: {
           ? (preference?.emailMentions ?? true)
           : input.emailTopic === 'claude'
             ? (preference?.emailClaudeReplies ?? true)
-            : false;
+          : false;
+    let emailStatus = emailAllowed ? 'pending' : input.emailTopic ? 'disabled' : 'not_requested';
+    let emailedAt: Date | undefined;
+    const recipientEmail = recipientEmails.get(userId);
+    if (emailAllowed && recipientEmail) {
+      const result = await sendEmail({
+        to: recipientEmail,
+        subject: input.title,
+        text: formatNotificationEmail({
+          title: input.title,
+          body: input.body,
+          entityKind: input.entityKind,
+          entityId: input.entityId,
+        }),
+      });
+      emailStatus = result.status;
+      emailedAt = result.status === 'sent' ? now : undefined;
+      if (result.status === 'failed') {
+        console.error('[email-failed]', {
+          userId,
+          kind: input.kind,
+          error: result.error,
+        });
+      }
+    }
     return {
       userId,
       actorUserId: input.actorUserId,
@@ -123,22 +168,35 @@ export async function notifyUsers(input: {
       entityId: input.entityId,
       commentId: input.commentId,
       agentRunId: input.agentRunId,
-      emailStatus: emailAllowed ? 'logged' : input.emailTopic ? 'disabled' : 'not_requested',
-      emailedAt: emailAllowed ? now : undefined,
+      emailStatus,
+      emailedAt,
     };
-  });
-
-  for (const row of rows) {
-    if (row.emailStatus === 'logged') {
-      console.info('[dev-email]', {
-        userId: row.userId,
-        kind: row.kind,
-        title: row.title,
-        entityKind: row.entityKind,
-        entityId: row.entityId,
-      });
-    }
-  }
+  }));
 
   return db().insert(notifications).values(rows).returning({ id: notifications.id });
+}
+
+function formatNotificationEmail(input: {
+  title: string;
+  body?: string;
+  entityKind?: EntityKind;
+  entityId?: string;
+}) {
+  const lines = [input.title, ''];
+  if (input.body) lines.push(input.body, '');
+  const ownerUrl = entityUrl(input.entityKind, input.entityId, 'owner');
+  const mentorUrl = entityUrl(input.entityKind, input.entityId, 'mentor');
+  if (ownerUrl) lines.push(`Dashboard: ${ownerUrl}`);
+  if (mentorUrl && mentorUrl !== ownerUrl) lines.push(`Mentor view: ${mentorUrl}`);
+  return lines.join('\n').trim();
+}
+
+function entityUrl(entityKind?: EntityKind, entityId?: string, audience?: 'owner' | 'mentor') {
+  if (!entityKind || !entityId) return null;
+  const base = (process.env.NEXT_PUBLIC_SITE_URL || 'https://sagan.superkaiba.com').replace(/\/+$/, '');
+  if (audience === 'mentor' && entityKind === 'clean_result') {
+    return `${base}/mentor/updates?result=${encodeURIComponent(entityId)}`;
+  }
+  if (entityKind === 'clean_result') return `${base}/clean-results/${entityId}`;
+  return `${base}/e/${entityKind}/${entityId}`;
 }

@@ -20,10 +20,13 @@ interface Comment {
   resolvedAt: string | null;
   resolvedSummaryMd: string | null;
   createdAt: string;
+  authorEmail: string | null;
+  authorDisplayName: string | null;
 }
 
 export function Comments({ entityKind, entityId }: { entityKind: string; entityId: string }) {
   const [items, setItems] = useState<Comment[]>([]);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [body, setBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
@@ -36,8 +39,9 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
       `/api/comments?entityKind=${encodeURIComponent(entityKind)}&entityId=${encodeURIComponent(entityId)}`,
     );
     if (!res.ok) return;
-    const data = (await res.json()) as { comments: Comment[] };
+    const data = (await res.json()) as { comments: Comment[]; viewerUserId?: string };
     setItems(data.comments);
+    setViewerUserId(data.viewerUserId ?? null);
   }
 
   useEffect(() => {
@@ -129,7 +133,9 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
 
   function authorLabel(c: Comment) {
     if (c.authorKind === 'claude') return c.body.startsWith(CODEX_REPLY_MARKER) ? 'Codex' : 'Claude';
-    return c.authorKind === 'system' ? 'System' : 'You';
+    if (c.authorKind === 'system') return 'System';
+    if (viewerUserId && c.authorUserId === viewerUserId) return 'You';
+    return c.authorDisplayName || c.authorEmail || 'Commenter';
   }
 
   function autoContinueLabel(c: Comment) {

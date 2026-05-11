@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -62,14 +61,7 @@ export function CleanResultAssistant({ day, cleanResultCount }: Props) {
     <section className="rounded-lg border border-[--color-border] bg-[--color-panel] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold">Clean result</h2>
-        <div className="flex gap-3 text-xs">
-          <Link href={`/mentor/daily/${day}`} className="text-[--color-accent] hover:underline">
-            Mentor log
-          </Link>
-          <Link href={`/digest/${day}`} className="text-[--color-muted] hover:text-[--color-fg]">
-            Full log
-          </Link>
-        </div>
+        <span className="text-xs text-[--color-muted]">{day}</span>
       </div>
       <p className="mt-1 text-sm text-[--color-muted]">
         {cleanResultCount} clean result{cleanResultCount === 1 ? '' : 's'} today

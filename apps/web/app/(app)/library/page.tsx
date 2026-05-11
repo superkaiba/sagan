@@ -45,7 +45,7 @@ export default async function LibraryPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
         <div className="flex items-baseline gap-3 text-sm">
           <Link href="/library/today" className="text-[--color-accent] hover:underline">
-            Today's lit review →
+            Daily reading queue →
           </Link>
           <span className="text-[--color-muted]">{rows.length}</span>
         </div>

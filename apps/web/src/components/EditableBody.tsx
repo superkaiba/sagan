@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Markdown } from './Markdown';
 
 interface Props {
-  kind: 'project' | 'belief' | 'todo' | 'lit_item' | 'project_narrative' | 'experiment' | 'run' | 'daily_log_entry';
+  kind: 'project' | 'belief' | 'todo' | 'lit_item' | 'project_narrative' | 'experiment' | 'run' | 'daily_log_entry' | 'clean_result';
   id: string;
   initialBody: string;
   /** PATCH endpoint to hit. Defaults to /api/<plural> */
@@ -23,6 +23,7 @@ const DEFAULT_FIELD: Record<Props['kind'], string> = {
   experiment: 'hypothesis',
   run: 'notesMd',
   daily_log_entry: 'bodyMd',
+  clean_result: 'bodyMd',
 };
 
 const DEFAULT_ENDPOINT_PLURAL: Record<Props['kind'], string> = {
@@ -34,6 +35,7 @@ const DEFAULT_ENDPOINT_PLURAL: Record<Props['kind'], string> = {
   experiment: 'experiments',
   run: 'runs',
   daily_log_entry: 'daily-log',
+  clean_result: 'clean-results',
 };
 
 export function EditableBody({ kind, id, initialBody, endpoint, field }: Props) {

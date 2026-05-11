@@ -1,9 +1,18 @@
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { getSession } from '@/lib/auth';
 import { CommandPalette } from '@/components/CommandPalette';
 import { AppNav } from '@/components/AppNav';
 import { ThemeControl } from '@/components/ThemeControl';
 import { ConversationDock } from '@/components/ConversationDock';
+import { hasFullDashboardAccess } from '@/lib/full-dashboard-access';
+
+const LIMITED_ACCESS_PREFIXES = ['/e/', '/clean-results/', '/agent/'];
+
+function canOpenLimitedDashboardPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return LIMITED_ACCESS_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
 
 export default async function AppLayout({
   children,
@@ -14,6 +23,12 @@ export default async function AppLayout({
 }) {
   const session = await getSession();
   if (!session) redirect('/login');
+  const pathname = (await headers()).get('x-sagan-pathname');
+  const fullDashboard = hasFullDashboardAccess(session);
+
+  if (!fullDashboard && !canOpenLimitedDashboardPath(pathname)) {
+    redirect('/mentor/updates');
+  }
 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[15rem_1fr]">
@@ -26,7 +41,13 @@ export default async function AppLayout({
       {/* Mobile top-bar */}
       <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-[--color-border] bg-[--color-muted-bg] px-4 py-2 md:hidden">
         <p className="text-xs font-semibold text-[--color-muted]">Sagan</p>
-        <AppNav compact />
+        {fullDashboard ? (
+          <AppNav compact />
+        ) : (
+          <a href="/mentor/updates" className="text-xs text-[--color-muted] hover:text-[--color-fg]">
+            Mentor updates
+          </a>
+        )}
         <ThemeControl compact />
         <form action="/api/auth/logout" method="post">
           <button
@@ -44,7 +65,18 @@ export default async function AppLayout({
           <p className="text-xs font-semibold text-[--color-muted]">Sagan</p>
           <p className="text-sm font-medium truncate">{session.user.email}</p>
         </div>
-        <AppNav />
+        {fullDashboard ? (
+          <AppNav />
+        ) : (
+          <nav className="space-y-1 text-sm">
+            <a
+              href="/mentor/updates"
+              className="block rounded-md px-2 py-1.5 text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+            >
+              Mentor updates
+            </a>
+          </nav>
+        )}
         <div className="mt-auto space-y-2">
           <ThemeControl />
           <p className="text-[10px] uppercase tracking-wide text-[--color-muted]">
@@ -65,8 +97,12 @@ export default async function AppLayout({
         {children}
       </main>
       {modal}
-      <CommandPalette />
-      <ConversationDock />
+      {fullDashboard ? (
+        <>
+          <CommandPalette />
+          <ConversationDock />
+        </>
+      ) : null}
     </div>
   );
 }

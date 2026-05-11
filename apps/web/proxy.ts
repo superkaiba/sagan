@@ -13,6 +13,8 @@ const PUBLIC_PATHS = [
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-sagan-pathname', pathname);
 
   // Allow public paths and asset paths.
   if (
@@ -27,11 +29,11 @@ export function proxy(req: NextRequest) {
     pathname === '/mentor/updates' ||
     pathname.startsWith('/api/mentor/')
   ) {
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   if (pathname.startsWith('/api/') && req.headers.get('authorization')?.startsWith('Bearer ')) {
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   // Cheap check: presence of session cookie. Validation happens in the
@@ -45,7 +47,7 @@ export function proxy(req: NextRequest) {
     url.searchParams.set('next', pathname);
     return NextResponse.redirect(url);
   }
-  return NextResponse.next();
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

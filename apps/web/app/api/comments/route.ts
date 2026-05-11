@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { agentRuns, chatSessions, comments } from '@sagan/db/schema';
+import { agentRuns, chatSessions, comments, users } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import { isEntityKind } from '@/lib/entity';
@@ -10,6 +10,7 @@ import { ForbiddenError, requireEntityComment, requireEntityRead } from '@/lib/a
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import {
   collectEntityParticipantUserIds,
+  collectFullDashboardUserIds,
   findMentionedUserIds,
   notifyUsers,
   subscribeToCommentThread,
@@ -39,11 +40,33 @@ export async function GET(req: Request) {
     throw err;
   }
   const rows = await db()
-    .select()
+    .select({
+      id: comments.id,
+      entityKind: comments.entityKind,
+      entityId: comments.entityId,
+      parentCommentId: comments.parentCommentId,
+      authorUserId: comments.authorUserId,
+      authorKind: comments.authorKind,
+      kind: comments.kind,
+      body: comments.body,
+      anchorNodeId: comments.anchorNodeId,
+      anchoredQuote: comments.anchoredQuote,
+      mentions: comments.mentions,
+      autoContinueClaude: comments.autoContinueClaude,
+      agentRunId: comments.agentRunId,
+      resolvedAt: comments.resolvedAt,
+      resolvedBy: comments.resolvedBy,
+      resolvedSummaryMd: comments.resolvedSummaryMd,
+      createdAt: comments.createdAt,
+      updatedAt: comments.updatedAt,
+      authorEmail: users.email,
+      authorDisplayName: users.displayName,
+    })
     .from(comments)
+    .leftJoin(users, eq(comments.authorUserId, users.id))
     .where(and(eq(comments.entityKind, entityKind), eq(comments.entityId, entityId)))
     .orderBy(asc(comments.createdAt));
-  return NextResponse.json({ comments: rows });
+  return NextResponse.json({ comments: rows, viewerUserId: session.user.id });
 }
 
 const createSchema = z.object({
@@ -463,6 +486,7 @@ async function notifyCommentParticipants(input: {
     entityId: input.entityId,
     rootCommentId: input.rootCommentId,
   });
+  const fullDashboardUserIds = await collectFullDashboardUserIds();
   const mentionedUserIds = await findMentionedUserIds(input.body);
   if (mentionedUserIds.length > 0) {
     await notifyUsers({
@@ -477,7 +501,9 @@ async function notifyCommentParticipants(input: {
       emailTopic: 'mention',
     });
   }
-  const commentRecipients = participants.filter((userId) => !mentionedUserIds.includes(userId));
+  const commentRecipients = [...new Set([...participants, ...fullDashboardUserIds])].filter(
+    (userId) => !mentionedUserIds.includes(userId),
+  );
   await notifyUsers({
     userIds: commentRecipients,
     actorUserId: input.actorUserId,

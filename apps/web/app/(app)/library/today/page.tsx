@@ -23,6 +23,9 @@ export default async function LibraryTodayPage() {
       url: litItems.url,
       readState: litItems.readState,
       abstract: litItems.abstract,
+      summaryMd: litItems.summaryMd,
+      relevanceReasonMd: litItems.relevanceReasonMd,
+      threatReasonMd: litItems.threatReasonMd,
     })
     .from(litInbox)
     .innerJoin(litItems, eq(litInbox.litItemId, litItems.id))
@@ -67,8 +70,9 @@ export default async function LibraryTodayPage() {
             >
               <div className="flex items-baseline gap-3 text-xs text-[--color-muted]">
                 <span className="rounded-full bg-[--color-bg] px-2 py-0.5 font-medium">
-                  {r.sourceTitle ?? 'unknown source'}
+                  score {r.score ?? 0}
                 </span>
+                <span>{r.sourceTitle ?? 'unknown source'}</span>
                 {r.arxivId ? <span>arxiv:{r.arxivId}</span> : null}
                 <span className="ml-auto">{r.readState}</span>
               </div>
@@ -77,8 +81,14 @@ export default async function LibraryTodayPage() {
                   {r.title}
                 </Link>
               </h2>
-              {r.abstract ? (
-                <p className="line-clamp-3 text-sm text-[--color-muted]">{r.abstract}</p>
+              {r.summaryMd ?? r.abstract ? (
+                <p className="line-clamp-3 text-sm text-[--color-muted]">{r.summaryMd ?? r.abstract}</p>
+              ) : null}
+              {r.reason ?? r.relevanceReasonMd ? (
+                <p className="text-sm">{r.reason ?? r.relevanceReasonMd}</p>
+              ) : null}
+              {r.threatReasonMd ? (
+                <p className="text-xs text-[--color-muted]">{r.threatReasonMd}</p>
               ) : null}
               <div className="flex items-center gap-3 text-xs">
                 {r.url ? (

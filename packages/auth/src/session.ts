@@ -7,7 +7,7 @@ const SESSION_RENEW_THRESHOLD_MS = 24 * 60 * 60 * 1000; // renew if <24h since l
 
 export interface SessionContext {
   session: Session;
-  user: Pick<User, 'id' | 'email' | 'displayName'>;
+  user: Pick<User, 'id' | 'email' | 'displayName' | 'role'>;
 }
 
 function generateSessionId(): string {
@@ -34,7 +34,7 @@ export async function validateSession(
   const rows = await db
     .select({
       session: sessions,
-      user: { id: users.id, email: users.email, displayName: users.displayName },
+      user: { id: users.id, email: users.email, displayName: users.displayName, role: users.role },
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))

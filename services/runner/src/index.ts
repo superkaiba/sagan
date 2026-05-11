@@ -11,15 +11,18 @@
  */
 import './env.js';
 import cron from 'node-cron';
-import { close, listener } from './db.js';
+import { and, asc, eq, inArray } from 'drizzle-orm';
+import { close, db, listener, schema } from './db.js';
 import { startQueue } from './queue.js';
 import { runSession } from './session.js';
-import { dispatchApprovedExperiment } from './dispatcher.js';
+import { handleApprovedRun } from './dispatcher.js';
 import { runLitReview } from './jobs/lit-review.js';
 import { runWeeklyDigest } from './jobs/weekly-digest.js';
 import { runInsightScan } from './jobs/insight-scan.js';
+import { runTrackedJob, type JobContext } from './jobs/job-runs.js';
 import { pushToUser } from './lib/push.js';
 import { log } from './log.js';
+import { startPodLifecycleWatcher, stopPodsForRun } from './watcher.js';
 
 const controller = new AbortController();
 
@@ -37,47 +40,61 @@ async function main() {
       },
       async onApproved(runId) {
         log.info('handling approved run', { runId });
-        await dispatchApprovedExperiment(runId);
+        await handleApprovedRun(runId);
       },
     },
     controller.signal,
   );
+  startPodLifecycleWatcher(controller.signal);
 
   // Daily lit review at 06:00 (server local time). Manual trigger via the
   // `RUN_LIT_REVIEW_AT_BOOT=1` env to run on startup as well.
   cron.schedule('0 6 * * *', () => {
     log.info('cron: lit-review starting');
-    runLitReview().catch((err) => log.error('lit-review failed', { err: String(err) }));
+    startTrackedJob('lit_review', 'cron').catch((err) => log.error('lit-review failed', { err: String(err) }));
   });
   if (process.env.RUN_LIT_REVIEW_AT_BOOT === '1') {
     log.info('lit-review: running on boot per RUN_LIT_REVIEW_AT_BOOT=1');
-    runLitReview().catch((err) => log.error('lit-review at-boot failed', { err: String(err) }));
+    startTrackedJob('lit_review', 'boot').catch((err) => log.error('lit-review at-boot failed', { err: String(err) }));
   }
   // Sunday 18:00: cross-project insight scan (proposes new edges).
   cron.schedule('0 18 * * 0', () => {
     log.info('cron: insight-scan starting');
-    runInsightScan().catch((err) => log.error('insight-scan failed', { err: String(err) }));
+    startTrackedJob('insight_scan', 'cron').catch((err) => log.error('insight-scan failed', { err: String(err) }));
   });
   // Sunday 22:00: draft the weekly advisor digest (after insight-scan so the
   // digest can mention any newly-proposed edges).
   cron.schedule('0 22 * * 0', () => {
     log.info('cron: weekly-digest starting');
-    runWeeklyDigest().catch((err) => log.error('weekly-digest failed', { err: String(err) }));
+    startTrackedJob('weekly_digest', 'cron').catch((err) => log.error('weekly-digest failed', { err: String(err) }));
   });
+
+  await sweepQueuedTrackedJobs().catch((err) => log.error('job sweep failed', { err: String(err) }));
+  const jobSweepTimer = setInterval(() => {
+    sweepQueuedTrackedJobs().catch((err) => log.error('job sweep failed', { err: String(err) }));
+  }, 60_000);
+  controller.signal.addEventListener('abort', () => clearInterval(jobSweepTimer), { once: true });
+
   // Manual triggers via the API (NOTIFY).
   void (async () => {
     const conn = listener();
-    await conn.listen('lit_review_run', () => {
+    await conn.listen('lit_review_run', (payload) => {
       log.info('lit-review: manual trigger via NOTIFY');
-      runLitReview().catch((err) => log.error('lit-review manual failed', { err: String(err) }));
+      startTrackedJob('lit_review', 'notify', payload).catch((err) =>
+        log.error('lit-review manual failed', { err: String(err) }),
+      );
     });
-    await conn.listen('weekly_digest_run', () => {
+    await conn.listen('weekly_digest_run', (payload) => {
       log.info('weekly-digest: manual trigger via NOTIFY');
-      runWeeklyDigest().catch((err) => log.error('weekly-digest manual failed', { err: String(err) }));
+      startTrackedJob('weekly_digest', 'notify', payload).catch((err) =>
+        log.error('weekly-digest manual failed', { err: String(err) }),
+      );
     });
-    await conn.listen('insight_scan_run', () => {
+    await conn.listen('insight_scan_run', (payload) => {
       log.info('insight-scan: manual trigger via NOTIFY');
-      runInsightScan().catch((err) => log.error('insight-scan manual failed', { err: String(err) }));
+      startTrackedJob('insight_scan', 'notify', payload).catch((err) =>
+        log.error('insight-scan manual failed', { err: String(err) }),
+      );
     });
     await conn.listen('push_test', (payload) => {
       const userId = payload?.trim();
@@ -90,13 +107,80 @@ async function main() {
         data: { kind: 'test' },
       }).catch((err) => log.error('push_test failed', { err: String(err) }));
     });
-    log.info('subscribed to lit_review_run + weekly_digest_run + insight_scan_run + push_test');
+    await conn.listen('runpod_stop_requested', (payload) => {
+      const runId = parseRunId(payload);
+      if (!runId) return;
+      log.info('runpod_stop_requested: trigger', { runId });
+      stopPodsForRun(runId).catch((err) => log.error('runpod stop failed', { runId, err: String(err) }));
+    });
+    log.info('subscribed to lit_review_run + weekly_digest_run + insight_scan_run + push_test + runpod_stop_requested');
   })();
 
   log.info('runner ready');
   await new Promise<void>((resolve) => {
     controller.signal.addEventListener('abort', () => resolve(), { once: true });
   });
+}
+
+type TrackedJobKind = 'lit_review' | 'weekly_digest' | 'insight_scan';
+type JobRunKind = typeof schema.jobRuns.$inferSelect['kind'];
+
+async function startTrackedJob(kind: TrackedJobKind, trigger: string, payload?: string) {
+  const existingJobRunId = parseJobRunId(payload);
+  const requestPayload = existingJobRunId ? undefined : { trigger, payload: payload?.trim() || null };
+  return runTrackedJob(kind, (context) => runJob(kind, context), {
+    existingJobRunId,
+    requestPayload,
+    trigger,
+  });
+}
+
+async function runJob(kind: TrackedJobKind, context: JobContext) {
+  switch (kind) {
+    case 'lit_review':
+      return runLitReview(context);
+    case 'weekly_digest':
+      return runWeeklyDigest(undefined, context);
+    case 'insight_scan':
+      return runInsightScan(context);
+  }
+}
+
+async function sweepQueuedTrackedJobs() {
+  const rows = await db()
+    .select({ id: schema.jobRuns.id, kind: schema.jobRuns.kind })
+    .from(schema.jobRuns)
+    .where(
+      and(
+        eq(schema.jobRuns.status, 'queued'),
+        inArray(schema.jobRuns.kind, ['lit_review', 'weekly_digest', 'insight_scan']),
+      ),
+    )
+    .orderBy(asc(schema.jobRuns.createdAt))
+    .limit(10);
+
+  for (const row of rows) {
+    if (!isTrackedJobKind(row.kind)) continue;
+    startTrackedJob(row.kind, 'sweep', row.id).catch((err) =>
+      log.error('queued job failed', { jobRunId: row.id, kind: row.kind, err: String(err) }),
+    );
+  }
+}
+
+function isTrackedJobKind(kind: JobRunKind): kind is TrackedJobKind {
+  return kind === 'lit_review' || kind === 'weekly_digest' || kind === 'insight_scan';
+}
+
+function parseJobRunId(payload?: string): string | null {
+  return parseRunId(payload);
+}
+
+function parseRunId(payload?: string): string | null {
+  const trimmed = payload?.trim();
+  if (!trimmed) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)
+    ? trimmed
+    : null;
 }
 
 async function shutdown(reason: string, code = 0) {

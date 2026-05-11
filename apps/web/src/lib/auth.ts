@@ -1,4 +1,5 @@
 import { cookies, headers } from 'next/headers';
+import type { NextResponse } from 'next/server';
 import {
   createSession,
   invalidateSession,
@@ -50,6 +51,11 @@ export async function setSessionCookie(userId: string): Promise<void> {
   const { id, expiresAt } = await createSession(db(), userId);
   const store = await cookies();
   store.set(SESSION_COOKIE_NAME, id, { ...COOKIE_OPTIONS, expires: expiresAt });
+}
+
+export async function setSessionCookieOnResponse(res: NextResponse, userId: string): Promise<void> {
+  const { id, expiresAt } = await createSession(db(), userId);
+  res.cookies.set(SESSION_COOKIE_NAME, id, { ...COOKIE_OPTIONS, expires: expiresAt });
 }
 
 export async function clearSessionCookie(): Promise<void> {

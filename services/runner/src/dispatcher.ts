@@ -14,11 +14,12 @@
  * Pod monitoring (W&B URL capture, completion detection) lives in a
  * separate watcher (services/runner/src/watcher.ts, Phase 2 follow-up).
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, schema } from './db.js';
 import { emitEvent } from './queue.js';
 import { dispatchBatch, type DispatchPodSpec, type RunpodAccount } from './tools/runpod.js';
 import { log } from './log.js';
+import { recordTrail } from './trail.js';
 
 interface ParsedSpec {
   /** A descriptive name; defaults to <experiment_id>-<i>. */
@@ -30,6 +31,7 @@ interface ParsedSpec {
   containerDiskGb?: number;
   cloudType?: 'ALL' | 'SECURE' | 'COMMUNITY';
   dataCenterId?: string;
+  dryRun?: boolean;
   /** Optional config payload that the pod's bootstrap will read. Stored on
    * the resulting `runs` row as configYaml (YAML-serialized) or as a free
    * text blob if it's already a string. */
@@ -80,9 +82,40 @@ function validateSpec(raw: unknown, index: number): ParsedSpec {
         ? r.cloudType
         : undefined,
     dataCenterId: typeof r.dataCenterId === 'string' ? r.dataCenterId : undefined,
+    dryRun: r.dryRun === true,
     config: typeof r.config === 'object' || typeof r.config === 'string' ? (r.config as ParsedSpec['config']) : undefined,
     wandbProject: typeof r.wandbProject === 'string' ? r.wandbProject : undefined,
   };
+}
+
+/**
+ * Drive the post-approval workflow for a single run.
+ *
+ * Experiment approvals dispatch RunPod pods. Other approved runs are terminal:
+ * the user accepted the plan/output, but there is no runner-side dispatch step.
+ */
+export async function handleApprovedRun(runId: string): Promise<void> {
+  const rows = await db()
+    .select()
+    .from(schema.agentRuns)
+    .where(eq(schema.agentRuns.id, runId))
+    .limit(1);
+  const run = rows[0];
+  if (!run) {
+    log.error('dispatch: run not found', { runId });
+    return;
+  }
+  if (run.status !== 'approved') {
+    log.debug('dispatch: run is not approved', { runId, status: run.status });
+    return;
+  }
+
+  if (run.kind !== 'experiment') {
+    await finalizeApprovedNonExperiment(run);
+    return;
+  }
+
+  await dispatchApprovedExperiment(runId);
 }
 
 /**
@@ -135,6 +168,14 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
   await emitEvent(runId, 'deploy_started', `dispatching ${specs.length} pod(s)`, {
     count: specs.length,
   });
+  await recordTrail({
+    action: `Started RunPod dispatch for experiment run ${runId.slice(0, 8)}`,
+    why: 'The approved experiment plan included a runpod-spec block.',
+    entityKind: run.scopeEntityKind,
+    entityId: run.scopeEntityId,
+    agentRunId: runId,
+    detail: `Dispatching ${specs.length} pod(s) via account=${run.runpodAccount}`,
+  });
 
   const account: RunpodAccount = run.runpodAccount;
   const dispatchSpecs: DispatchPodSpec[] = specs.map((s, i) => ({
@@ -147,6 +188,7 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
     containerDiskGb: s.containerDiskGb,
     cloudType: s.cloudType,
     dataCenterId: s.dataCenterId,
+    dryRun: s.dryRun,
   }));
 
   const results = await dispatchBatch(dispatchSpecs);
@@ -172,13 +214,56 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
         gpuType: r.pod.gpuTypeId,
         gpuCount: r.pod.gpuCount,
       });
+      let createdRunId: string | null = null;
       if (experimentId) {
-        await db().insert(schema.runs).values({
+        const insertedRun = await db().insert(schema.runs).values({
           experimentId,
           configYaml: typeof spec.config === 'string' ? spec.config : JSON.stringify(spec.config ?? null),
           notesMd: `Dispatched pod ${r.pod.podId} (${r.pod.name})`,
           startedAt: new Date(),
-        });
+        }).returning({ id: schema.runs.id });
+        createdRunId = insertedRun[0]?.id ?? null;
+      }
+      const lifecycle = await db().insert(schema.podLifecycle).values({
+        agentRunId: runId,
+        experimentId,
+        runId: createdRunId,
+        runpodPodId: r.pod.podId,
+        account,
+        name: r.pod.name,
+        gpuTypeId: r.pod.gpuTypeId,
+        gpuCount: r.pod.gpuCount,
+        status: r.pod.sshHost ? 'running' : 'deploying',
+        desiredStatus: r.pod.desiredStatus,
+        sshHost: r.pod.sshHost,
+        sshPort: r.pod.sshPort,
+        lastCheckedAt: new Date(),
+        lastHeartbeatAt: r.pod.sshHost ? new Date() : undefined,
+        metadata: {
+          spec: dispatchSpecs[i],
+          planSpec: spec,
+          dryRun: spec.dryRun === true || process.env.RUNPOD_DRY_RUN === '1',
+        },
+      }).returning({ id: schema.podLifecycle.id });
+      await db().insert(schema.runArtifacts).values({
+        experimentId,
+        runId: createdRunId,
+        agentRunId: runId,
+        podLifecycleId: lifecycle[0]?.id,
+        kind: 'runpod_pod',
+        uri: `runpod:${r.pod.podId}`,
+        status: 'pending',
+        metadata: {
+          podId: r.pod.podId,
+          name: r.pod.name,
+          gpuTypeId: r.pod.gpuTypeId,
+          gpuCount: r.pod.gpuCount,
+        },
+      });
+      if (experimentId && r.pod.sshHost) {
+        await setExperimentStatus(experimentId, 'running', 'RunPod pod is running.');
+      } else if (experimentId) {
+        await setExperimentStatus(experimentId, 'queued', 'RunPod pod dispatched; waiting for runtime.');
       }
     } else {
       failed++;
@@ -192,30 +277,120 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
     .set({
       runpodPodIds: podIds,
       runpodPodId: podIds[0] ?? null,
-      status: failed === 0 ? 'completed' : succeeded === 0 ? 'failed' : 'completed',
+      runpodStatus: succeeded > 0 ? 'deploying' : 'blocked',
+      status: succeeded > 0 ? 'deploying' : 'blocked',
       lastError: failures.length ? failures.join('\n').slice(0, 4000) : null,
-      completedAt: new Date(),
+      completedAt: succeeded > 0 ? null : new Date(),
       updatedAt: new Date(),
     })
     .where(eq(schema.agentRuns.id, runId));
+  if (succeeded === 0 && experimentId) {
+    await setExperimentStatus(experimentId, 'blocked', failures.join('\n').slice(0, 1000));
+  }
 
-  await emitEvent(runId, succeeded > 0 ? 'deploy_completed' : 'failed',
+  await emitEvent(runId, succeeded > 0 ? 'deploy_completed' : 'runpod_blocked',
     `dispatched ${succeeded}/${results.length} pod(s)`,
     { succeeded, failed, podIds });
+  await recordTrail({
+    action: `Finished RunPod dispatch for run ${runId.slice(0, 8)}`,
+    why: 'Record the outcome of the approved experiment launch.',
+    entityKind: run.scopeEntityKind,
+    entityId: run.scopeEntityId,
+    agentRunId: runId,
+    detail: `Dispatched ${succeeded}/${results.length} pod(s). Pod IDs: ${podIds.join(', ') || 'none'}`,
+  });
 
   log.info('dispatch finished', { runId, succeeded, failed, podIds });
 }
 
+async function finalizeApprovedNonExperiment(run: typeof schema.agentRuns.$inferSelect) {
+  const now = new Date();
+  const updated = await db()
+    .update(schema.agentRuns)
+    .set({
+      status: 'completed',
+      completedAt: now,
+      updatedAt: now,
+      lastError: null,
+    })
+    .where(and(eq(schema.agentRuns.id, run.id), eq(schema.agentRuns.status, 'approved')))
+    .returning({ id: schema.agentRuns.id });
+  if (updated.length === 0) {
+    log.debug('approved non-experiment already finalized', { runId: run.id, kind: run.kind });
+    return;
+  }
+
+  await emitEvent(run.id, 'approval_finalized', `${run.kind} approval accepted; no dispatch required`, {
+    kind: run.kind,
+  });
+  await recordTrail({
+    action: `Accepted ${run.kind} run ${run.id.slice(0, 8)}`,
+    why: `${run.kind} approvals do not launch RunPod jobs; the approved result is now recorded as complete.`,
+    entityKind: run.scopeEntityKind,
+    entityId: run.scopeEntityId,
+    agentRunId: run.id,
+    detail: (run.planMd ?? run.request).slice(0, 500),
+  });
+  log.info('finalized approved non-experiment run', { runId: run.id, kind: run.kind });
+}
+
 async function fail(runId: string, err: string) {
   log.error('dispatch failed', { runId, err });
+  const runRows = await db()
+    .select({
+      scopeEntityKind: schema.agentRuns.scopeEntityKind,
+      scopeEntityId: schema.agentRuns.scopeEntityId,
+    })
+    .from(schema.agentRuns)
+    .where(eq(schema.agentRuns.id, runId))
+    .limit(1);
+  const run = runRows[0];
   await db()
     .update(schema.agentRuns)
     .set({
-      status: 'failed',
+      status: 'blocked',
       lastError: err.slice(0, 4000),
       completedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(schema.agentRuns.id, runId));
-  await emitEvent(runId, 'failed', err.slice(0, 1000));
+  if (run?.scopeEntityKind === 'experiment' && run.scopeEntityId) {
+    await setExperimentStatus(run.scopeEntityId, 'blocked', err.slice(0, 1000));
+  }
+  await emitEvent(runId, 'runpod_blocked', err.slice(0, 1000));
+  await recordTrail({
+    action: `RunPod dispatch failed for run ${runId.slice(0, 8)}`,
+    why: 'The approved experiment plan could not be launched.',
+    entityKind: run?.scopeEntityKind ?? undefined,
+    entityId: run?.scopeEntityId ?? undefined,
+    agentRunId: runId,
+    detail: err.slice(0, 500),
+  });
+}
+
+async function setExperimentStatus(
+  experimentId: string,
+  status: typeof schema.experiments.$inferSelect['status'],
+  note: string,
+) {
+  const rows = await db()
+    .select({ status: schema.experiments.status })
+    .from(schema.experiments)
+    .where(eq(schema.experiments.id, experimentId))
+    .limit(1);
+  const current = rows[0];
+  if (!current || current.status === status) return;
+  await db()
+    .update(schema.experiments)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(schema.experiments.id, experimentId));
+  await db().insert(schema.workflowEvents).values({
+    entityKind: 'experiment',
+    entityId: experimentId,
+    eventType: status === 'blocked' ? 'blocked' : 'state_changed',
+    fromStatus: current.status,
+    toStatus: status,
+    actorKind: 'runner',
+    note,
+  });
 }

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { kanbanCards, kanbanColumns } from '@sagan/db/schema';
+import { kanbanCards, kanbanColumns, todos } from '@sagan/db/schema';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
-import { loadBoard } from '@/lib/kanban';
+import { loadBoard, todoStatusForColumn } from '@/lib/kanban';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 export async function GET(req: Request) {
   try {
@@ -25,8 +26,9 @@ const createSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  let session;
   try {
-    await requireSession();
+    session = await requireSession();
   } catch {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -37,11 +39,12 @@ export async function POST(req: Request) {
   }
   // Confirm the column exists.
   const col = await db()
-    .select({ id: kanbanColumns.id })
+    .select({ id: kanbanColumns.id, title: kanbanColumns.title })
     .from(kanbanColumns)
     .where(eq(kanbanColumns.id, parsed.data.columnId))
     .limit(1);
-  if (col.length === 0) {
+  const column = col[0];
+  if (!column) {
     return NextResponse.json({ error: 'column_not_found' }, { status: 404 });
   }
   // Append at the end: position = (max + 1).
@@ -50,14 +53,35 @@ export async function POST(req: Request) {
     .from(kanbanCards)
     .where(eq(kanbanCards.columnId, parsed.data.columnId));
   const nextPos = positions.reduce((m, r) => Math.max(m, r.position), -1) + 1;
+  const todoRows = await db()
+    .insert(todos)
+    .values({
+      text: parsed.data.title,
+      bodyMd: parsed.data.bodyMd,
+      status: todoStatusForColumn(column),
+      priority: 'normal',
+    })
+    .returning({ id: todos.id });
+  const todo = todoRows[0]!;
   const inserted = await db()
     .insert(kanbanCards)
     .values({
       columnId: parsed.data.columnId,
       title: parsed.data.title,
       bodyMd: parsed.data.bodyMd,
+      linkedKind: 'todo',
+      linkedId: todo.id,
       position: nextPos,
     })
     .returning();
+  const card = inserted[0]!;
+  await appendDailyLogTrailBestEffort({
+    action: `Created kanban card ${card.title}`,
+    why: 'A user added a next-step card to the workflow board.',
+    detail: `columnId=${card.columnId}; position=${card.position}`,
+    actorKind: 'user',
+    actorUserId: session.user.id,
+    correlationId: card.id,
+  });
   return NextResponse.json({ card: inserted[0] });
 }

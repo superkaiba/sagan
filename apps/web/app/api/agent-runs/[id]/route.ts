@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { agentRuns, agentRunEvents } from '@sagan/db/schema';
+import { agentRuns, agentRunEvents, podLifecycle, runArtifacts } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { requireOwner } from '@/lib/access';
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  try {
+    await requireOwner();
+  } catch {
+    return NextResponse.json({ error: 'owner_required' }, { status: 403 });
+  }
   const { id } = await ctx.params;
 
   const runRows = await db().select().from(agentRuns).where(eq(agentRuns.id, id)).limit(1);
@@ -19,5 +22,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     .where(eq(agentRunEvents.runId, id))
     .orderBy(agentRunEvents.createdAt);
 
-  return NextResponse.json({ run, events });
+  const pods = await db()
+    .select()
+    .from(podLifecycle)
+    .where(eq(podLifecycle.agentRunId, id))
+    .orderBy(podLifecycle.createdAt);
+  const artifacts = await db()
+    .select()
+    .from(runArtifacts)
+    .where(eq(runArtifacts.agentRunId, id))
+    .orderBy(runArtifacts.createdAt);
+
+  return NextResponse.json({ run, events, pods, artifacts });
 }

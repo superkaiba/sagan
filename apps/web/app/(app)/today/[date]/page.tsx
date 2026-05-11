@@ -14,6 +14,63 @@ const KIND_BADGES: Record<string, { label: string; bg: string }> = {
   decision: { label: 'decision', bg: 'oklch(0.86 0.13 250)' },
   note: { label: 'note', bg: 'oklch(0.88 0.04 270)' },
 };
+const ACTION_PREFIX_RE = /^\s*(?:\*\*)?Action:/;
+
+function isActionTrail(entry: { bodyMd: string }) {
+  return ACTION_PREFIX_RE.test(entry.bodyMd);
+}
+
+function EntryList({
+  title,
+  description,
+  entries,
+  empty,
+}: {
+  title: string;
+  description: string;
+  entries: typeof dailyLogEntries.$inferSelect[];
+  empty: string;
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-medium">{title}</h2>
+          <p className="text-xs text-[--color-muted]">{description}</p>
+        </div>
+        <span className="font-mono text-xs text-[--color-muted]">{entries.length}</span>
+      </div>
+      <div className="divide-y divide-[--color-border] rounded-lg border border-[--color-border]">
+        {entries.length === 0 ? (
+          <p className="p-4 text-sm text-[--color-muted]">{empty}</p>
+        ) : (
+          entries.map((entry) => {
+            const badge = KIND_BADGES[entry.kind] ?? KIND_BADGES.note!;
+            return (
+              <article key={entry.id} className="space-y-2 p-3 text-sm">
+                <div className="flex items-baseline gap-3 text-xs">
+                  <span
+                    className="inline-block rounded-md px-2 py-0.5 text-[10px] font-medium"
+                    style={{ background: badge.bg, color: 'oklch(0.20 0.04 270)' }}
+                  >
+                    {badge.label}
+                  </span>
+                  <time className="text-[--color-muted]">
+                    {new Date(entry.createdAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </time>
+                </div>
+                <Markdown>{entry.bodyMd}</Markdown>
+              </article>
+            );
+          })
+        )}
+      </div>
+    </section>
+  );
+}
 
 export default async function ArchivedDayPage({ params }: { params: Promise<{ date: string }> }) {
   const { date } = await params;
@@ -25,6 +82,10 @@ export default async function ArchivedDayPage({ params }: { params: Promise<{ da
     .from(dailyLogEntries)
     .where(and(eq(dailyLogEntries.day, date), isNull(dailyLogEntries.archivedAt)))
     .orderBy(asc(dailyLogEntries.position), asc(dailyLogEntries.createdAt));
+  const newest = entries.slice().reverse();
+  const cleanResults = newest.filter((entry) => entry.kind === 'clean_result');
+  const actionTrail = newest.filter(isActionTrail);
+  const researchEntries = newest.filter((entry) => entry.kind !== 'clean_result' && !isActionTrail(entry));
 
   return (
     <div className="space-y-6">
@@ -43,42 +104,31 @@ export default async function ArchivedDayPage({ params }: { params: Promise<{ da
           <Link href={`/digest/${date}`} className="hover:text-[--color-fg]">
             shareable link
           </Link>
+          {' · '}
+          <Link href={`/mentor/daily/${date}`} className="hover:text-[--color-fg]">
+            mentor clean log
+          </Link>
         </p>
       </header>
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">
-          Research log
-        </h2>
-        <div className="rounded-lg border border-[--color-border] divide-y divide-[--color-border]">
-          {entries.length === 0 ? (
-            <p className="p-4 text-sm text-[--color-muted]">Nothing was logged on this day.</p>
-          ) : (
-            entries.map((entry) => {
-              const badge = KIND_BADGES[entry.kind] ?? KIND_BADGES.note!;
-              return (
-                <article key={entry.id} className="space-y-1 p-3 text-sm">
-                  <div className="flex items-baseline gap-3 text-xs">
-                    <span
-                      className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                      style={{ background: badge.bg, color: 'oklch(0.20 0.04 270)' }}
-                    >
-                      {badge.label}
-                    </span>
-                    <time className="text-[--color-muted]">
-                      {new Date(entry.createdAt).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </time>
-                  </div>
-                  <Markdown>{entry.bodyMd}</Markdown>
-                </article>
-              );
-            })
-          )}
-        </div>
-      </section>
+      <EntryList
+        title="Research entries"
+        description="Notes, decisions, and blockers from the day."
+        entries={researchEntries}
+        empty="No research entries were logged on this day."
+      />
+      <EntryList
+        title="Clean results"
+        description="Mentor-facing results saved from the day."
+        entries={cleanResults}
+        empty="No clean results were saved on this day."
+      />
+      <EntryList
+        title="Action trail"
+        description="System and workflow actions recorded with reasons."
+        entries={actionTrail}
+        empty="No action-trail entries were logged on this day."
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { dailyLogEntries } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -27,13 +28,25 @@ const createSchema = z.object({
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   kind: z.enum(['clean_result', 'blocker', 'decision', 'note']),
   bodyMd: z.string().min(1).max(20_000),
-  entityKind: z.enum(['project', 'belief', 'experiment', 'run', 'todo', 'lit_item', 'project_narrative']).optional(),
+  entityKind: z.enum([
+    'project',
+    'belief',
+    'experiment',
+    'run',
+    'clean_result',
+    'todo',
+    'lit_item',
+    'project_narrative',
+    'daily_log_entry',
+    'weekly_digest',
+  ]).optional(),
   entityId: z.string().uuid().optional(),
 });
 
 export async function POST(req: Request) {
+  let session;
   try {
-    await requireSession();
+    session = await requireSession();
   } catch {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -52,5 +65,17 @@ export async function POST(req: Request) {
       entityId: parsed.data.entityId,
     })
     .returning();
+  const entry = inserted[0]!;
+  await appendDailyLogTrailBestEffort({
+    day: entry.day,
+    action: `Added ${entry.kind} daily log entry`,
+    why: 'A user recorded progress, evidence, a decision, or a blocker in the daily research log.',
+    entityKind: entry.entityKind ?? undefined,
+    entityId: entry.entityId ?? undefined,
+    detail: entry.bodyMd.slice(0, 500),
+    actorKind: 'user',
+    actorUserId: session.user.id,
+    correlationId: entry.id,
+  });
   return NextResponse.json({ entry: inserted[0] });
 }

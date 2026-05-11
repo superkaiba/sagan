@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { projectNarratives } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 const createSchema = z.object({
   projectId: z.string().uuid(),
@@ -11,8 +12,9 @@ const createSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  let session;
   try {
-    await requireSession();
+    session = await requireSession();
   } catch {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -28,5 +30,16 @@ export async function POST(req: Request) {
       status: 'draft',
     })
     .returning();
+  const narrative = inserted[0]!;
+  await appendDailyLogTrailBestEffort({
+    action: `Created project narrative ${narrative.title}`,
+    why: 'A user started a running project summary for mentor/project review.',
+    entityKind: 'project',
+    entityId: narrative.projectId,
+    detail: `narrative=${narrative.id}`,
+    actorKind: 'user',
+    actorUserId: session.user.id,
+    correlationId: narrative.id,
+  });
   return NextResponse.json({ narrative: inserted[0] });
 }

@@ -1,13 +1,14 @@
 import { and, eq, gt } from 'drizzle-orm';
 import { agentRuns, agentRunEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { requireOwner } from '@/lib/access';
 
 const TERMINAL_STATUSES = new Set([
   'completed',
   'failed',
   'cancelled',
   'rejected',
+  'blocked',
 ]);
 
 /**
@@ -25,8 +26,11 @@ const TERMINAL_STATUSES = new Set([
  *   data: { status: "completed" }
  */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session) return new Response('unauthorized', { status: 401 });
+  try {
+    await requireOwner();
+  } catch {
+    return new Response('owner_required', { status: 403 });
+  }
   const { id } = await ctx.params;
 
   const stream = new ReadableStream({
@@ -67,7 +71,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           return;
         }
         if (run.status !== lastStatus) {
-          send('status', { status: run.status, planMd: run.planMd, lastError: run.lastError });
+          send('status', { status: run.status, planMd: run.planMd, planJson: run.planJson, lastError: run.lastError });
           lastStatus = run.status;
         }
 

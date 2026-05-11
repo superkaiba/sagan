@@ -5,9 +5,12 @@ export const ENTITY_KINDS = [
   'belief',
   'experiment',
   'run',
+  'clean_result',
   'todo',
   'lit_item',
   'project_narrative',
+  'daily_log_entry',
+  'weekly_digest',
 ] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
 export const entityKindSchema = z.enum(ENTITY_KINDS);
@@ -23,6 +26,7 @@ export const AGENT_RUN_STATUSES = [
   'approved',
   'rejected',
   'deploying',
+  'blocked',
   'completed',
   'failed',
   'cancelled',
@@ -44,6 +48,7 @@ export const runEventSchema = z.object({
   type: z.enum([
     'queued',
     'started',
+    'assistant_text',
     'tool_call',
     'tool_result',
     'plan_ready',
@@ -52,7 +57,17 @@ export const runEventSchema = z.object({
     'rejected',
     'file_change',
     'deploy_started',
+    'deploy_pod_started',
+    'deploy_pod_failed',
     'deploy_completed',
+    'runpod_status',
+    'runpod_retry',
+    'runpod_blocked',
+    'runpod_stop_requested',
+    'runpod_stop_skipped',
+    'runpod_stop_failed',
+    'runpod_stopped',
+    'auto_continuation_queued',
     'completed',
     'failed',
     'cancelled',
@@ -67,6 +82,21 @@ export type RunEvent = z.infer<typeof runEventSchema>;
 export const planSchema = z.object({
   runId: z.string().uuid(),
   bodyMd: z.string(),
+  planJson: z
+    .object({
+      goal: z.string().optional(),
+      hypothesis: z.string().optional(),
+      prediction: z.string().optional(),
+      killCriterion: z.string().optional(),
+      compute: z.string().optional(),
+      hardware: z.string().optional(),
+      artifacts: z.string().optional(),
+      verification: z.string().optional(),
+      risks: z.string().optional(),
+      likelyCleanResult: z.string().optional(),
+      sections: z.array(z.object({ title: z.string(), body: z.string() })).optional(),
+    })
+    .optional(),
   changedFiles: z
     .array(
       z.object({

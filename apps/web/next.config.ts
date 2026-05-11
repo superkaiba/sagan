@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const config: NextConfig = {
+  allowedDevOrigins: ['*.trycloudflare.com'],
   // Workspace packages live above this dir; let Next bundle them with us.
   transpilePackages: ['@sagan/agent-protocol', '@sagan/api', '@sagan/auth', '@sagan/db', '@sagan/ui'],
   // Allow `import { hash } from '@node-rs/argon2'` in route handlers /

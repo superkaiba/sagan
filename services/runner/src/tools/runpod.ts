@@ -192,9 +192,12 @@ export interface DispatchPodSpec {
   containerDiskGb?: number;
   cloudType?: 'ALL' | 'SECURE' | 'COMMUNITY';
   dataCenterId?: string;
+  dryRun?: boolean;
 }
 
 export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
+  if (spec.dryRun || isDryRun()) return dryRunPod(spec);
+
   const account = spec.account ?? 'team';
   const gpuTypeId = GPU_TYPE_IDS[spec.gpuType] ?? spec.gpuType;
   const inputs: Record<string, string | number | boolean> = {
@@ -254,6 +257,8 @@ export async function dispatchBatch(specs: DispatchPodSpec[]): Promise<
 }
 
 export async function getPod(podId: string, account: RunpodAccount = 'team'): Promise<PodInfo> {
+  if (isDryRunPodId(podId)) return dryRunPodInfo(podId, account, 'RUNNING');
+
   const data = await graphql<{ pod: RawPod | null }>(
     account,
     `query Pod($id: String!) {
@@ -270,6 +275,8 @@ export async function getPod(podId: string, account: RunpodAccount = 'team'): Pr
 }
 
 export async function listPods(account: RunpodAccount = 'team'): Promise<PodInfo[]> {
+  if (isDryRun()) return [];
+
   const data = await graphql<{ myself: { pods?: RawPod[] } | null }>(
     account,
     `{
@@ -289,6 +296,8 @@ export async function terminatePod(
   podId: string,
   account: RunpodAccount = 'team',
 ): Promise<boolean> {
+  if (isDryRunPodId(podId)) return true;
+
   const data = await graphql<{ podTerminate: unknown }>(
     account,
     `mutation Terminate($id: String!) { podTerminate(input: {podId: $id}) }`,
@@ -301,6 +310,8 @@ export async function stopPod(
   podId: string,
   account: RunpodAccount = 'team',
 ): Promise<PodInfo> {
+  if (isDryRunPodId(podId)) return dryRunPodInfo(podId, account, 'STOPPED');
+
   const data = await graphql<{ podStop: RawPod | null }>(
     account,
     `mutation Stop($id: String!) { podStop(input: {podId: $id}) { id name desiredStatus } }`,
@@ -315,6 +326,8 @@ export async function resumePod(
   gpuCount: number,
   account: RunpodAccount = 'team',
 ): Promise<PodInfo> {
+  if (isDryRunPodId(podId)) return { ...dryRunPodInfo(podId, account, 'RUNNING'), gpuCount };
+
   const data = await graphql<{ podResume: RawPod | null }>(
     account,
     `mutation Resume($id: String!, $n: Int!) {
@@ -337,6 +350,8 @@ export async function waitForSsh(
   pollIntervalMs = 10_000,
   account: RunpodAccount = 'team',
 ): Promise<PodInfo> {
+  if (isDryRunPodId(podId)) return dryRunPodInfo(podId, account, 'RUNNING');
+
   const deadline = Date.now() + timeoutMs;
   let last: PodInfo | undefined;
   while (Date.now() < deadline) {
@@ -347,4 +362,44 @@ export async function waitForSsh(
   throw new RunPodError(
     `Pod ${podId} did not expose public 22/tcp within ${Math.round(timeoutMs / 1000)}s. Last status: ${last?.desiredStatus ?? 'unknown'}`,
   );
+}
+
+function isDryRun() {
+  return process.env.RUNPOD_DRY_RUN === '1';
+}
+
+function isDryRunPodId(podId: string) {
+  return podId.startsWith('dryrun-');
+}
+
+function dryRunPod(spec: DispatchPodSpec): PodInfo {
+  const gpuTypeId = GPU_TYPE_IDS[spec.gpuType] ?? spec.gpuType;
+  const podId = `dryrun-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    podId,
+    name: spec.name,
+    desiredStatus: 'RUNNING',
+    gpuCount: spec.gpuCount,
+    gpuTypeId,
+    sshHost: '127.0.0.1',
+    sshPort: 2222,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function dryRunPodInfo(
+  podId: string,
+  account: RunpodAccount,
+  desiredStatus: 'RUNNING' | 'STOPPED' | 'TERMINATED',
+): PodInfo {
+  return {
+    podId,
+    name: `${account}-${podId}`,
+    desiredStatus,
+    gpuCount: 1,
+    gpuTypeId: 'dry-run-gpu',
+    sshHost: desiredStatus === 'RUNNING' ? '127.0.0.1' : null,
+    sshPort: desiredStatus === 'RUNNING' ? 2222 : null,
+    createdAt: new Date().toISOString(),
+  };
 }

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { beliefs } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 export async function GET() {
   try {
@@ -24,8 +25,9 @@ const createSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  let session;
   try {
-    await requireSession();
+    session = await requireSession();
   } catch {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -45,5 +47,16 @@ export async function POST(req: Request) {
       status: 'draft',
     })
     .returning();
+  const belief = inserted[0]!;
+  await appendDailyLogTrailBestEffort({
+    action: `Created belief ${belief.title}`,
+    why: 'A user recorded a hypothesis or claim to track evidence against it.',
+    entityKind: 'belief',
+    entityId: belief.id,
+    detail: belief.topic ? `topic=${belief.topic}; confidence=${belief.confidence}` : `confidence=${belief.confidence}`,
+    actorKind: 'user',
+    actorUserId: session.user.id,
+    correlationId: belief.id,
+  });
   return NextResponse.json({ belief: inserted[0] });
 }

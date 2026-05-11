@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { eq } from 'drizzle-orm';
-import { agentRuns, agentRunEvents } from '@sagan/db/schema';
+import { agentRuns, agentRunEvents, podLifecycle, runArtifacts } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { RunStream } from './RunStream';
 
@@ -16,6 +16,16 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
     .from(agentRunEvents)
     .where(eq(agentRunEvents.runId, id))
     .orderBy(agentRunEvents.createdAt);
+  const pods = await db()
+    .select()
+    .from(podLifecycle)
+    .where(eq(podLifecycle.agentRunId, id))
+    .orderBy(podLifecycle.createdAt);
+  const artifacts = await db()
+    .select()
+    .from(runArtifacts)
+    .where(eq(runArtifacts.agentRunId, id))
+    .orderBy(runArtifacts.createdAt);
 
   return (
     <div className="space-y-6">
@@ -30,13 +40,40 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
       <RunStream
         runId={run.id}
         kind={run.kind}
+        request={run.request}
         initialStatus={run.status}
         initialPlanMd={run.planMd}
+        initialPlanJson={run.planJson}
         initialEvents={events.map((e) => ({
           id: e.id,
           eventType: e.eventType,
           body: e.body,
           createdAt: e.createdAt.toISOString(),
+        }))}
+        initialPods={pods.map((pod) => ({
+          id: pod.id,
+          podId: pod.runpodPodId,
+          account: pod.account,
+          name: pod.name,
+          gpuTypeId: pod.gpuTypeId,
+          gpuCount: pod.gpuCount,
+          status: pod.status,
+          desiredStatus: pod.desiredStatus,
+          sshHost: pod.sshHost,
+          sshPort: pod.sshPort,
+          retryCount: pod.retryCount,
+          maxRetries: pod.maxRetries,
+          blockedReason: pod.blockedReason,
+          lastError: pod.lastError,
+          lastCheckedAt: pod.lastCheckedAt?.toISOString() ?? null,
+        }))}
+        initialArtifacts={artifacts.map((artifact) => ({
+          id: artifact.id,
+          kind: artifact.kind,
+          uri: artifact.uri,
+          status: artifact.status,
+          verifiedAt: artifact.verifiedAt?.toISOString() ?? null,
+          createdAt: artifact.createdAt.toISOString(),
         }))}
       />
     </div>

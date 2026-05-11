@@ -22,6 +22,8 @@ import {
 import { db } from '../db.js';
 import { env, requireEnv } from '../env.js';
 import { log } from '../log.js';
+import { recordTrail } from '../trail.js';
+import type { JobContext, JobOutcome } from './job-runs.js';
 
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -159,7 +161,7 @@ Constraints:
 - Aim for 200–500 words total.`;
 }
 
-export async function runWeeklyDigest(refDate?: Date) {
+export async function runWeeklyDigest(refDate?: Date, context: JobContext = {}): Promise<JobOutcome> {
   requireEnv('ANTHROPIC_API_KEY');
   const ref = refDate ?? new Date();
   const weekStart = weekStartFor(ref);
@@ -175,7 +177,16 @@ export async function runWeeklyDigest(refDate?: Date) {
     .limit(1);
   if (existing[0]) {
     log.info('weekly-digest: already exists', { weekStart: weekStartIso, id: existing[0].id });
-    return existing[0];
+    await recordTrail({
+      action: `Skipped weekly digest for ${weekStartIso}`,
+      why: 'A digest for this week already exists, so the job stayed idempotent.',
+      jobRunId: context.jobRunId,
+      detail: `Digest ${existing[0].id}`,
+    });
+    return {
+      status: 'skipped',
+      resultPayload: { weekStart: weekStartIso, digestId: existing[0].id, reason: 'already_exists' },
+    };
   }
 
   const data = await aggregate(weekStart, weekEnd);
@@ -206,5 +217,14 @@ export async function runWeeklyDigest(refDate?: Date) {
     id: inserted[0]!.id,
     bytes: bodyMd.length,
   });
-  return inserted[0];
+  await recordTrail({
+    action: `Drafted weekly digest for ${weekStartIso}`,
+    why: 'Summarize the week of logged research activity for mentor/advisor review.',
+    jobRunId: context.jobRunId,
+    detail: `Digest ${inserted[0]!.id}; ${bodyMd.length} characters.`,
+  });
+  return {
+    status: 'completed',
+    resultPayload: { weekStart: weekStartIso, digestId: inserted[0]!.id, bytes: bodyMd.length },
+  };
 }

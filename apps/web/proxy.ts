@@ -1,6 +1,16 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout', '/api/auth/me'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/signup',
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/logout',
+  '/api/auth/me',
+  '/api/auth/google/start',
+  '/api/auth/google/callback',
+  '/api/collaborators/accept',
+];
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -10,13 +20,19 @@ export function proxy(req: NextRequest) {
     PUBLIC_PATHS.includes(pathname) ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/favicon') ||
+    pathname === '/manifest.webmanifest' ||
+    pathname.startsWith('/invite/') ||
     pathname.startsWith('/digest/') ||
     pathname.startsWith('/d/') ||
     pathname.startsWith('/p/') ||
     pathname.startsWith('/r/') ||
-    pathname.startsWith('/mentor/') ||
+    pathname === '/mentor/updates' ||
     pathname.startsWith('/api/mentor/')
   ) {
+    return NextResponse.next();
+  }
+
+  if (pathname.startsWith('/api/') && req.headers.get('authorization')?.startsWith('Bearer ')) {
     return NextResponse.next();
   }
 

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { desc } from 'drizzle-orm';
-import { beliefs, experiments, litItems, projects, runs, todos } from '@sagan/db/schema';
+import { beliefs, cleanResults, experiments, litItems, projects, runs, todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { KIND_LABELS, type EntityKind } from '@/lib/entity';
 
@@ -14,10 +14,11 @@ interface Card {
 }
 
 async function recent(): Promise<Card[]> {
-  const [proj, bel, exp, rn, td, lit] = await Promise.all([
+  const [proj, bel, exp, cr, rn, td, lit] = await Promise.all([
     db().select().from(projects).orderBy(desc(projects.updatedAt)).limit(20),
     db().select().from(beliefs).orderBy(desc(beliefs.updatedAt)).limit(50),
     db().select().from(experiments).orderBy(desc(experiments.updatedAt)).limit(20),
+    db().select().from(cleanResults).orderBy(desc(cleanResults.updatedAt)).limit(20),
     db().select().from(runs).orderBy(desc(runs.updatedAt)).limit(20),
     db().select().from(todos).orderBy(desc(todos.updatedAt)).limit(20),
     db().select().from(litItems).orderBy(desc(litItems.updatedAt)).limit(20),
@@ -31,6 +32,7 @@ async function recent(): Promise<Card[]> {
       meta: `${b.confidence} · ${b.status}`,
     })),
     ...exp.map<Card>((e) => ({ kind: 'experiment', id: e.id, title: e.title, meta: e.status })),
+    ...cr.map<Card>((r) => ({ kind: 'clean_result', id: r.id, title: r.title, meta: r.status })),
     ...rn.map<Card>((r) => ({
       kind: 'run',
       id: r.id,
@@ -51,7 +53,7 @@ export default async function KnowledgePage() {
     byKind.set(item.kind, arr);
   }
 
-  const kinds: EntityKind[] = ['project', 'belief', 'experiment', 'run', 'todo', 'lit_item'];
+  const kinds: EntityKind[] = ['project', 'belief', 'experiment', 'clean_result', 'run', 'todo', 'lit_item'];
 
   return (
     <div className="space-y-6">

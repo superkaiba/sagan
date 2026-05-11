@@ -5,6 +5,7 @@ import { edges } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import { isEntityKind } from '@/lib/entity';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 const KIND_VALUES = [
   'project',
@@ -71,8 +72,9 @@ const createSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  let session;
   try {
-    await requireSession();
+    session = await requireSession();
   } catch {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -86,5 +88,16 @@ export async function POST(req: Request) {
     .values(parsed.data)
     .onConflictDoNothing()
     .returning();
+  const edge = inserted[0];
+  await appendDailyLogTrailBestEffort({
+    action: edge ? `Linked ${edge.fromKind} to ${edge.toKind}` : `Skipped duplicate link ${parsed.data.fromKind} to ${parsed.data.toKind}`,
+    why: 'A user updated the research knowledge graph by recording a relationship.',
+    entityKind: parsed.data.fromKind,
+    entityId: parsed.data.fromId,
+    detail: `${parsed.data.fromKind}:${parsed.data.fromId} --${parsed.data.type}--> ${parsed.data.toKind}:${parsed.data.toId}`,
+    actorKind: 'user',
+    actorUserId: session.user.id,
+    correlationId: edge?.id ?? `${parsed.data.fromId}:${parsed.data.toId}:${parsed.data.type}`,
+  });
   return NextResponse.json({ edge: inserted[0] ?? null });
 }

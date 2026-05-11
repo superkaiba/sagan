@@ -37,7 +37,12 @@ export default async function PublicDigestPage({
     <main className="mx-auto max-w-2xl px-4 py-10 space-y-6">
       <header className="space-y-1">
         <p className="text-xs uppercase tracking-wide text-[--color-muted]">Research digest</p>
-        <h1 className="text-2xl font-semibold tracking-tight">{date}</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">{date}</h1>
+          <a href={`/mentor/daily/${date}`} className="text-xs text-[--color-muted] hover:text-[--color-fg]">
+            clean results only
+          </a>
+        </div>
       </header>
 
       {entries.length === 0 ? (

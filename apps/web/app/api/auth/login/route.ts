@@ -7,7 +7,7 @@ import { db } from '@/lib/db';
 import { createSessionToken, setSessionCookie } from '@/lib/auth';
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
   password: z.string().min(8).max(256),
 });
 
@@ -22,7 +22,8 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
-  const { email, password } = parsed.data;
+  const { password } = parsed.data;
+  const email = parsed.data.email.toLowerCase();
 
   const rows = await db().select().from(users).where(eq(users.email, email)).limit(1);
   const user = rows[0];
@@ -44,10 +45,10 @@ export async function POST(req: Request) {
     const { id } = await createSessionToken(user.id);
     return NextResponse.json({
       ok: true,
-      user: { id: user.id, email: user.email },
+      user: { id: user.id, email: user.email, role: user.role },
       sessionToken: id,
     });
   }
   await setSessionCookie(user.id);
-  return NextResponse.json({ ok: true, user: { id: user.id, email: user.email } });
+  return NextResponse.json({ ok: true, user: { id: user.id, email: user.email, role: user.role } });
 }

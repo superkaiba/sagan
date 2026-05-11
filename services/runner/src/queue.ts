@@ -8,11 +8,14 @@
  * IDs for the main loop to claim with FOR UPDATE SKIP LOCKED.
  */
 import { listener, db, schema } from './db.js';
-import { eq, and, inArray, sql, asc } from 'drizzle-orm';
+import { eq, and, inArray, sql, asc, lt } from 'drizzle-orm';
 import { log } from './log.js';
+import { recordTrail } from './trail.js';
 
 export const QUEUED_CHANNEL = 'agent_run_queued';
 export const APPROVED_CHANNEL = 'agent_run_approved';
+
+const DEFAULT_STALE_RUNNING_MINUTES = 6 * 60;
 
 export interface QueueHandlers {
   onQueued: (runId: string) => Promise<void>;
@@ -52,6 +55,8 @@ export async function startQueue(handlers: QueueHandlers, signal: AbortSignal): 
 }
 
 async function sweep(handlers: QueueHandlers) {
+  await recoverStaleRunningRuns();
+
   const rows = await db()
     .select({ id: schema.agentRuns.id, status: schema.agentRuns.status })
     .from(schema.agentRuns)
@@ -61,6 +66,42 @@ async function sweep(handlers: QueueHandlers) {
   for (const row of rows) {
     handle(row.id, row.status === 'approved' ? 'approved' : 'queued', handlers);
   }
+}
+
+async function recoverStaleRunningRuns() {
+  const staleAfterMs = staleRunningAfterMs();
+  const cutoff = new Date(Date.now() - staleAfterMs);
+  const now = new Date();
+  const rows = await db()
+    .update(schema.agentRuns)
+    .set({
+      status: 'failed',
+      lastError: `Runner marked this run stale after ${Math.round(staleAfterMs / 60_000)} minutes without an update.`,
+      completedAt: now,
+      updatedAt: now,
+    })
+    .where(and(eq(schema.agentRuns.status, 'running'), lt(schema.agentRuns.updatedAt, cutoff)))
+    .returning({ id: schema.agentRuns.id, updatedAt: schema.agentRuns.updatedAt });
+
+  for (const row of rows) {
+    log.warn('recovered stale running agent run', { runId: row.id, previousUpdatedAt: row.updatedAt.toISOString() });
+    await emitEvent(row.id, 'stale_recovered', `marked failed after stale running timeout`, {
+      cutoff: cutoff.toISOString(),
+      staleAfterMinutes: Math.round(staleAfterMs / 60_000),
+    }).catch((err) => log.warn('failed to record stale recovery event', { runId: row.id, err: String(err) }));
+    await recordTrail({
+      action: `Recovered stale running run ${row.id.slice(0, 8)}`,
+      why: 'The runner found a running row whose updated_at was older than the configured stale timeout.',
+      agentRunId: row.id,
+      detail: `previousUpdatedAt=${row.updatedAt.toISOString()}; cutoff=${cutoff.toISOString()}`,
+    });
+  }
+}
+
+function staleRunningAfterMs() {
+  const configured = Number.parseInt(process.env.RUNNER_STALE_RUNNING_MINUTES ?? '', 10);
+  const minutes = Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_STALE_RUNNING_MINUTES;
+  return minutes * 60_000;
 }
 
 const inflight = new Set<string>();

@@ -7,8 +7,32 @@ import { EntityEdges } from '@/components/EntityEdges';
 import { BeliefHistoryLink } from '@/components/BeliefHistoryLink';
 import { ProjectChildren } from '@/components/ProjectChildren';
 import { LoadProjectNarrative } from '@/components/LoadProjectNarrative';
+import { LiteratureIntelligencePanel } from '@/components/LiteratureIntelligencePanel';
+import { StartIdeationButton } from '@/components/StartIdeationButton';
+import { InviteAccessForm } from '@/components/InviteAccessForm';
+import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
+import { requireSession } from '@/lib/auth';
+import { isIdeationSourceKind } from '@/lib/ideation';
 
 export const dynamic = 'force-dynamic';
+
+type EditableTitleKind =
+  | 'project'
+  | 'belief'
+  | 'todo'
+  | 'lit_item'
+  | 'project_narrative'
+  | 'experiment';
+
+type EditableBodyKind = EditableTitleKind | 'run' | 'daily_log_entry';
+
+function canEditTitle(kind: string): kind is EditableTitleKind {
+  return ['project', 'belief', 'todo', 'lit_item', 'project_narrative', 'experiment'].includes(kind);
+}
+
+function canEditBody(kind: string): kind is EditableBodyKind {
+  return [...['project', 'belief', 'todo', 'lit_item', 'project_narrative', 'experiment'], 'run', 'daily_log_entry'].includes(kind);
+}
 
 export default async function EntityPage({
   params,
@@ -17,8 +41,16 @@ export default async function EntityPage({
 }) {
   const { kind, id } = await params;
   if (!isEntityKind(kind)) return notFound();
+  const session = await requireSession();
+  try {
+    await requireEntityRead(session, kind, id);
+  } catch (err) {
+    if (err instanceof ForbiddenError) return notFound();
+    throw err;
+  }
   const entity = await loadEntity(kind, id);
   if (!entity) return notFound();
+  const owner = isOwner(session);
 
   return (
     <div className="space-y-6">
@@ -28,17 +60,30 @@ export default async function EntityPage({
         </p>
         {kind === 'run' ? (
           <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>
-        ) : (
+        ) : owner && canEditTitle(kind) ? (
           <EditableTitle kind={kind} id={entity.id} initialTitle={entity.title} />
+        ) : (
+          <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>
         )}
         {entity.status ? (
           <p className="text-sm">
             <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{entity.status}</span>
           </p>
         ) : null}
+        {owner && isIdeationSourceKind(kind) ? (
+          <StartIdeationButton sourceKind={kind} sourceId={entity.id} />
+        ) : null}
       </header>
 
-      <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />
+      {owner ? <InviteAccessForm entityKind={kind} entityId={entity.id} /> : null}
+
+      {owner && canEditBody(kind) ? (
+        <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />
+      ) : (
+        <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 whitespace-pre-wrap">
+          {entity.body}
+        </section>
+      )}
 
       {kind === 'belief' ? <BeliefHistoryLink beliefId={entity.id} /> : null}
       {kind === 'project' ? (
@@ -47,6 +92,8 @@ export default async function EntityPage({
           <ProjectChildren projectId={entity.id} />
         </>
       ) : null}
+
+      {kind === 'lit_item' ? <LiteratureIntelligencePanel litItemId={entity.id} /> : null}
 
       {entity.meta && entity.meta.length > 0 ? (
         <section className="rounded-lg border border-[--color-border]">

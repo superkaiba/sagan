@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { Markdown } from '@/components/Markdown';
 
 interface Entry {
   id: string;
@@ -17,16 +19,109 @@ const KIND_BADGES: Record<Entry['kind'], { label: string; bg: string }> = {
   note: { label: 'note', bg: 'oklch(0.88 0.04 270)' },
 };
 
+const ACTION_PREFIX_RE = /^\s*(?:\*\*)?Action:/;
+
+function isActionTrail(entry: Entry) {
+  return ACTION_PREFIX_RE.test(entry.bodyMd);
+}
+
+function EntryRow({ entry }: { entry: Entry }) {
+  const badge = KIND_BADGES[entry.kind];
+  return (
+    <article className="group grid gap-2 p-3 text-sm hover:bg-[--color-muted-bg] md:grid-cols-[7rem_minmax(0,1fr)_auto] md:items-start">
+      <div className="flex items-center gap-2 md:block">
+        <span
+          className="inline-block rounded-md px-2 py-0.5 text-[10px] font-medium"
+          style={{ background: badge.bg, color: 'oklch(0.20 0.04 270)' }}
+        >
+          {badge.label}
+        </span>
+        <time className="text-xs text-[--color-muted] md:mt-2 md:block">
+          {new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </time>
+      </div>
+      <Link
+        href={`/e/daily_log_entry/${entry.id}`}
+        data-clickable="true"
+        className="min-w-0 rounded-md px-1 -mx-1 hover:bg-[--color-hover]"
+      >
+        <Markdown className="[&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+          {entry.bodyMd}
+        </Markdown>
+      </Link>
+      <div className="flex gap-2">
+        <Link
+          href={`/e/daily_log_entry/${entry.id}`}
+          className="justify-self-start rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+        >
+          open
+        </Link>
+        <ArchiveButton id={entry.id} />
+      </div>
+    </article>
+  );
+}
+
+function ArchiveButton({ id }: { id: string }) {
+  const router = useRouter();
+  async function archive() {
+    await fetch(`/api/daily-log/${id}`, { method: 'DELETE' });
+    router.refresh();
+  }
+  return (
+    <button
+      type="button"
+      onClick={archive}
+      className="justify-self-start rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+    >
+      archive
+    </button>
+  );
+}
+
+function LogSection({
+  title,
+  description,
+  entries,
+  empty,
+}: {
+  title: string;
+  description: string;
+  entries: Entry[];
+  empty: string;
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[--color-border] pb-2">
+        <div>
+          <h3 className="text-base font-semibold tracking-tight">{title}</h3>
+          <p className="text-xs text-[--color-muted]">{description}</p>
+        </div>
+        <span className="font-mono text-xs text-[--color-muted]">{entries.length}</span>
+      </div>
+      <div className="divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-panel]">
+        {entries.length === 0 ? (
+          <p className="p-4 text-sm text-[--color-muted]">{empty}</p>
+        ) : (
+          entries.map((entry) => <EntryRow key={entry.id} entry={entry} />)
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function ResearchLog({ day, initialEntries }: { day: string; initialEntries: Entry[] }) {
   const router = useRouter();
   const [kind, setKind] = useState<Entry['kind']>('note');
   const [body, setBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!body.trim()) return;
     setSubmitting(true);
+    setError(null);
     try {
       const res = await fetch('/api/daily-log', {
         method: 'POST',
@@ -36,22 +131,28 @@ export function ResearchLog({ day, initialEntries }: { day: string; initialEntri
       if (res.ok) {
         setBody('');
         router.refresh();
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(data.error ?? 'Could not add entry');
       }
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function archive(id: string) {
-    await fetch(`/api/daily-log/${id}`, { method: 'DELETE' });
-    router.refresh();
-  }
+  const newest = initialEntries.slice().reverse();
+  const cleanResults = newest.filter((entry) => entry.kind === 'clean_result');
+  const actionTrail = newest.filter(isActionTrail);
+  const researchEntries = newest.filter((entry) => entry.kind !== 'clean_result' && !isActionTrail(entry));
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">
-        Research log
-      </h2>
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Daily log</h2>
+        <p className="mt-1 text-sm text-[--color-muted]">
+          Research entries stay separate from the system action trail generated by the workflow.
+        </p>
+      </div>
 
       <form onSubmit={onSubmit} className="flex gap-2 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-3">
         <select
@@ -74,42 +175,31 @@ export function ResearchLog({ day, initialEntries }: { day: string; initialEntri
         <button
           type="submit"
           disabled={submitting || !body.trim()}
-          className="rounded-md bg-[--color-accent] px-3 py-1 text-xs font-medium text-[--color-accent-fg] disabled:opacity-50"
+          className="rounded-md bg-[--color-accent] px-3 py-1 text-xs font-medium text-[--color-accent-fg] hover:opacity-90 disabled:opacity-50"
         >
           Add
         </button>
       </form>
+      {error ? <p className="text-sm text-[--color-danger]">{error}</p> : null}
 
-      <div className="rounded-lg border border-[--color-border] divide-y divide-[--color-border]">
-        {initialEntries.length === 0 ? (
-          <p className="p-4 text-sm text-[--color-muted]">Nothing logged yet today.</p>
-        ) : (
-          initialEntries.slice().reverse().map((entry) => {
-            const badge = KIND_BADGES[entry.kind];
-            return (
-              <div key={entry.id} className="group flex items-baseline gap-3 p-3 text-sm">
-                <span
-                  className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                  style={{ background: badge.bg, color: 'oklch(0.20 0.04 270)' }}
-                >
-                  {badge.label}
-                </span>
-                <span className="flex-1 whitespace-pre-wrap">{entry.bodyMd}</span>
-                <span className="text-xs text-[--color-muted]">
-                  {new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => archive(entry.id)}
-                  className="rounded text-xs text-[--color-muted] opacity-0 transition group-hover:opacity-100 hover:text-[--color-fg]"
-                >
-                  archive
-                </button>
-              </div>
-            );
-          })
-        )}
-      </div>
+      <LogSection
+        title="Research entries"
+        description="Notes, decisions, and blockers from the day."
+        entries={researchEntries}
+        empty="No research entries yet today."
+      />
+      <LogSection
+        title="Clean results"
+        description="Mentor-facing results saved from the day."
+        entries={cleanResults}
+        empty="No clean results yet."
+      />
+      <LogSection
+        title="Action trail"
+        description="System and workflow actions recorded with reasons."
+        entries={actionTrail}
+        empty="No action-trail entries yet."
+      />
     </section>
   );
 }

@@ -1,29 +1,72 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: oklch(0.99 0.005 270);
-  --color-fg: oklch(0.18 0.02 270);
-  --color-muted: oklch(0.55 0.02 270);
-  --color-muted-bg: oklch(0.96 0.01 270);
-  --color-border: oklch(0.91 0.01 270);
-  --color-accent: oklch(0.62 0.18 250);
-  --color-accent-fg: oklch(0.99 0.005 270);
-  --color-danger: oklch(0.55 0.22 25);
-  --color-success: oklch(0.55 0.18 150);
+  --color-bg: #f7f8f6;
+  --color-panel: #ffffff;
+  --color-fg: #20231f;
+  --color-muted: #626a61;
+  --color-muted-bg: #edf1ec;
+  --color-border: #d8dfd6;
+  --color-accent: #2f6f5e;
+  --color-accent-fg: #ffffff;
+  --color-danger: #ad3434;
+  --color-success: #27734f;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: Aptos, "SF Pro Text", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Liberation Mono", monospace;
 }
 
+:root,
+:root[data-theme='light'] {
+  --color-bg: #f7f8f6;
+  --color-panel: #ffffff;
+  --color-fg: #20231f;
+  --color-muted: #626a61;
+  --color-muted-bg: #edf1ec;
+  --color-border: #d8dfd6;
+  --color-accent: #2f6f5e;
+  --color-accent-fg: #ffffff;
+  --color-danger: #ad3434;
+  --color-success: #27734f;
+  --color-hover: #e6ece5;
+  --color-active: #dce5db;
+  --color-focus: #5d8f80;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #181715;
+  --color-panel: #211f1c;
+  --color-fg: #f4f0e8;
+  --color-muted: #aba397;
+  --color-muted-bg: #292620;
+  --color-border: #403b33;
+  --color-accent: #82c9a9;
+  --color-accent-fg: #102019;
+  --color-danger: #ff8a8a;
+  --color-success: #8fd2ad;
+  --color-hover: #312d27;
+  --color-active: #3a352e;
+  --color-focus: #9ed6bb;
+  color-scheme: dark;
+}
+
 @media (prefers-color-scheme: dark) {
-  @theme {
-    --color-bg: oklch(0.16 0.015 270);
-    --color-fg: oklch(0.96 0.005 270);
-    --color-muted: oklch(0.65 0.02 270);
-    --color-muted-bg: oklch(0.22 0.015 270);
-    --color-border: oklch(0.30 0.015 270);
-    --color-accent: oklch(0.74 0.16 250);
-    --color-accent-fg: oklch(0.13 0.015 270);
+  :root:not([data-theme]) {
+    --color-bg: #181715;
+    --color-panel: #211f1c;
+    --color-fg: #f4f0e8;
+    --color-muted: #aba397;
+    --color-muted-bg: #292620;
+    --color-border: #403b33;
+    --color-accent: #82c9a9;
+    --color-accent-fg: #102019;
+    --color-danger: #ff8a8a;
+    --color-success: #8fd2ad;
+    --color-hover: #312d27;
+    --color-active: #3a352e;
+    --color-focus: #9ed6bb;
+    color-scheme: dark;
   }
 }
 
@@ -32,6 +75,83 @@ html, body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
 }
 
 * { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease,
+    box-shadow 150ms ease;
+}
+
+button:not(:disabled),
+a[href],
+label[for],
+summary,
+[role='button'] {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+a[href]:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+main a[href]:not([class*='rounded']):not([class*='block']):not([class*='flex']) {
+  color: var(--color-accent);
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+@media (hover: hover) {
+  button:not(:disabled):hover,
+  a[href][class*='rounded']:hover,
+  a[href][class*='block']:hover,
+  a[href][class*='flex']:hover,
+  [data-clickable='true']:hover {
+    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
+
+  main a[href]:not([class*='rounded']):not([class*='block']):not([class*='flex']):hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+button:not(:disabled):active,
+a[href]:active,
+[data-clickable='true']:active {
+  background-color: var(--color-active);
+}
+
+[data-clickable='true'] {
+  position: relative;
+}

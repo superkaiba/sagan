@@ -13,10 +13,10 @@ Personal research-life dashboard. Greenfield successor to
 ```
 apps/
   web/             Next.js 16 (Turbopack) — primary dashboard
-  mobile/          deferred; PWA covers the use case for now
+  mobile/          Expo companion for mobile agent review + daily log
 packages/
   db/              Drizzle schema, migrations, query helpers
-  api/             Shared Zod schemas
+  api/             Shared Zod schemas for workflow/API contracts
   auth/            argon2id password + hand-rolled session tokens
   agent-protocol/  Typed RunRequest / RunEvent / Plan / Approval
   ui/              shared UI primitives (placeholder)
@@ -44,6 +44,7 @@ Public (no-auth) routes:
 - `/digest/[date]` — daily digest permalinks
 - `/d/[token]` — weekly digest share link
 - `/mentor/updates` — public scrape of the GitHub project board for the legacy mentor view
+- `/api/mentor/*` — static mentor-results API for the legacy mentor view
 - `/p/`, `/r/` — reserved for project / run share tokens
 
 ## Local development
@@ -51,21 +52,21 @@ Public (no-auth) routes:
 ```bash
 pnpm install
 # Copy .env.example to .env and fill in Neon + Anthropic + RunPod keys
-pnpm --filter @eps/db db:migrate
-pnpm --filter @eps/db db:seed   # creates the owner user
+pnpm --filter @sagan/db db:migrate
+pnpm --filter @sagan/db db:seed   # creates the owner user
 
 # Web (binds 0.0.0.0:3100 so the VM URL reaches it)
-pnpm --filter @eps/web dev
+pnpm --filter @sagan/web dev
 
 # Runner (locally)
-pnpm --filter @eps/runner dev
+pnpm --filter @sagan/runner dev
 ```
 
 ## Production
 
 - The web app is deployed by Vercel on every push to `main`.
 - The runner is a systemd service on the VM (see
-  `services/runner/systemd/eps-runner.service`).
+  `services/runner/systemd/sagan-runner.service`).
 - Three cron jobs run inside the runner:
   - `0 6 * * *` lit-review (arxiv RSS pull)
   - `0 18 * * 0` insight-scan (cross-project edge proposals)
@@ -75,9 +76,9 @@ pnpm --filter @eps/runner dev
 
 ## Mobile
 
-Installable as a PWA from `sagan.superkaiba.com` on iOS/Android.
-The full Expo wrapper is intentionally deferred — the PWA covers
-dispatch, plan approval, and Q&A in the same browser-shaped UI.
+Installable as a PWA from `sagan.superkaiba.com` on iOS/Android. The Expo app
+in `apps/mobile` supports login, daily log reading, agent dispatch/review, plan
+approval, and push-notification deep links.
 
 ## Plan
 

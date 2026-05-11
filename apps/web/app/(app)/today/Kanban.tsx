@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -14,6 +15,8 @@ interface KCard {
   columnId: string;
   title: string;
   bodyMd: string | null;
+  linkedKind: string | null;
+  linkedId: string | null;
   position: number;
 }
 
@@ -68,9 +71,12 @@ export function Kanban({
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">
-        Next steps {slug !== 'next-steps' ? `(${slug})` : null}
-      </h2>
+      <header className="border-b border-[--color-border] pb-2">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Next steps {slug !== 'next-steps' ? `(${slug})` : null}
+        </h2>
+        <p className="mt-1 text-sm text-[--color-muted]">Open a card to edit it, comment, or ask Claude.</p>
+      </header>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {sortedColumns.map((col, idx) => {
           const cards = cardsByColumn.get(col.id) ?? [];
@@ -91,16 +97,22 @@ export function Kanban({
                 {cards.map((card) => (
                   <li
                     key={card.id}
-                    className="group rounded-md border border-[--color-border] bg-[--color-bg] p-2 text-sm"
+                    className="group rounded-md border border-[--color-border] bg-[--color-bg] p-2 text-sm hover:bg-[--color-panel]"
                   >
                     <div className="flex items-start gap-2">
-                      <span className="flex-1">{card.title}</span>
-                      <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
+                      <Link
+                        href={card.linkedKind && card.linkedId ? `/e/${card.linkedKind}/${card.linkedId}` : '#'}
+                        data-clickable="true"
+                        className="min-w-0 flex-1 font-medium hover:text-[--color-accent] hover:underline"
+                      >
+                        {card.title}
+                      </Link>
+                      <div className="flex gap-1">
                         {nextCol ? (
                           <button
                             type="button"
                             onClick={() => moveCard(card.id, nextCol.id)}
-                            className="rounded text-xs text-[--color-muted] hover:text-[--color-fg]"
+                            className="rounded border border-[--color-border] px-1 text-xs text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
                             title={`Move to ${nextCol.title}`}
                           >
                             →
@@ -109,13 +121,16 @@ export function Kanban({
                         <button
                           type="button"
                           onClick={() => archiveCard(card.id)}
-                          className="rounded text-xs text-[--color-muted] hover:text-[--color-fg]"
+                          className="rounded border border-[--color-border] px-1 text-xs text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
                           title="Archive"
                         >
                           ×
                         </button>
                       </div>
                     </div>
+                    {card.bodyMd ? (
+                      <p className="mt-1 line-clamp-2 text-xs text-[--color-muted]">{card.bodyMd}</p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -135,7 +150,7 @@ export function Kanban({
                 <button
                   type="button"
                   onClick={() => setCreatingIn(col.id)}
-                  className="w-full rounded-md border border-dashed border-[--color-border] py-1 text-xs text-[--color-muted] hover:border-[--color-fg] hover:text-[--color-fg]"
+                  className="w-full rounded-md border border-dashed border-[--color-border] bg-[--color-bg] py-1 text-xs text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
                 >
                   + Add card
                 </button>

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { beliefs, beliefVersions } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 const patchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -39,9 +40,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       editedBy: session.user.id,
     });
   }
-  await db()
+  const updated = await db()
     .update(beliefs)
     .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(beliefs.id, id));
+    .where(eq(beliefs.id, id))
+    .returning({ id: beliefs.id, title: beliefs.title });
+  if (!updated[0]) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  await appendDailyLogTrailBestEffort({
+    action: `Updated belief ${updated[0].title}`,
+    why: 'A user revised the belief record while preserving a version snapshot.',
+    entityKind: 'belief',
+    entityId: id,
+    detail: `Fields: ${Object.keys(parsed.data).join(', ') || '(none)'}`,
+    actorKind: 'user',
+    actorUserId: session.user.id,
+    correlationId: id,
+  });
   return NextResponse.json({ ok: true });
 }

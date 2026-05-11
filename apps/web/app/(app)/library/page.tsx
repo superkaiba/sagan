@@ -53,7 +53,11 @@ export default async function LibraryPage() {
                         <p className="text-[10px] uppercase tracking-wide text-[--color-muted]">
                           {r.type}
                           {r.arxivId ? ` · ${r.arxivId}` : null}
+                          {r.lastRankedAt ? ` · ranked` : null}
                         </p>
+                        {r.relevanceReasonMd ? (
+                          <p className="line-clamp-2 text-xs text-[--color-muted]">{r.relevanceReasonMd}</p>
+                        ) : null}
                       </Link>
                     </li>
                   ))

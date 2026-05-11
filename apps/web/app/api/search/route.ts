@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql, ilike, or } from 'drizzle-orm';
-import { beliefs, experiments, litItems, projects, todos } from '@sagan/db/schema';
+import { beliefs, cleanResults, experiments, litItems, projects, todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import type { EntityKind } from '@/lib/entity';
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   if (!q) return NextResponse.json({ hits: [] });
   const pattern = `%${q}%`;
 
-  const [proj, bel, exp, td, lit] = await Promise.all([
+  const [proj, bel, exp, cr, td, lit] = await Promise.all([
     db()
       .select({ id: projects.id, title: projects.title, status: projects.status, slug: projects.slug })
       .from(projects)
@@ -38,6 +38,11 @@ export async function GET(req: Request) {
       .select({ id: experiments.id, title: experiments.title, status: experiments.status })
       .from(experiments)
       .where(or(ilike(experiments.title, pattern), ilike(sql`coalesce(${experiments.hypothesis}, '')`, pattern)))
+      .limit(6),
+    db()
+      .select({ id: cleanResults.id, title: cleanResults.title, status: cleanResults.status, claim: cleanResults.claim })
+      .from(cleanResults)
+      .where(or(ilike(cleanResults.title, pattern), ilike(cleanResults.claim, pattern), ilike(cleanResults.bodyMd, pattern)))
       .limit(6),
     db()
       .select({ id: todos.id, text: todos.text, status: todos.status })
@@ -60,6 +65,7 @@ export async function GET(req: Request) {
       meta: b.topic ? `${b.status} · ${b.topic}` : b.status,
     })),
     ...exp.map<Hit>((e) => ({ kind: 'experiment', id: e.id, title: e.title, meta: e.status })),
+    ...cr.map<Hit>((r) => ({ kind: 'clean_result', id: r.id, title: r.title, meta: r.status })),
     ...td.map<Hit>((t) => ({ kind: 'todo', id: t.id, title: t.text, meta: t.status })),
     ...lit.map<Hit>((l) => ({ kind: 'lit_item', id: l.id, title: l.title, meta: l.type })),
   ];

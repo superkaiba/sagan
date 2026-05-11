@@ -17,8 +17,7 @@ export function RunLitReviewButton() {
         setMsg('failed');
         return;
       }
-      const data = (await res.json()) as { inserted: number; surfaced: number };
-      setMsg(`+${data.inserted} new, ${data.surfaced} surfaced`);
+      setMsg('queued · refresh shortly');
       router.refresh();
     } finally {
       setBusy(false);

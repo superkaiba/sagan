@@ -12,6 +12,7 @@ const STATUS_COLORS: Record<string, string> = {
   awaiting_approval: 'oklch(0.85 0.12 50)',
   approved: 'oklch(0.85 0.10 150)',
   deploying: 'oklch(0.85 0.10 200)',
+  blocked: 'oklch(0.85 0.12 45)',
   completed: 'oklch(0.85 0.12 150)',
   failed: 'oklch(0.85 0.15 25)',
   cancelled: 'oklch(0.80 0.02 270)',

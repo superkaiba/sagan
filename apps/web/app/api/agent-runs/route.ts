@@ -1,30 +1,49 @@
 import { NextResponse } from 'next/server';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { agentRuns } from '@sagan/db/schema';
-import type { AgentRunKind } from '@sagan/agent-protocol';
-import { runRequestSchema } from '@sagan/agent-protocol';
+import { agentRunKindSchema, agentRunStatusSchema, runRequestSchema } from '@sagan/agent-protocol';
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
+import { requireOwner } from '@/lib/access';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 const QUEUED_CHANNEL = 'agent_run_queued';
+const listQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  kind: agentRunKindSchema.optional(),
+  status: agentRunStatusSchema.optional(),
+});
 
 export async function GET(req: Request) {
-  await requireSessionOr401();
+  const session = await getSessionOrResponse();
+  if (session instanceof NextResponse) return session;
+
   const url = new URL(req.url);
-  const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200);
-  const kind = url.searchParams.get('kind');
-  const status = url.searchParams.get('status');
+  const parsed = listQuerySchema.safeParse({
+    limit: url.searchParams.get('limit') ?? undefined,
+    kind: url.searchParams.get('kind') ?? undefined,
+    status: url.searchParams.get('status') ?? undefined,
+  });
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'invalid_query', detail: z.treeifyError(parsed.error) }, { status: 400 });
+  }
+  const { limit, kind, status } = parsed.data;
+  const filters = [
+    kind ? eq(agentRuns.kind, kind) : undefined,
+    status ? eq(agentRuns.status, status) : undefined,
+  ].filter((condition): condition is NonNullable<typeof condition> => Boolean(condition));
+
   let query = db().select().from(agentRuns).$dynamic();
-  if (kind) query = query.where(eq(agentRuns.kind, kind as AgentRunKind));
-  if (status) query = query.where(eq(agentRuns.status, status as never));
+  if (filters.length) query = query.where(and(...filters));
   const rows = await query.orderBy(desc(agentRuns.createdAt)).limit(limit);
   return NextResponse.json({ runs: rows });
 }
 
 export async function POST(req: Request) {
-  await requireSessionOr401();
+  const session = await getSessionOrResponse();
+  if (session instanceof NextResponse) return session;
+
   let body: unknown;
   try {
     body = await req.json();
@@ -50,13 +69,24 @@ export async function POST(req: Request) {
     .returning({ id: agentRuns.id });
   const runId = inserted[0]!.id;
   await db().execute(sql`SELECT pg_notify(${QUEUED_CHANNEL}, ${runId})`);
+  await appendDailyLogTrailBestEffort({
+    action: `Dispatched ${kind} agent run ${runId.slice(0, 8)}`,
+    why: request.slice(0, 500),
+    entityKind: scopeEntityKind,
+    entityId: scopeEntityId,
+    detail: `Approval required: ${approvalRequired ? 'yes' : 'no'}`,
+    actorKind: 'user',
+    actorUserId: session.user.id,
+    agentRunId: runId,
+    correlationId: runId,
+  });
   return NextResponse.json({ runId });
 }
 
-async function requireSessionOr401() {
+async function getSessionOrResponse() {
   try {
-    return await requireSession();
+    return await requireOwner();
   } catch {
-    throw new Response('unauthorized', { status: 401 });
+    return NextResponse.json({ error: 'owner_required' }, { status: 403 });
   }
 }

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 export async function GET() {
   try {
@@ -42,8 +43,9 @@ const createSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  let session;
   try {
-    await requireSession();
+    session = await requireSession();
   } catch {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -56,5 +58,16 @@ export async function POST(req: Request) {
     .insert(todos)
     .values(parsed.data)
     .returning();
+  const todo = inserted[0]!;
+  await appendDailyLogTrailBestEffort({
+    action: `Created task ${todo.text}`,
+    why: 'A user added a task to track the next research or engineering action.',
+    entityKind: 'todo',
+    entityId: todo.id,
+    detail: `status=${todo.status}; priority=${todo.priority}`,
+    actorKind: 'user',
+    actorUserId: session.user.id,
+    correlationId: todo.id,
+  });
   return NextResponse.json({ todo: inserted[0] });
 }

@@ -14,6 +14,8 @@ import { beliefs, edges, projects } from '@sagan/db/schema';
 import { db } from '../db.js';
 import { env, requireEnv } from '../env.js';
 import { log } from '../log.js';
+import { recordTrail } from '../trail.js';
+import type { JobContext, JobOutcome } from './job-runs.js';
 
 const ALLOWED_TYPES = [
   'supports',
@@ -44,7 +46,7 @@ function tag(): string {
   return `[insight-scan-${year}-W${String(week).padStart(2, '0')}]`;
 }
 
-export async function runInsightScan() {
+export async function runInsightScan(context: JobContext = {}): Promise<JobOutcome> {
   requireEnv('ANTHROPIC_API_KEY');
 
   const beliefRows = await db()
@@ -54,7 +56,16 @@ export async function runInsightScan() {
 
   if (beliefRows.length < 2) {
     log.info('insight-scan: too few active beliefs to scan', { count: beliefRows.length });
-    return [];
+    await recordTrail({
+      action: 'Skipped insight scan',
+      why: 'There were fewer than two active beliefs to compare.',
+      jobRunId: context.jobRunId,
+      detail: `${beliefRows.length} active belief(s).`,
+    });
+    return {
+      status: 'skipped',
+      resultPayload: { reason: 'too_few_active_beliefs', activeBeliefs: beliefRows.length },
+    };
   }
 
   // Group by project for the prompt; only run when there are at least two projects.
@@ -74,7 +85,16 @@ export async function runInsightScan() {
   }
   if (grouped.size < 2) {
     log.info('insight-scan: only one project has active beliefs; nothing to cross-link');
-    return [];
+    await recordTrail({
+      action: 'Skipped cross-project insight scan',
+      why: 'Active beliefs are not spread across multiple projects.',
+      jobRunId: context.jobRunId,
+      detail: `${grouped.size} project group(s).`,
+    });
+    return {
+      status: 'skipped',
+      resultPayload: { reason: 'single_project_group', projectGroups: grouped.size },
+    };
   }
 
   const summary = Array.from(grouped.entries())
@@ -121,7 +141,17 @@ Return only a JSON array. No prose, no preamble. If you have no good proposals, 
       err: String(err),
       preview: text.slice(0, 200),
     });
-    return [];
+    await recordTrail({
+      action: 'Insight scan failed to parse model output',
+      why: 'The model did not return the required JSON array of proposed edges.',
+      jobRunId: context.jobRunId,
+      detail: text.slice(0, 500),
+    });
+    return {
+      status: 'failed',
+      lastError: 'Model did not return the required JSON array of proposed edges.',
+      resultPayload: { preview: text.slice(0, 500) },
+    };
   }
 
   const beliefById = new Map(beliefRows.map((b) => [b.id, b]));
@@ -156,5 +186,14 @@ Return only a JSON array. No prose, no preamble. If you have no good proposals, 
     }
   }
   log.info('insight-scan done', { proposals: proposals.length, inserted });
-  return accepted;
+  await recordTrail({
+    action: 'Completed cross-project insight scan',
+    why: 'Look for useful semantic links between active beliefs across projects before the weekly digest.',
+    jobRunId: context.jobRunId,
+    detail: `${proposals.length} proposal(s), ${inserted} inserted edge(s).`,
+  });
+  return {
+    status: 'completed',
+    resultPayload: { proposals: proposals.length, inserted, accepted },
+  };
 }

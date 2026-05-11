@@ -16,10 +16,26 @@ the Claude Agent SDK.
 4. For `kind = plan` or `experiment`: the run stops at
    `status='awaiting_approval'` once the model invokes `ExitPlanMode`. The
    captured plan markdown lands in `agent_runs.plan_md`.
-5. For `kind = apply`: the model executes file edits, the runner watches the
+5. Approved `kind = experiment` runs dispatch RunPod pods. Approved
+   non-experiment runs are finalized as `completed` with an
+   `approval_finalized` event because there is no runner-side dispatch step.
+6. For `kind = apply`: the model executes file edits, the runner watches the
    stream, and the run reaches `status='completed'` on success.
-6. For `kind = qa`: tools are restricted to read-only (Read, Grep, Glob); the
+7. For `kind = qa`: tools are restricted to read-only (Read, Grep, Glob); the
    final assistant text is returned.
+
+The queue sweep also runs every 60 seconds. It picks up missed `queued` and
+`approved` rows, finalizes approved non-experiment rows, and marks old
+`running` rows failed after the stale timeout so dead sessions do not block the
+workflow indefinitely.
+
+Background jobs (`lit_review`, `insight_scan`, `weekly_digest`) are wrapped in
+`job_runs`: cron, boot, NOTIFY, and queued durable job rows all transition
+through `running` to `completed`, `skipped`, or `failed`.
+
+Runner audit writes are best-effort. Each trail event attempts to write both a
+structured `audit_events` row and a mirrored daily-log note; write failures are
+logged but do not fail agent runs or jobs.
 
 ## Local dev
 
@@ -55,3 +71,5 @@ self-improvement edits.
 - `ANTHROPIC_API_KEY` — required.
 - `RUNNER_LOG_LEVEL` — `debug | info | warn | error` (default `info`).
 - `RUNNER_REPO_ROOT` — defaults to `../..` from the runner's cwd.
+- `RUNNER_STALE_RUNNING_MINUTES` — optional stale timeout for `running`
+  `agent_runs` rows (default `360`).

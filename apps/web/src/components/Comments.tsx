@@ -128,16 +128,10 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
               view run
             </Link>
           ) : null}
-          {!isReply ? (
-            <label className="ml-auto flex cursor-pointer items-center gap-1 text-[10px] uppercase tracking-wide opacity-0 transition group-hover:opacity-100">
-              <input
-                type="checkbox"
-                checked={c.autoContinueClaude}
-                onChange={(e) => patch(c.id, { autoContinueClaude: e.target.checked })}
-                className="h-3 w-3"
-              />
-              auto-continue claude
-            </label>
+          {!isReply && c.autoContinueClaude ? (
+            <span className="ml-auto rounded-md border border-[--color-border] bg-[--color-muted-bg] px-2 py-0.5 text-[10px] font-medium text-[--color-muted]">
+              Claude auto-continues
+            </span>
           ) : null}
           <button
             type="button"
@@ -153,49 +147,47 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
           </p>
         ) : null}
         <Markdown>{c.body}</Markdown>
-        {!isReply ? (
-          <div className="mt-2">
-            {replyTo === c.id ? (
-              <form onSubmit={(e) => onReplySubmit(e, c.id)} className="space-y-1">
-                <textarea
-                  rows={2}
-                  autoFocus
-                  value={replyBody}
-                  onChange={(e) => setReplyBody(e.target.value)}
-                  placeholder="Reply…"
-                  className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
-                />
-                <div className="flex justify-end gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReplyTo(null);
-                      setReplyBody('');
-                    }}
-                    className="text-[--color-muted] hover:text-[--color-fg]"
-                  >
-                    cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting || !replyBody.trim()}
-                    className="rounded-md bg-[--color-accent] px-2 py-0.5 font-medium text-[--color-accent-fg] disabled:opacity-50"
-                  >
-                    Reply
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setReplyTo(c.id)}
-                className="text-xs text-[--color-muted] opacity-0 transition group-hover:opacity-100 hover:text-[--color-fg]"
-              >
-                reply
-              </button>
-            )}
-          </div>
-        ) : null}
+        <div className="mt-2">
+          {replyTo === c.id ? (
+            <form onSubmit={(e) => onReplySubmit(e, c.id)} className="space-y-1">
+              <textarea
+                rows={2}
+                autoFocus
+                value={replyBody}
+                onChange={(e) => setReplyBody(e.target.value)}
+                placeholder="Reply…"
+                className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
+              />
+              <div className="flex justify-end gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplyTo(null);
+                    setReplyBody('');
+                  }}
+                  className="text-[--color-muted] hover:text-[--color-fg]"
+                >
+                  cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || !replyBody.trim()}
+                  className="rounded-md bg-[--color-accent] px-2 py-0.5 font-medium text-[--color-accent-fg] disabled:opacity-50"
+                >
+                  Reply
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setReplyTo(c.id)}
+              className="text-xs text-[--color-muted] opacity-0 transition group-hover:opacity-100 hover:text-[--color-fg]"
+            >
+              reply
+            </button>
+          )}
+        </div>
       </article>
     );
   }
@@ -236,7 +228,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
         />
         <div className="flex items-center justify-between">
           <p className="text-xs text-[--color-muted]">
-            <kbd className="rounded border border-[--color-border] px-1 text-[10px]">@claude</kbd> dispatches an agent run · enable <em>auto-continue</em> on a thread to keep Claude responding.
+            <kbd className="rounded border border-[--color-border] px-1 text-[10px]">@claude</kbd> starts Claude; replies in that thread continue automatically.
           </p>
           <button
             type="submit"

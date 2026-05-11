@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { projects } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 
 export async function GET() {
   try {
@@ -30,8 +31,9 @@ function slugify(s: string): string {
 }
 
 export async function POST(req: Request) {
+  let session;
   try {
-    await requireSession();
+    session = await requireSession();
   } catch {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -56,5 +58,16 @@ export async function POST(req: Request) {
       status: 'active',
     })
     .returning();
+  const project = inserted[0]!;
+  await appendDailyLogTrailBestEffort({
+    action: `Created project ${project.title}`,
+    why: 'A user created a new research project to organize related work.',
+    entityKind: 'project',
+    entityId: project.id,
+    detail: `slug=${project.slug}`,
+    actorKind: 'user',
+    actorUserId: session.user.id,
+    correlationId: project.id,
+  });
   return NextResponse.json({ project: inserted[0] });
 }

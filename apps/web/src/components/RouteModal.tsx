@@ -32,7 +32,7 @@ export function RouteModal({ children }: { children: ReactNode }) {
       <section
         role="dialog"
         aria-modal="true"
-        className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-lg border border-[--color-border] shadow-lg"
+        className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-lg border border-[--color-border] shadow-lg"
         style={{
           backgroundColor: 'var(--color-bg)',
           color: 'var(--color-fg)',

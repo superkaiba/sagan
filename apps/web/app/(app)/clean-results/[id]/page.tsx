@@ -4,6 +4,7 @@ import { cleanResults, cleanResultVersions, runArtifacts } from '@sagan/db/schem
 import { db } from '@/lib/db';
 import { Markdown } from '@/components/Markdown';
 import { Comments } from '@/components/Comments';
+import { EntityEdges } from '@/components/EntityEdges';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { InviteAccessForm } from '@/components/InviteAccessForm';
 import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
@@ -47,68 +48,76 @@ export default async function CleanResultPage({ params }: { params: Promise<{ id
   const owner = isOwner(session);
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-3">
-        <p className="text-xs uppercase tracking-wide text-[--color-muted]">Clean result</p>
-        <div className="flex flex-wrap items-baseline gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">{result.title}</h1>
-          <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{result.status}</span>
-          {result.confidence ? (
-            <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{result.confidence}</span>
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <main className="min-w-0 space-y-6">
+        <header className="space-y-3">
+          <p className="text-xs uppercase tracking-wide text-[--color-muted]">Clean result</p>
+          <div className="flex flex-wrap items-baseline gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">{result.title}</h1>
+            <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{result.status}</span>
+            {result.confidence ? (
+              <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{result.confidence}</span>
+            ) : null}
+          </div>
+          {owner ? (
+            <div className="flex flex-wrap gap-2">
+              <CleanResultActions id={result.id} status={result.status} />
+              <StartIdeationButton sourceKind="clean_result" sourceId={result.id} />
+            </div>
           ) : null}
-        </div>
-        {owner ? (
-          <div className="flex flex-wrap gap-2">
-            <CleanResultActions id={result.id} status={result.status} />
-            <StartIdeationButton sourceKind="clean_result" sourceId={result.id} />
-          </div>
-        ) : null}
-      </header>
+        </header>
 
-      {owner ? <InviteAccessForm entityKind="clean_result" entityId={result.id} /> : null}
+        {owner ? <InviteAccessForm entityKind="clean_result" entityId={result.id} /> : null}
 
-      <section className="rounded-lg border border-[--color-border] bg-[--color-panel] p-4">
-        <p className="text-sm font-medium text-[--color-muted]">Claim</p>
-        <p className="mt-1">{result.claim}</p>
-      </section>
+        <section className="rounded-lg border border-[--color-border] bg-[--color-panel] p-4">
+          <p className="text-sm font-medium text-[--color-muted]">Claim</p>
+          <p className="mt-1">{result.claim}</p>
+        </section>
 
-      <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
-        <Markdown>{result.bodyMd}</Markdown>
-      </section>
+        <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
+          <Markdown>{result.bodyMd}</Markdown>
+        </section>
+      </main>
 
-      <section className="rounded-lg border border-[--color-border]">
-        <div className="border-b border-[--color-border] px-4 py-2 text-sm font-medium">Verified artifacts</div>
-        {artifacts.length === 0 ? (
-          <p className="p-4 text-sm text-[--color-muted]">No artifacts linked.</p>
-        ) : (
-          <div className="divide-y divide-[--color-border]">
-            {artifacts.map((artifact) => (
-              <div key={artifact.id} className="flex flex-wrap gap-2 px-4 py-2 text-sm">
-                <span className="font-medium">{artifact.kind}</span>
-                <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{artifact.status}</span>
-                <span className="font-mono text-xs text-[--color-muted]">{artifact.uri}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <aside className="min-w-0 space-y-4 xl:border-l xl:border-[--color-border] xl:pl-5">
+        <section className="rounded-lg border border-[--color-border]">
+          <div className="border-b border-[--color-border] px-4 py-2 text-sm font-medium">Verified artifacts</div>
+          {artifacts.length === 0 ? (
+            <p className="p-4 text-sm text-[--color-muted]">No artifacts linked.</p>
+          ) : (
+            <div className="divide-y divide-[--color-border]">
+              {artifacts.map((artifact) => (
+                <div key={artifact.id} className="space-y-1 px-4 py-2 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{artifact.kind}</span>
+                    <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{artifact.status}</span>
+                  </div>
+                  <p className="break-all font-mono text-xs text-[--color-muted]">{artifact.uri}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
-      <section className="rounded-lg border border-[--color-border]">
-        <div className="border-b border-[--color-border] px-4 py-2 text-sm font-medium">Versions</div>
-        {versions.length === 0 ? (
-          <p className="p-4 text-sm text-[--color-muted]">No versions yet.</p>
-        ) : (
-          <div className="divide-y divide-[--color-border]">
-            {versions.map((version) => (
-              <div key={version.id} className="px-4 py-2 text-xs text-[--color-muted]">
-                {new Date(version.createdAt).toLocaleString()} · {version.authorKind}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+        <EntityEdges entityKind="clean_result" entityId={result.id} />
 
-      <Comments entityKind="clean_result" entityId={result.id} />
+        <section className="rounded-lg border border-[--color-border]">
+          <div className="border-b border-[--color-border] px-4 py-2 text-sm font-medium">Versions</div>
+          {versions.length === 0 ? (
+            <p className="p-4 text-sm text-[--color-muted]">No versions yet.</p>
+          ) : (
+            <div className="divide-y divide-[--color-border]">
+              {versions.map((version) => (
+                <div key={version.id} className="px-4 py-2 text-xs text-[--color-muted]">
+                  {new Date(version.createdAt).toLocaleString()} · {version.authorKind}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <Comments entityKind="clean_result" entityId={result.id} />
+      </aside>
     </div>
   );
 }

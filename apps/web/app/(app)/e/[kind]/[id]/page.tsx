@@ -53,64 +53,68 @@ export default async function EntityPage({
   const owner = isOwner(session);
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-2">
-        <p className="text-xs uppercase tracking-wide text-[--color-muted]">
-          {KIND_LABELS[kind]}
-        </p>
-        {kind === 'run' ? (
-          <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>
-        ) : owner && canEditTitle(kind) ? (
-          <EditableTitle kind={kind} id={entity.id} initialTitle={entity.title} />
-        ) : (
-          <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>
-        )}
-        {entity.status ? (
-          <p className="text-sm">
-            <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{entity.status}</span>
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <main className="min-w-0 space-y-6">
+        <header className="space-y-2">
+          <p className="text-xs uppercase tracking-wide text-[--color-muted]">
+            {KIND_LABELS[kind]}
           </p>
+          {kind === 'run' ? (
+            <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>
+          ) : owner && canEditTitle(kind) ? (
+            <EditableTitle kind={kind} id={entity.id} initialTitle={entity.title} />
+          ) : (
+            <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>
+          )}
+          {entity.status ? (
+            <p className="text-sm">
+              <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{entity.status}</span>
+            </p>
+          ) : null}
+          {owner && isIdeationSourceKind(kind) ? (
+            <StartIdeationButton sourceKind={kind} sourceId={entity.id} />
+          ) : null}
+        </header>
+
+        {owner ? <InviteAccessForm entityKind={kind} entityId={entity.id} /> : null}
+
+        {owner && canEditBody(kind) ? (
+          <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />
+        ) : (
+          <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 whitespace-pre-wrap">
+            {entity.body}
+          </section>
+        )}
+
+        {kind === 'belief' ? <BeliefHistoryLink beliefId={entity.id} /> : null}
+        {kind === 'project' ? (
+          <>
+            <LoadProjectNarrative projectId={entity.id} />
+            <ProjectChildren projectId={entity.id} />
+          </>
         ) : null}
-        {owner && isIdeationSourceKind(kind) ? (
-          <StartIdeationButton sourceKind={kind} sourceId={entity.id} />
+
+        {kind === 'lit_item' ? <LiteratureIntelligencePanel litItemId={entity.id} /> : null}
+      </main>
+
+      <aside className="min-w-0 space-y-4 xl:border-l xl:border-[--color-border] xl:pl-5">
+        {entity.meta && entity.meta.length > 0 ? (
+          <section className="rounded-lg border border-[--color-border]">
+            <div className="border-b border-[--color-border] px-4 py-2 text-sm font-medium">Details</div>
+            <dl className="divide-y divide-[--color-border]">
+              {entity.meta.map((m) => (
+                <div key={m.label} className="grid grid-cols-[6rem_1fr] gap-3 px-4 py-2 text-sm">
+                  <dt className="text-[--color-muted]">{m.label}</dt>
+                  <dd className="min-w-0 break-all font-mono text-xs">{m.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
         ) : null}
-      </header>
 
-      {owner ? <InviteAccessForm entityKind={kind} entityId={entity.id} /> : null}
-
-      {owner && canEditBody(kind) ? (
-        <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />
-      ) : (
-        <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 whitespace-pre-wrap">
-          {entity.body}
-        </section>
-      )}
-
-      {kind === 'belief' ? <BeliefHistoryLink beliefId={entity.id} /> : null}
-      {kind === 'project' ? (
-        <>
-          <LoadProjectNarrative projectId={entity.id} />
-          <ProjectChildren projectId={entity.id} />
-        </>
-      ) : null}
-
-      {kind === 'lit_item' ? <LiteratureIntelligencePanel litItemId={entity.id} /> : null}
-
-      {entity.meta && entity.meta.length > 0 ? (
-        <section className="rounded-lg border border-[--color-border]">
-          <dl className="divide-y divide-[--color-border]">
-            {entity.meta.map((m) => (
-              <div key={m.label} className="grid grid-cols-[8rem_1fr] gap-4 px-4 py-2 text-sm">
-                <dt className="text-[--color-muted]">{m.label}</dt>
-                <dd className="font-mono text-xs break-all">{m.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      ) : null}
-
-      <EntityEdges entityKind={kind} entityId={entity.id} />
-
-      <Comments entityKind={kind} entityId={entity.id} />
+        <EntityEdges entityKind={kind} entityId={entity.id} />
+        <Comments entityKind={kind} entityId={entity.id} />
+      </aside>
     </div>
   );
 }

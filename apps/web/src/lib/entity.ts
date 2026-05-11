@@ -167,6 +167,18 @@ export async function loadEntity(kind: EntityKind, id: string): Promise<EntityRo
       const r = await db().select().from(litItems).where(eq(litItems.id, id)).limit(1);
       const row = r[0];
       if (!row) return null;
+      const authors = Array.isArray(row.authors)
+        ? row.authors
+            .map((author) => {
+              if (typeof author === 'string') return author;
+              if (author && typeof author === 'object' && 'name' in author) {
+                return String((author as { name?: unknown }).name ?? '');
+              }
+              return '';
+            })
+            .filter(Boolean)
+            .join(', ')
+        : null;
       return {
         id: row.id,
         title: row.title,
@@ -174,6 +186,8 @@ export async function loadEntity(kind: EntityKind, id: string): Promise<EntityRo
         body: row.abstract,
         meta: [
           { label: 'type', value: row.type },
+          ...(authors ? [{ label: 'authors', value: authors }] : []),
+          ...(row.releasedOn ? [{ label: 'release date', value: row.releasedOn }] : []),
           ...(row.arxivId ? [{ label: 'arxiv', value: row.arxivId }] : []),
           ...(row.doi ? [{ label: 'doi', value: row.doi }] : []),
           ...(row.summaryMd ? [{ label: 'summary', value: row.summaryMd }] : []),

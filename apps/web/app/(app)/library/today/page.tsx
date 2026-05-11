@@ -6,6 +6,29 @@ import { RunLitReviewButton } from './RunLitReviewButton';
 
 export const dynamic = 'force-dynamic';
 
+function authorsText(value: unknown) {
+  if (!value) return 'Unknown authors';
+  if (Array.isArray(value)) {
+    const authors = value
+      .map((author) => {
+        if (typeof author === 'string') return author;
+        if (author && typeof author === 'object' && 'name' in author) {
+          return String((author as { name?: unknown }).name ?? '');
+        }
+        return '';
+      })
+      .filter(Boolean);
+    return authors.length > 0 ? authors.join(', ') : 'Unknown authors';
+  }
+  if (typeof value === 'string') return value;
+  return 'Unknown authors';
+}
+
+function releaseDateText(value: string | Date | null) {
+  if (!value) return 'No release date';
+  return typeof value === 'string' ? value : value.toISOString().slice(0, 10);
+}
+
 export default async function LibraryTodayPage() {
   const today = new Date().toISOString().slice(0, 10);
 
@@ -19,6 +42,8 @@ export default async function LibraryTodayPage() {
       sourceTitle: litSources.title,
       itemId: litItems.id,
       title: litItems.title,
+      authors: litItems.authors,
+      releasedOn: litItems.releasedOn,
       arxivId: litItems.arxivId,
       url: litItems.url,
       readState: litItems.readState,
@@ -81,19 +106,21 @@ export default async function LibraryTodayPage() {
                   {r.title}
                 </Link>
               </h2>
-              {r.summaryMd ?? r.abstract ? (
-                <p className="line-clamp-3 text-sm text-[--color-muted]">{r.summaryMd ?? r.abstract}</p>
-              ) : null}
+              <p className="text-xs text-[--color-muted]">
+                {authorsText(r.authors)} · {releaseDateText(r.releasedOn)}
+              </p>
+              {r.summaryMd ? <p className="line-clamp-3 text-sm">{r.summaryMd}</p> : null}
               {r.reason ?? r.relevanceReasonMd ? (
                 <p className="text-sm">{r.reason ?? r.relevanceReasonMd}</p>
               ) : null}
+              {r.abstract ? <p className="line-clamp-3 text-xs text-[--color-muted]">{r.abstract}</p> : null}
               {r.threatReasonMd ? (
                 <p className="text-xs text-[--color-muted]">{r.threatReasonMd}</p>
               ) : null}
               <div className="flex items-center gap-3 text-xs">
                 {r.url ? (
                   <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[--color-accent] hover:underline">
-                    arxiv ↗
+                    source ↗
                   </a>
                 ) : null}
                 <Link href={`/e/lit_item/${r.itemId}`} className="text-[--color-muted] hover:text-[--color-fg]">

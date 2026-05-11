@@ -13,6 +13,29 @@ const STATES: Array<{ key: 'queued' | 'reading' | 'unread' | 'read' | 'archived'
   { key: 'read', title: 'Read' },
 ];
 
+function authorsText(value: unknown) {
+  if (!value) return 'Unknown authors';
+  if (Array.isArray(value)) {
+    const authors = value
+      .map((author) => {
+        if (typeof author === 'string') return author;
+        if (author && typeof author === 'object' && 'name' in author) {
+          return String((author as { name?: unknown }).name ?? '');
+        }
+        return '';
+      })
+      .filter(Boolean);
+    return authors.length > 0 ? authors.join(', ') : 'Unknown authors';
+  }
+  if (typeof value === 'string') return value;
+  return 'Unknown authors';
+}
+
+function releaseDateText(value: string | Date | null) {
+  if (!value) return 'No release date';
+  return typeof value === 'string' ? value : value.toISOString().slice(0, 10);
+}
+
 export default async function LibraryPage() {
   const rows = await db().select().from(litItems).orderBy(desc(litItems.updatedAt)).limit(500);
 
@@ -49,14 +72,21 @@ export default async function LibraryPage() {
                         href={`/e/lit_item/${r.id}`}
                         className="block rounded-md px-2 py-1 text-sm hover:bg-[--color-bg]"
                       >
-                        <p className="truncate">{r.title}</p>
+                        <p className="font-medium leading-snug">{r.title}</p>
+                        <p className="mt-0.5 truncate text-xs text-[--color-muted]">{authorsText(r.authors)}</p>
                         <p className="text-[10px] uppercase tracking-wide text-[--color-muted]">
-                          {r.type}
+                          {releaseDateText(r.releasedOn)} · {r.type}
                           {r.arxivId ? ` · ${r.arxivId}` : null}
-                          {r.lastRankedAt ? ` · ranked` : null}
+                          {r.lastRankedAt ? ` · Claude-ranked` : null}
                         </p>
+                        {r.summaryMd ? (
+                          <p className="mt-1 line-clamp-2 text-xs">{r.summaryMd}</p>
+                        ) : null}
                         {r.relevanceReasonMd ? (
-                          <p className="line-clamp-2 text-xs text-[--color-muted]">{r.relevanceReasonMd}</p>
+                          <p className="mt-1 line-clamp-2 text-xs text-[--color-muted]">{r.relevanceReasonMd}</p>
+                        ) : null}
+                        {r.abstract ? (
+                          <p className="mt-1 line-clamp-3 text-xs text-[--color-muted]">{r.abstract}</p>
                         ) : null}
                       </Link>
                     </li>

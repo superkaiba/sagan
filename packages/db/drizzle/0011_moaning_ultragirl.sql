@@ -1,0 +1,1 @@
+ALTER TABLE "lit_items" ADD COLUMN "released_on" date;

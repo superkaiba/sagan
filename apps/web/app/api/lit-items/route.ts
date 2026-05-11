@@ -18,6 +18,7 @@ export async function GET() {
 
 const createSchema = z.object({
   title: z.string().min(1).max(500),
+  authors: z.array(z.string().min(1).max(200)).max(100).optional(),
   type: z
     .enum(['paper', 'blog_post', 'forum_post', 'newsletter', 'report', 'repo', 'video', 'other'])
     .default('paper'),
@@ -25,6 +26,7 @@ const createSchema = z.object({
   pdfUrl: z.string().url().optional(),
   arxivId: z.string().max(64).optional(),
   doi: z.string().max(200).optional(),
+  releasedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   abstract: z.string().max(20_000).optional(),
   summaryMd: z.string().max(20_000).optional(),
   relevanceReasonMd: z.string().max(20_000).optional(),
@@ -56,11 +58,13 @@ export async function POST(req: Request) {
     .insert(litItems)
     .values({
       title: parsed.data.title,
+      authors: parsed.data.authors,
       type: parsed.data.type,
       url: parsed.data.url,
       pdfUrl: parsed.data.pdfUrl,
       arxivId,
       doi: parsed.data.doi,
+      releasedOn: parsed.data.releasedOn,
       abstract: parsed.data.abstract,
       summaryMd: parsed.data.summaryMd,
       relevanceReasonMd: parsed.data.relevanceReasonMd,

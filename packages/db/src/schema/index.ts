@@ -566,6 +566,7 @@ export const litItems = pgTable(
     pdfUrl: text('pdf_url'),
     arxivId: varchar('arxiv_id', { length: 64 }),
     doi: varchar('doi', { length: 200 }),
+    releasedOn: date('released_on'),
     tags: jsonb('tags'),
     readState: litReadStateEnum('read_state').notNull().default('unread'),
     queuePosition: integer('queue_position'),

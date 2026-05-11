@@ -6,7 +6,7 @@
  * the SDKResultMessage arrives.
  */
 import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import { and, eq, ilike } from 'drizzle-orm';
+import { and, eq, ilike, ne } from 'drizzle-orm';
 import { db, schema } from './db.js';
 import { emitEvent, notifyQueued } from './queue.js';
 import { env, requireEnv } from './env.js';
@@ -42,6 +42,14 @@ export async function runSession(runId: string): Promise<Outcome> {
   // Make sure the runner can talk to Anthropic.
   requireEnv('ANTHROPIC_API_KEY');
   const chatSession = row.chatSessionId ? await loadChatSession(row.chatSessionId) : null;
+  const priorChatRunExists =
+    row.kind === 'qa' && row.chatSessionId ? await hasPriorChatRun(row.chatSessionId, row.id) : false;
+  const chatResumeId =
+    row.kind === 'qa' && row.chatSessionId
+      ? (chatSession?.agentHandle ?? (priorChatRunExists ? row.chatSessionId : null))
+      : null;
+  const chatStartId =
+    row.kind === 'qa' && row.chatSessionId && !chatResumeId ? row.chatSessionId : null;
 
   const options: Options = {
     cwd: env.RUNNER_REPO_ROOT,
@@ -52,11 +60,7 @@ export async function runSession(runId: string): Promise<Outcome> {
     ...(row.kind === 'qa'
       ? { allowedTools: ['Read', 'Grep', 'Glob'], disallowedTools: ['Bash', 'Edit', 'Write'] }
       : {}),
-    ...(row.kind === 'qa' && row.chatSessionId
-      ? chatSession?.agentHandle
-        ? { resume: chatSession.agentHandle }
-        : { sessionId: row.chatSessionId }
-      : {}),
+    ...(chatResumeId ? { resume: chatResumeId } : chatStartId ? { sessionId: chatStartId } : {}),
   };
 
   const prompt = await buildPrompt(row);
@@ -70,7 +74,7 @@ export async function runSession(runId: string): Promise<Outcome> {
     detail: `permissionMode=${options.permissionMode}`,
   });
 
-  const result = await runWithStreaming(runId, row, prompt, options, chatSession?.agentHandle ?? null);
+  const result = await runWithStreaming(runId, row, prompt, options, chatResumeId);
   return result;
 }
 
@@ -135,6 +139,10 @@ async function runWithStreaming(
               await markFailed(runId, errMsg);
               return { ok: false, error: errMsg };
             }
+            if (row.chatSessionId && !recordedClaudeSessionId) {
+              recordedClaudeSessionId = row.chatSessionId;
+              await syncChatSessionHandle(row.chatSessionId, row.chatSessionId);
+            }
           }
           await markCompleted(runId, finalText, costUsd, numTurns);
           return { ok: true, status: 'completed', resultText: finalText, costUsd, numTurns };
@@ -163,6 +171,15 @@ async function loadChatSession(chatSessionId: string) {
     .where(eq(schema.chatSessions.id, chatSessionId))
     .limit(1);
   return rows[0] ?? null;
+}
+
+async function hasPriorChatRun(chatSessionId: string, currentRunId: string) {
+  const rows = await db()
+    .select({ id: schema.agentRuns.id })
+    .from(schema.agentRuns)
+    .where(and(eq(schema.agentRuns.chatSessionId, chatSessionId), ne(schema.agentRuns.id, currentRunId)))
+    .limit(1);
+  return rows.length > 0;
 }
 
 async function syncChatSessionHandle(chatSessionId: string, agentHandle: string) {

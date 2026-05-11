@@ -433,10 +433,16 @@ function mentorSnapshotContext(input: { entityKind: EntityKind; entityId: string
   if (input.entityKind !== 'clean_result') return '';
   const result = getMentorCleanResultById(input.entityId);
   if (!result) return '';
+  const sourceLine =
+    result.number && result.url
+      ? `- GitHub issue: #${result.number} (${result.url})`
+      : result.sourceLabel
+        ? `- Source: ${result.sourceLabel}`
+        : null;
   return [
     'Record context:',
     `- Title: ${result.title}`,
-    `- GitHub issue: #${result.number} (${result.url})`,
+    sourceLine,
     `- Status: ${result.statusName}`,
     result.confidence ? `- Confidence: ${result.confidence}` : null,
     '',

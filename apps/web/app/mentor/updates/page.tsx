@@ -23,7 +23,8 @@ export default async function MentorUpdatesPage() {
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-tight">{update.title}</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[--color-muted]">
-              {update.issueCount} Useful-column results from {update.sourceRepo}.
+              {update.issueCount} Useful-column results from {update.sourceRepo}, plus{' '}
+              {update.discussionCardCount} mentor discussion cards.
             </p>
           </div>
           <div className="text-left text-xs leading-5 text-[--color-muted] md:text-right">

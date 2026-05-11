@@ -12,8 +12,11 @@ const STATUS_STYLES: Record<string, { bg: string; label: string }> = {
   'Not useful': { bg: 'oklch(0.86 0.13 25)', label: 'not useful' },
 };
 
+const PRESENTATION_DISCUSSION_CARD_IDS = [
+  '00000000-0000-4000-8000-202605110001',
+  '00000000-0000-4000-8000-202605110002',
+];
 const PRESENTATION_ISSUE_NUMBERS = [186, 281, 295, 276, 224, 284, 237, 337];
-const PRESENTATION_ISSUE_SET = new Set(PRESENTATION_ISSUE_NUMBERS);
 
 function excerptText(value: string) {
   return normalizeGitHubMarkdown(value)
@@ -22,6 +25,12 @@ function excerptText(value: string) {
     .replace(/[`*_>#-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function sourceLabel(result: CleanResult) {
+  if (result.sourceLabel) return result.sourceLabel;
+  if (result.number) return `Issue #${result.number}`;
+  return 'Discussion card';
 }
 
 export function MentorResultsBoard({
@@ -63,10 +72,15 @@ export function MentorResultsBoard({
     router.push('/mentor/updates', { scroll: false });
   }
 
-  const presentationResults = PRESENTATION_ISSUE_NUMBERS.map((number) =>
+  const presentationDiscussionResults = PRESENTATION_DISCUSSION_CARD_IDS.map((id) =>
+    results.find((result) => result.id === id),
+  ).filter((result): result is CleanResult => Boolean(result));
+  const presentationIssueResults = PRESENTATION_ISSUE_NUMBERS.map((number) =>
     results.find((result) => result.number === number),
   ).filter((result): result is CleanResult => Boolean(result));
-  const otherResults = results.filter((result) => !PRESENTATION_ISSUE_SET.has(result.number));
+  const presentationResults = [...presentationDiscussionResults, ...presentationIssueResults];
+  const presentationResultIds = new Set(presentationResults.map((result) => result.id));
+  const otherResults = results.filter((result) => !presentationResultIds.has(result.id));
 
   if (results.length === 0) {
     return (
@@ -81,12 +95,13 @@ export function MentorResultsBoard({
       <ol className="grid gap-3 md:grid-cols-2">
         {sectionResults.map((result) => {
           const style = STATUS_STYLES[result.statusName] ?? STATUS_STYLES.Useful!;
+          const label = sourceLabel(result);
           return (
             <li key={result.id}>
               <button
                 type="button"
                 data-clickable="true"
-                aria-label={`Open details for GitHub issue #${result.number}`}
+                aria-label={`Open details for ${result.title}`}
                 onClick={() => openOverlay(result.id)}
                 className="group flex min-h-[14rem] w-full cursor-pointer flex-col border-2 border-[--color-border] bg-[--color-panel] p-4 text-left hover:border-[--color-accent] hover:bg-[--color-hover] focus:outline-none focus:ring-2 focus:ring-[--color-focus]"
               >
@@ -109,7 +124,7 @@ export function MentorResultsBoard({
                   {excerptText(result.excerpt)}
                 </p>
                 <div className="mt-auto flex items-center justify-between gap-3 border-t border-[--color-border] pt-3 text-xs text-[--color-muted] group-hover:border-[--color-accent]">
-                  <span>Issue #{result.number}</span>
+                  <span>{label}</span>
                   <span className="inline-flex min-h-8 items-center gap-1 border border-[--color-accent] bg-[--color-accent] px-2.5 py-1 font-semibold text-[--color-accent-fg]">
                     Open details
                     <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
@@ -166,7 +181,7 @@ export function MentorResultsBoard({
                 <h2 className="max-w-4xl text-base font-semibold leading-snug md:text-lg">
                   {active.title}
                 </h2>
-                <p className="mt-1 text-xs text-[--color-muted]">Useful issue #{active.number}</p>
+                <p className="mt-1 text-xs text-[--color-muted]">{sourceLabel(active)}</p>
               </div>
               <button
                 type="button"
@@ -181,17 +196,19 @@ export function MentorResultsBoard({
 
             <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_22rem]">
               <main className="min-h-0 overflow-y-auto p-4 md:p-6">
-                <div className="mb-4 flex flex-wrap gap-2 text-xs">
-                  <a
-                    href={active.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex min-h-8 items-center gap-1 border border-[--color-border] px-2 py-1 font-medium hover:bg-[--color-hover]"
-                  >
-                    GitHub issue
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                  </a>
-                </div>
+                {active.url ? (
+                  <div className="mb-4 flex flex-wrap gap-2 text-xs">
+                    <a
+                      href={active.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-8 items-center gap-1 border border-[--color-border] px-2 py-1 font-medium hover:bg-[--color-hover]"
+                    >
+                      GitHub issue
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                    </a>
+                  </div>
+                ) : null}
                 <Markdown>{active.body}</Markdown>
               </main>
 

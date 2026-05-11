@@ -24,17 +24,26 @@ export function RouteModal({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/35 p-3 md:p-6"
+      className="fixed inset-0 z-50 p-3 md:p-6"
       role="presentation"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.62)' }}
       onMouseDown={() => router.back()}
     >
       <section
         role="dialog"
         aria-modal="true"
-        className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-lg border border-[--color-border] bg-[--color-bg] shadow-lg"
+        className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-lg border border-[--color-border] shadow-lg"
+        style={{
+          backgroundColor: 'var(--color-bg)',
+          color: 'var(--color-fg)',
+          boxShadow: '0 18px 60px rgba(0, 0, 0, 0.35)',
+        }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="flex items-center justify-end border-b border-[--color-border] bg-[--color-muted-bg] px-3 py-2">
+        <header
+          className="flex items-center justify-end border-b border-[--color-border] px-3 py-2"
+          style={{ backgroundColor: 'var(--color-muted-bg)' }}
+        >
           <button
             type="button"
             onClick={() => router.back()}
@@ -44,7 +53,9 @@ export function RouteModal({ children }: { children: ReactNode }) {
             <X aria-hidden="true" className="h-4 w-4" />
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6" style={{ backgroundColor: 'var(--color-bg)' }}>
+          {children}
+        </div>
       </section>
     </div>
   );

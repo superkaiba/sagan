@@ -133,7 +133,7 @@ const mentorDiscussionCards: CleanResult[] = [
   {
     id: '00000000-0000-4000-8000-202605110002',
     number: null,
-    title: 'Questions for him',
+    title: 'Questions for you',
     body: [
       '1. **How do you use AI in your research workflow?** Specifically, what do you delegate to it, what do you keep doing yourself, and where has it changed how you operate compared with your workflow before LLM coding tools?',
       '',
@@ -142,7 +142,7 @@ const mentorDiscussionCards: CleanResult[] = [
       '3. **What is the best way for me to share results with you?** Format, cadence, and level of detail. Would you rather see a clean-result write-up per finished experiment, a weekly digest, raw figures plus bullet points, or something else?',
     ].join('\n'),
     excerpt:
-      'Three mentor-facing questions about AI-assisted research workflow, time allocation, and the best cadence and format for sharing results.',
+      'How do you use AI in your research workflow? How do you split time between thinking, experiments, interpretation, and literature? What is the best way for me to share results?',
     confidence: null,
     useful: true,
     statusName: 'Useful',

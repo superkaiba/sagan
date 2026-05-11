@@ -5,7 +5,7 @@ import { notificationPreferences, users, type User } from '@sagan/db/schema';
 import { db } from './db';
 import { hasFullDashboardAccessEmail } from './full-dashboard-access';
 
-export async function createPublicMentorAccount(input: {
+export async function createPublicUserAccount(input: {
   email: string;
   displayName?: string;
   password?: string;
@@ -26,7 +26,7 @@ export async function createPublicMentorAccount(input: {
 
   const password = input.password ?? randomBytes(32).toString('base64url');
   const passwordHash = await hashPassword(password);
-  const role = hasFullDashboardAccessEmail(email) ? 'owner' : 'mentor';
+  const role = hasFullDashboardAccessEmail(email) ? 'owner' : 'collaborator';
   const inserted = await db()
     .insert(users)
     .values({

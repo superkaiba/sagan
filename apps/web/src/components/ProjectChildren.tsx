@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { beliefs, cleanResults, experiments, projectNarratives } from '@sagan/db/schema';
 import { db } from '@/lib/db';
+import { Panel, StatusBadge } from '@/components/ui';
 
 export async function ProjectChildren({ projectId }: { projectId: string }) {
   const [bel, exp, narr] = await Promise.all([
@@ -47,50 +48,60 @@ export async function ProjectChildren({ projectId }: { projectId: string }) {
   if (bel.length === 0 && exp.length === 0 && narr.length === 0 && resultRows.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
       <ChildList title={`Beliefs (${bel.length})`}>
+        {bel.length === 0 ? <EmptyChild /> : null}
         {bel.map((b) => (
-          <li key={b.id}>
-            <Link href={`/e/belief/${b.id}`} className="block rounded-md px-2 py-1 text-sm hover:bg-[--color-bg]">
+          <li key={b.id} className="min-w-0">
+            <Link href={`/e/belief/${b.id}`} className="block rounded-md px-2 py-2 text-sm hover:bg-[--color-hover]">
               <span className="block truncate">{b.title}</span>
-              <span className="text-[10px] uppercase tracking-wide text-[--color-muted]">
-                {b.confidence} · {b.status}
+              <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[--color-muted]">
+                <StatusBadge status={b.status} />
+                <span>{b.confidence}</span>
               </span>
             </Link>
           </li>
         ))}
       </ChildList>
       <ChildList title={`Experiments (${exp.length})`}>
+        {exp.length === 0 ? <EmptyChild /> : null}
         {exp.map((e) => (
-          <li key={e.id}>
-            <Link href={`/e/experiment/${e.id}`} className="block rounded-md px-2 py-1 text-sm hover:bg-[--color-bg]">
+          <li key={e.id} className="min-w-0">
+            <Link href={`/e/experiment/${e.id}`} className="block rounded-md px-2 py-2 text-sm hover:bg-[--color-hover]">
               <span className="block truncate">{e.title}</span>
-              <span className="text-[10px] uppercase tracking-wide text-[--color-muted]">{e.status}</span>
+              <span className="mt-1 block">
+                <StatusBadge status={e.status} />
+              </span>
             </Link>
           </li>
         ))}
       </ChildList>
       <ChildList title={`Clean results (${resultRows.length})`}>
+        {resultRows.length === 0 ? <EmptyChild /> : null}
         {resultRows.map((r) => (
-          <li key={r.id}>
-            <Link href={`/clean-results/${r.id}`} className="block rounded-md px-2 py-1 text-sm hover:bg-[--color-bg]">
+          <li key={r.id} className="min-w-0">
+            <Link href={`/clean-results/${r.id}`} className="block rounded-md px-2 py-2 text-sm hover:bg-[--color-hover]">
               <span className="block truncate">{r.title}</span>
-              <span className="text-[10px] uppercase tracking-wide text-[--color-muted]">
-                {r.confidence ?? 'unset'} · {r.status}
+              <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[--color-muted]">
+                <StatusBadge status={r.status} />
+                <span>{r.confidence ?? 'unset'}</span>
               </span>
             </Link>
           </li>
         ))}
       </ChildList>
       <ChildList title={`Narratives (${narr.length})`}>
+        {narr.length === 0 ? <EmptyChild /> : null}
         {narr.map((n) => (
-          <li key={n.id}>
+          <li key={n.id} className="min-w-0">
             <Link
               href={`/e/project_narrative/${n.id}`}
-              className="block rounded-md px-2 py-1 text-sm hover:bg-[--color-bg]"
+              className="block rounded-md px-2 py-2 text-sm hover:bg-[--color-hover]"
             >
               <span className="block truncate">{n.title}</span>
-              <span className="text-[10px] uppercase tracking-wide text-[--color-muted]">{n.status}</span>
+              <span className="mt-1 block">
+                <StatusBadge status={n.status} />
+              </span>
             </Link>
           </li>
         ))}
@@ -101,9 +112,13 @@ export async function ProjectChildren({ projectId }: { projectId: string }) {
 
 function ChildList({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-3 space-y-1">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-[--color-muted]">{title}</h3>
+    <Panel className="space-y-1 p-3">
+      <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
       <ul className="space-y-0.5">{children}</ul>
-    </section>
+    </Panel>
   );
+}
+
+function EmptyChild() {
+  return <li className="px-2 py-2 text-sm text-[--color-muted]">None yet.</li>;
 }

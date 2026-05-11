@@ -1,5 +1,5 @@
-import { and, eq } from 'drizzle-orm';
-import { cleanResults, entityMemberships } from '@sagan/db/schema';
+import { and, eq, isNull } from 'drizzle-orm';
+import { cleanResults, dailyLogEntries, entityMemberships } from '@sagan/db/schema';
 import type { SessionContext } from '@sagan/auth';
 import { requireSession } from './auth';
 import { db } from './db';
@@ -64,6 +64,21 @@ export async function canCommentOnEntity(
 }
 
 async function canReadSharedEntity(entityKind: EntityKind, entityId: string): Promise<boolean> {
+  if (entityKind === 'daily_log_entry') {
+    const rows = await db()
+      .select({ id: dailyLogEntries.id })
+      .from(dailyLogEntries)
+      .where(
+        and(
+          eq(dailyLogEntries.id, entityId),
+          eq(dailyLogEntries.kind, 'clean_result'),
+          isNull(dailyLogEntries.archivedAt),
+        ),
+      )
+      .limit(1);
+    return Boolean(rows[0]);
+  }
+
   if (entityKind !== 'clean_result') return false;
   if (isMentorCleanResultId(entityId)) return true;
   const rows = await db()

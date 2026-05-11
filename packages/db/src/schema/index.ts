@@ -1009,11 +1009,13 @@ export const chatSessions = pgTable(
       onDelete: 'set null',
     }),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     scopeIdx: index('chat_sessions_scope_idx').on(t.scopeEntityKind, t.scopeEntityId),
     lastMsgIdx: index('chat_sessions_last_msg_idx').on(t.lastMessageAt),
+    archivedIdx: index('chat_sessions_archived_idx').on(t.archivedAt),
   }),
 );
 

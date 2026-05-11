@@ -5,10 +5,10 @@ import { db } from './db';
 const DEFAULT_BOARD = 'next-steps';
 
 const DEFAULT_COLUMNS = [
-  { title: 'Backlog', position: 0, color: 'oklch(0.85 0.02 270)' },
-  { title: 'Today', position: 1, color: 'oklch(0.85 0.10 250)' },
-  { title: 'Doing', position: 2, color: 'oklch(0.85 0.10 90)' },
-  { title: 'Awaiting result', position: 3, color: 'oklch(0.85 0.12 50)' },
+  { title: 'Backlog', position: 0, color: 'var(--color-muted)' },
+  { title: 'Today', position: 1, color: 'var(--color-info)' },
+  { title: 'Doing', position: 2, color: 'var(--color-running)' },
+  { title: 'Awaiting result', position: 3, color: 'var(--color-approval)' },
 ];
 
 export async function ensureDefaultBoard(slug: string = DEFAULT_BOARD): Promise<string> {

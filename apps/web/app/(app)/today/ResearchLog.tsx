@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Markdown } from '@/components/Markdown';
+import { StatusBadge } from '@/components/ui';
 
 interface Entry {
   id: string;
@@ -13,13 +14,6 @@ interface Entry {
 }
 
 type LogMode = 'research' | 'all' | 'results' | 'trail';
-
-const KIND_BADGES: Record<Entry['kind'], { label: string; bg: string }> = {
-  clean_result: { label: 'result', bg: 'oklch(0.86 0.13 150)' },
-  blocker: { label: 'blocker', bg: 'oklch(0.86 0.13 25)' },
-  decision: { label: 'decision', bg: 'oklch(0.86 0.13 250)' },
-  note: { label: 'note', bg: 'oklch(0.88 0.04 270)' },
-};
 
 const MODES: Array<{ key: LogMode; label: string }> = [
   { key: 'research', label: 'Research' },
@@ -49,16 +43,10 @@ function isActionTrail(entry: Entry) {
 }
 
 function EntryRow({ entry }: { entry: Entry }) {
-  const badge = KIND_BADGES[entry.kind];
   return (
     <article className="group grid gap-2 p-3 text-sm hover:bg-[--color-muted-bg] md:grid-cols-[7rem_minmax(0,1fr)_auto] md:items-start">
       <div className="flex items-center gap-2 md:block">
-        <span
-          className="inline-block rounded-md px-2 py-0.5 text-[10px] font-medium"
-          style={{ background: badge.bg, color: 'oklch(0.20 0.04 270)' }}
-        >
-          {badge.label}
-        </span>
+        <StatusBadge status={entry.kind} />
         <time className="text-xs text-[--color-muted] md:mt-2 md:block">
           {new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </time>

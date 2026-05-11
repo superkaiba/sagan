@@ -425,6 +425,35 @@ async function buildScopedEntityContext(row: AgentRunRow): Promise<string> {
         12000,
       );
     }
+    case 'daily_log_entry': {
+      const entryRows = await db()
+        .select({
+          day: schema.dailyLogEntries.day,
+          kind: schema.dailyLogEntries.kind,
+          bodyMd: schema.dailyLogEntries.bodyMd,
+          entityKind: schema.dailyLogEntries.entityKind,
+          entityId: schema.dailyLogEntries.entityId,
+          createdAt: schema.dailyLogEntries.createdAt,
+          updatedAt: schema.dailyLogEntries.updatedAt,
+        })
+        .from(schema.dailyLogEntries)
+        .where(eq(schema.dailyLogEntries.id, row.scopeEntityId))
+        .limit(1);
+      const entry = entryRows[0];
+      if (!entry) return '';
+      return truncate(
+        [
+          `kind: daily_log_entry`,
+          `day: ${entry.day}`,
+          `entryKind: ${entry.kind}`,
+          `linkedEntity: ${entry.entityKind && entry.entityId ? `${entry.entityKind} ${entry.entityId}` : 'null'}`,
+          `createdAt: ${entry.createdAt.toISOString()}`,
+          `updatedAt: ${entry.updatedAt.toISOString()}`,
+          `bodyMd:\n${entry.bodyMd}`,
+        ].join('\n'),
+        12000,
+      );
+    }
     case 'experiment': {
       const experimentRows = await db()
         .select({

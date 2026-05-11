@@ -1,0 +1,654 @@
+import { NextResponse } from 'next/server';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { z } from 'zod';
+import { agentRuns, cleanResults, dailyLogEntries, experiments, ideaCards, todos } from '@sagan/db/schema';
+import { requireOwner } from '@/lib/access';
+import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
+import { db } from '@/lib/db';
+import { statusTone } from '@/lib/status';
+import { appendWorkflowEvent, experimentTurn, setExperimentStatus, type ExperimentStatus } from '@/lib/workflow';
+import type { EntityKind } from '@/lib/entity';
+
+const QUEUED_CHANNEL = 'agent_run_queued';
+const APPROVED_CHANNEL = 'agent_run_approved';
+
+const pipelineStageSchema = z.enum([
+  'idea',
+  'planning',
+  'approval',
+  'queued',
+  'running',
+  'interpreting',
+  'review',
+  'done',
+  'blocked',
+]);
+const pipelineKindSchema = z.enum(['experiment', 'clean_result', 'todo', 'idea', 'automation']);
+
+type PipelineStage = z.infer<typeof pipelineStageSchema>;
+type PipelineKind = z.infer<typeof pipelineKindSchema>;
+type AgentRunKind = 'plan' | 'apply' | 'qa' | 'experiment';
+type AgentRunStatus = 'queued' | 'running' | 'awaiting_approval' | 'approved' | 'deploying' | 'blocked' | 'completed' | 'failed' | 'rejected';
+
+const advanceSchema = z.object({
+  id: z.string().uuid(),
+  kind: pipelineKindSchema,
+  fromStage: pipelineStageSchema.optional(),
+  toStage: pipelineStageSchema,
+});
+
+const activeRunStatuses = ['queued', 'running', 'awaiting_approval', 'approved', 'deploying'] as const;
+
+const experimentStatusByStage: Record<PipelineStage, ExperimentStatus> = {
+  idea: 'proposed',
+  planning: 'planning',
+  approval: 'plan_pending',
+  queued: 'queued',
+  running: 'running',
+  interpreting: 'interpreting',
+  review: 'reviewing',
+  done: 'completed',
+  blocked: 'blocked',
+};
+
+const todoStatusByStage: Partial<Record<PipelineStage, (typeof todos.$inferSelect)['status']>> = {
+  idea: 'open',
+  planning: 'planning',
+  running: 'running',
+  interpreting: 'interpreting',
+  review: 'awaiting_promotion',
+  done: 'done',
+  blocked: 'blocked',
+};
+
+const cleanResultStatusByStage: Partial<Record<PipelineStage, (typeof cleanResults.$inferSelect)['status']>> = {
+  interpreting: 'draft',
+  review: 'reviewing',
+  done: 'approved',
+  blocked: 'blocked',
+};
+
+const automationStatusByStage: Partial<Record<PipelineStage, AgentRunStatus>> = {
+  approval: 'awaiting_approval',
+  queued: 'queued',
+  running: 'queued',
+  done: 'completed',
+  blocked: 'blocked',
+};
+
+function entityHref(kind: PipelineKind | EntityKind, id: string) {
+  if (kind === 'clean_result') return `/clean-results/${id}`;
+  if (kind === 'automation' || kind === 'run') return `/agent/${id}`;
+  return `/e/${kind}/${id}`;
+}
+
+function cardPayload(input: {
+  key: string;
+  id: string;
+  kind: PipelineKind;
+  stage: PipelineStage;
+  title: string;
+  detail?: string | null;
+  status: string;
+  project?: string | null;
+  ownerAction?: string | null;
+  href?: string;
+}) {
+  return {
+    key: input.key,
+    id: input.id,
+    kind: input.kind,
+    stage: input.stage,
+    title: input.title,
+    detail: input.detail ?? null,
+    status: input.status,
+    project: input.project ?? null,
+    ownerAction: input.ownerAction ?? null,
+    updatedAt: new Date().toISOString(),
+    href: input.href ?? entityHref(input.kind, input.id),
+    tone: statusTone(input.status),
+  };
+}
+
+function agentStepFor(kind: PipelineKind, stage: PipelineStage): AgentRunKind | null {
+  if (kind === 'experiment' || kind === 'idea') {
+    if (stage === 'planning' || stage === 'queued' || stage === 'running') return 'experiment';
+    if (stage === 'interpreting' || stage === 'review') return 'qa';
+  }
+  if (kind === 'todo') {
+    if (stage === 'planning') return 'plan';
+    if (stage === 'running') return 'apply';
+    if (stage === 'interpreting' || stage === 'review') return 'qa';
+  }
+  if (kind === 'clean_result') {
+    if (stage === 'interpreting' || stage === 'review') return 'qa';
+  }
+  return null;
+}
+
+function agentRequest(input: {
+  kind: PipelineKind;
+  title: string;
+  fromStage?: PipelineStage;
+  toStage: PipelineStage;
+}) {
+  const movement = input.fromStage ? `Moved from ${input.fromStage} to ${input.toStage}` : `Moved to ${input.toStage}`;
+  switch (input.kind) {
+    case 'experiment':
+    case 'idea':
+      if (input.toStage === 'interpreting' || input.toStage === 'review') {
+        return `${movement} on the Pipeline board.\n\nInterpret the current evidence for "${input.title}". Use the scoped record, identify missing artifacts or blockers, and produce the next concrete review note.`;
+      }
+      return `${movement} on the Pipeline board.\n\nDraft the next experiment plan for "${input.title}". Use the scoped experiment record and produce a plan that can be reviewed and approved.`;
+    case 'todo':
+      if (input.toStage === 'running') {
+        return `${movement} on the Pipeline board.\n\nAdvance this task now: "${input.title}". Use the scoped task context and make the smallest useful change or report the exact blocker.`;
+      }
+      return `${movement} on the Pipeline board.\n\nPlan or review the next step for this task: "${input.title}". Use the scoped task context and keep the result directly actionable.`;
+    case 'clean_result':
+      return `${movement} on the Pipeline board.\n\nReview this clean result: "${input.title}". Check the scoped record for support, caveats, missing artifacts, and the next owner decision.`;
+    case 'automation':
+      return `${movement} on the Pipeline board.\n\nContinue the automation run for "${input.title}".`;
+  }
+}
+
+async function queueAgentRun(input: {
+  kind: AgentRunKind;
+  request: string;
+  scopeEntityKind?: EntityKind;
+  scopeEntityId?: string;
+  actorUserId: string;
+}) {
+  if (input.scopeEntityKind && input.scopeEntityId) {
+    const existing = await db()
+      .select({ id: agentRuns.id, status: agentRuns.status })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.scopeEntityKind, input.scopeEntityKind),
+          eq(agentRuns.scopeEntityId, input.scopeEntityId),
+          inArray(agentRuns.status, [...activeRunStatuses]),
+        ),
+      )
+      .orderBy(desc(agentRuns.updatedAt))
+      .limit(1);
+    if (existing[0]) return { runId: existing[0].id, existing: true };
+  }
+
+  const inserted = await db()
+    .insert(agentRuns)
+    .values({
+      kind: input.kind,
+      provider: 'claude_code',
+      status: 'queued',
+      request: input.request,
+      scopeEntityKind: input.scopeEntityKind,
+      scopeEntityId: input.scopeEntityId,
+      approvalRequired: input.kind === 'plan' || input.kind === 'experiment',
+    })
+    .returning({ id: agentRuns.id });
+  const runId = inserted[0]!.id;
+  await db().execute(sql`SELECT pg_notify(${QUEUED_CHANNEL}, ${runId})`);
+  await appendDailyLogTrailBestEffort({
+    action: `Queued ${input.kind} agent run ${runId.slice(0, 8)}`,
+    why: input.request.slice(0, 500),
+    entityKind: input.scopeEntityKind,
+    entityId: input.scopeEntityId,
+    actorKind: 'user',
+    actorUserId: input.actorUserId,
+    agentRunId: runId,
+    correlationId: runId,
+  });
+  return { runId, existing: false };
+}
+
+async function approveLatestScopedRun(input: {
+  scopeEntityKind: EntityKind;
+  scopeEntityId: string;
+  actorUserId: string;
+  note: string;
+}) {
+  const pending = await db()
+    .select({ id: agentRuns.id, kind: agentRuns.kind, request: agentRuns.request })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.scopeEntityKind, input.scopeEntityKind),
+        eq(agentRuns.scopeEntityId, input.scopeEntityId),
+        eq(agentRuns.status, 'awaiting_approval'),
+      ),
+    )
+    .orderBy(desc(agentRuns.updatedAt))
+    .limit(1);
+  const run = pending[0];
+  if (!run) return null;
+
+  await db()
+    .update(agentRuns)
+    .set({
+      status: 'approved',
+      approvedBy: input.actorUserId,
+      approvedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(agentRuns.id, run.id));
+  await db().execute(sql`SELECT pg_notify(${APPROVED_CHANNEL}, ${run.id})`);
+  await appendDailyLogTrailBestEffort({
+    action: `Approved ${run.kind} agent run ${run.id.slice(0, 8)}`,
+    why: input.note,
+    entityKind: input.scopeEntityKind,
+    entityId: input.scopeEntityId,
+    actorKind: 'user',
+    actorUserId: input.actorUserId,
+    agentRunId: run.id,
+    correlationId: run.id,
+    detail: run.request.slice(0, 500),
+  });
+  return run.id;
+}
+
+function unsupported(stage: PipelineStage, kind: PipelineKind) {
+  return NextResponse.json(
+    { error: 'unsupported_stage', message: `${kind.replace('_', ' ')} cards cannot move to ${stage}.` },
+    { status: 400 },
+  );
+}
+
+export async function POST(req: Request) {
+  let session;
+  try {
+    session = await requireOwner();
+  } catch {
+    return NextResponse.json({ error: 'owner_required' }, { status: 403 });
+  }
+
+  const body = await req.json().catch(() => null);
+  const parsed = advanceSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'invalid_input', detail: z.treeifyError(parsed.error) }, { status: 400 });
+  }
+
+  const input = parsed.data;
+  if (input.kind === 'experiment') return advanceExperiment(input, session.user.id);
+  if (input.kind === 'clean_result') return advanceCleanResult(input, session.user.id);
+  if (input.kind === 'todo') return advanceTodo(input, session.user.id);
+  if (input.kind === 'idea') return advanceIdea(input, session.user.id);
+  return advanceAutomation(input, session.user.id);
+}
+
+async function advanceExperiment(input: z.infer<typeof advanceSchema>, actorUserId: string) {
+  const rows = await db()
+    .select({ id: experiments.id, title: experiments.title, hypothesis: experiments.hypothesis, status: experiments.status })
+    .from(experiments)
+    .where(eq(experiments.id, input.id))
+    .limit(1);
+  const experiment = rows[0];
+  if (!experiment) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+  const status = experimentStatusByStage[input.toStage];
+  const updated = await setExperimentStatus({
+    experimentId: input.id,
+    status,
+    actorUserId,
+    note: `Moved on Pipeline board to ${input.toStage}.`,
+  });
+  let nextStatus = updated?.status ?? status;
+
+  let agentRunId: string | undefined;
+  let message = `Moved to ${input.toStage}.`;
+  if (input.toStage === 'queued' || input.toStage === 'running') {
+    const approvedRun = await approveLatestScopedRun({
+      scopeEntityKind: 'experiment',
+      scopeEntityId: input.id,
+      actorUserId,
+      note: `Approved from Pipeline board after moving "${experiment.title}" to ${input.toStage}.`,
+    });
+    if (approvedRun) {
+      agentRunId = approvedRun;
+      message = 'Approved the waiting agent plan and notified the runner.';
+      await setExperimentStatus({
+        experimentId: input.id,
+        status: 'approved',
+        actorUserId,
+        note: `Approved from Pipeline board after moving to ${input.toStage}.`,
+      });
+      nextStatus = 'approved';
+    } else {
+      const run = await queueAgentRun({
+        kind: 'experiment',
+        request: agentRequest({ kind: 'experiment', title: experiment.title, fromStage: input.fromStage, toStage: input.toStage }),
+        scopeEntityKind: 'experiment',
+        scopeEntityId: input.id,
+        actorUserId,
+      });
+      agentRunId = run.runId;
+      message = run.existing ? 'An agent run is already active for this experiment.' : 'Queued the next experiment agent step.';
+    }
+  } else {
+    const step = agentStepFor('experiment', input.toStage);
+    if (step) {
+      const run = await queueAgentRun({
+        kind: step,
+        request: agentRequest({ kind: 'experiment', title: experiment.title, fromStage: input.fromStage, toStage: input.toStage }),
+        scopeEntityKind: 'experiment',
+        scopeEntityId: input.id,
+        actorUserId,
+      });
+      agentRunId = run.runId;
+      message = run.existing ? 'An agent run is already active for this experiment.' : 'Queued the next experiment agent step.';
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    agentRunId,
+    message,
+    card: cardPayload({
+      key: `experiment-${input.id}`,
+      id: input.id,
+      kind: 'experiment',
+      stage: input.toStage,
+      title: experiment.title,
+      detail: experiment.hypothesis,
+      status: nextStatus,
+      ownerAction: ['plan_pending', 'awaiting_approval', 'blocked', 'awaiting_promotion'].includes(nextStatus)
+        ? experimentTurn(nextStatus)
+        : null,
+    }),
+  });
+}
+
+async function advanceCleanResult(input: z.infer<typeof advanceSchema>, actorUserId: string) {
+  const status = cleanResultStatusByStage[input.toStage];
+  if (!status) return unsupported(input.toStage, 'clean_result');
+  const rows = await db()
+    .select({
+      id: cleanResults.id,
+      title: cleanResults.title,
+      claim: cleanResults.claim,
+      bodyMd: cleanResults.bodyMd,
+      status: cleanResults.status,
+      artifactStatus: cleanResults.artifactStatus,
+      sourceDailyLogEntryId: cleanResults.sourceDailyLogEntryId,
+    })
+    .from(cleanResults)
+    .where(eq(cleanResults.id, input.id))
+    .limit(1);
+  const result = rows[0];
+  if (!result) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (status === 'approved' && result.artifactStatus !== 'verified') {
+    return NextResponse.json(
+      { error: 'verified_artifacts_required', message: 'Clean results need verified artifacts before they can move to done.' },
+      { status: 409 },
+    );
+  }
+
+  const updates: Partial<typeof cleanResults.$inferInsert> = {
+    status,
+    updatedAt: new Date(),
+  };
+  if (status === 'approved') {
+    updates.approvedBy = actorUserId;
+    updates.approvedAt = new Date();
+  }
+  await db().update(cleanResults).set(updates).where(eq(cleanResults.id, input.id));
+
+  if (status === 'approved' && !result.sourceDailyLogEntryId) {
+    const entry = await db()
+      .insert(dailyLogEntries)
+      .values({
+        day: new Date().toISOString().slice(0, 10),
+        kind: 'clean_result',
+        bodyMd: result.bodyMd,
+        entityKind: 'clean_result',
+        entityId: result.id,
+      })
+      .returning({ id: dailyLogEntries.id });
+    await db()
+      .update(cleanResults)
+      .set({ sourceDailyLogEntryId: entry[0]!.id, updatedAt: new Date() })
+      .where(eq(cleanResults.id, input.id));
+  }
+
+  let agentRunId: string | undefined;
+  let message = `Moved to ${input.toStage}.`;
+  const step = agentStepFor('clean_result', input.toStage);
+  if (step) {
+    const run = await queueAgentRun({
+      kind: step,
+      request: agentRequest({ kind: 'clean_result', title: result.title, fromStage: input.fromStage, toStage: input.toStage }),
+      scopeEntityKind: 'clean_result',
+      scopeEntityId: input.id,
+      actorUserId,
+    });
+    agentRunId = run.runId;
+    message = run.existing ? 'An agent run is already active for this clean result.' : 'Queued the next review agent step.';
+  }
+
+  await appendDailyLogTrailBestEffort({
+    action: `Moved clean result ${result.title.slice(0, 80)} to ${input.toStage}`,
+    why: `Pipeline board drag updated clean-result status to ${status}.`,
+    entityKind: 'clean_result',
+    entityId: input.id,
+    actorKind: 'user',
+    actorUserId,
+    correlationId: input.id,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    agentRunId,
+    message,
+    card: cardPayload({
+      key: `clean-result-${input.id}`,
+      id: input.id,
+      kind: 'clean_result',
+      stage: input.toStage,
+      title: result.title,
+      detail: result.claim,
+      status,
+      ownerAction: ['reviewing', 'blocked'].includes(status) ? 'Owner turn: review clean result' : null,
+    }),
+  });
+}
+
+async function advanceTodo(input: z.infer<typeof advanceSchema>, actorUserId: string) {
+  const status = todoStatusByStage[input.toStage];
+  if (!status) return unsupported(input.toStage, 'todo');
+  const rows = await db()
+    .select({ id: todos.id, text: todos.text, bodyMd: todos.bodyMd, priority: todos.priority, linkedKind: todos.linkedKind, linkedId: todos.linkedId })
+    .from(todos)
+    .where(eq(todos.id, input.id))
+    .limit(1);
+  const todo = rows[0];
+  if (!todo) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+  await db().update(todos).set({ status, updatedAt: new Date() }).where(eq(todos.id, input.id));
+
+  let agentRunId: string | undefined;
+  let message = `Moved to ${input.toStage}.`;
+  const step = agentStepFor('todo', input.toStage);
+  if (step) {
+    const run = await queueAgentRun({
+      kind: step,
+      request: agentRequest({ kind: 'todo', title: todo.text, fromStage: input.fromStage, toStage: input.toStage }),
+      scopeEntityKind: 'todo',
+      scopeEntityId: input.id,
+      actorUserId,
+    });
+    agentRunId = run.runId;
+    message = run.existing ? 'An agent run is already active for this task.' : 'Queued the next task agent step.';
+  }
+
+  await appendDailyLogTrailBestEffort({
+    action: `Moved task ${todo.text.slice(0, 80)} to ${input.toStage}`,
+    why: `Pipeline board drag updated task status to ${status}.`,
+    entityKind: 'todo',
+    entityId: input.id,
+    actorKind: 'user',
+    actorUserId,
+    correlationId: input.id,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    agentRunId,
+    message,
+    card: cardPayload({
+      key: `todo-${input.id}`,
+      id: input.id,
+      kind: 'todo',
+      stage: input.toStage,
+      title: todo.text,
+      detail: todo.bodyMd,
+      status,
+      ownerAction: todo.priority === 'urgent' || status === 'blocked' ? `Owner turn: ${todo.priority} task` : null,
+      href: todo.linkedKind && todo.linkedId ? entityHref(todo.linkedKind, todo.linkedId) : entityHref('todo', input.id),
+    }),
+  });
+}
+
+async function advanceIdea(input: z.infer<typeof advanceSchema>, actorUserId: string) {
+  if (input.toStage !== 'planning') return unsupported(input.toStage, 'idea');
+  const rows = await db().select().from(ideaCards).where(eq(ideaCards.id, input.id)).limit(1);
+  const idea = rows[0];
+  if (!idea) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (idea.state === 'promoted' && idea.promotedKind && idea.promotedId) {
+    return NextResponse.json(
+      { error: 'already_promoted', message: 'This idea has already been promoted.' },
+      { status: 409 },
+    );
+  }
+
+  const inserted = await db()
+    .insert(experiments)
+    .values({
+      title: idea.title.slice(0, 300),
+      hypothesis: idea.bodyMd,
+      status: 'planning',
+      planJson: {
+        createdFrom: 'idea_card',
+        ideaCardId: idea.id,
+        ideationSessionId: idea.sessionId,
+      },
+    })
+    .returning({ id: experiments.id, title: experiments.title, hypothesis: experiments.hypothesis, status: experiments.status });
+  const experiment = inserted[0]!;
+  await db()
+    .update(ideaCards)
+    .set({
+      state: 'promoted',
+      promotionKind: 'experiment',
+      promotedKind: 'experiment',
+      promotedId: experiment.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(ideaCards.id, idea.id));
+  await appendWorkflowEvent({
+    entityKind: 'experiment',
+    entityId: experiment.id,
+    eventType: 'created',
+    toStatus: experiment.status,
+    actorKind: 'user',
+    actorUserId,
+    note: 'Experiment promoted from Pipeline board drag.',
+    metadata: { ideaCardId: idea.id, ideationSessionId: idea.sessionId, turn: experimentTurn(experiment.status) },
+  });
+
+  const run = await queueAgentRun({
+    kind: 'experiment',
+    request: agentRequest({ kind: 'idea', title: idea.title, fromStage: input.fromStage, toStage: input.toStage }),
+    scopeEntityKind: 'experiment',
+    scopeEntityId: experiment.id,
+    actorUserId,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    agentRunId: run.runId,
+    message: run.existing ? 'The promoted experiment already has an active agent run.' : 'Promoted the idea and queued an experiment plan.',
+    card: cardPayload({
+      key: `experiment-${experiment.id}`,
+      id: experiment.id,
+      kind: 'experiment',
+      stage: 'planning',
+      title: experiment.title,
+      detail: experiment.hypothesis,
+      status: experiment.status,
+      ownerAction: experimentTurn(experiment.status),
+      href: entityHref('experiment', experiment.id),
+    }),
+    removeKey: `idea-${idea.id}`,
+  });
+}
+
+async function advanceAutomation(input: z.infer<typeof advanceSchema>, actorUserId: string) {
+  const targetStatus = automationStatusByStage[input.toStage];
+  if (!targetStatus) return unsupported(input.toStage, 'automation');
+  const rows = await db()
+    .select({
+      id: agentRuns.id,
+      kind: agentRuns.kind,
+      request: agentRuns.request,
+      status: agentRuns.status,
+      scopeEntityKind: agentRuns.scopeEntityKind,
+      scopeEntityId: agentRuns.scopeEntityId,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, input.id))
+    .limit(1);
+  const run = rows[0];
+  if (!run) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+  let nextStatus: AgentRunStatus = targetStatus;
+  let agentRunId: string | undefined = run.id;
+  let message = `Moved automation to ${input.toStage}.`;
+  if ((input.toStage === 'queued' || input.toStage === 'running') && run.status === 'awaiting_approval') {
+    await db()
+      .update(agentRuns)
+      .set({ status: 'approved', approvedBy: actorUserId, approvedAt: new Date(), updatedAt: new Date() })
+      .where(eq(agentRuns.id, run.id));
+    await db().execute(sql`SELECT pg_notify(${APPROVED_CHANNEL}, ${run.id})`);
+    nextStatus = 'approved';
+    message = 'Approved the waiting automation plan and notified the runner.';
+  } else {
+    const updates: Partial<typeof agentRuns.$inferInsert> = {
+      status: targetStatus,
+      updatedAt: new Date(),
+    };
+    if (targetStatus === 'completed') updates.completedAt = new Date();
+    await db().update(agentRuns).set(updates).where(eq(agentRuns.id, run.id));
+    if (targetStatus === 'queued') {
+      await db().execute(sql`SELECT pg_notify(${QUEUED_CHANNEL}, ${run.id})`);
+      message = 'Requeued the automation run.';
+    }
+  }
+
+  await appendDailyLogTrailBestEffort({
+    action: `Moved automation run ${run.id.slice(0, 8)} to ${input.toStage}`,
+    why: `Pipeline board drag updated agent-run status to ${nextStatus}.`,
+    entityKind: run.scopeEntityKind ?? undefined,
+    entityId: run.scopeEntityId ?? undefined,
+    actorKind: 'user',
+    actorUserId,
+    agentRunId: run.id,
+    correlationId: run.id,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    agentRunId,
+    message,
+    card: cardPayload({
+      key: `agent-${run.id}`,
+      id: run.id,
+      kind: 'automation',
+      stage: input.toStage === 'running' ? 'queued' : input.toStage,
+      title: run.request,
+      detail: run.scopeEntityKind && run.scopeEntityId ? `${run.scopeEntityKind} ${run.scopeEntityId.slice(0, 8)}` : run.kind,
+      status: nextStatus,
+      ownerAction: nextStatus === 'awaiting_approval' ? 'Owner turn: approve automation run' : null,
+      href: entityHref('automation', run.id),
+    }),
+  });
+}

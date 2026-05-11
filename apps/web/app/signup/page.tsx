@@ -64,7 +64,7 @@ function SignupForm() {
       >
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Create account</h1>
-          <p className="text-sm text-[--color-muted]">Sagan mentor access</p>
+          <p className="text-sm text-[--color-muted]">Sagan access</p>
         </header>
 
         <a

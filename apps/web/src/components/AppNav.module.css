@@ -1,0 +1,121 @@
+.mainNav {
+  display: grid;
+  gap: 1.35rem;
+}
+
+.navSection {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.navSectionTitle {
+  margin: 0 0 0.25rem;
+  padding-inline: 0.55rem;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.navLink {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.6rem;
+  border: 1px solid transparent;
+  color: var(--color-muted);
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.navLink:hover {
+  background: color-mix(in srgb, var(--color-hover) 78%, transparent);
+  color: var(--color-fg);
+}
+
+.navLinkFull {
+  min-height: 2.35rem;
+  border-left: 2px solid transparent;
+  border-radius: 0.15rem var(--radius-control) var(--radius-control) 0.15rem;
+  padding: 0.45rem 0.55rem 0.45rem 0.65rem;
+  font-size: 0.9rem;
+}
+
+.navLinkActive {
+  border-left-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-panel) 72%, var(--color-accent) 8%);
+  color: var(--color-fg);
+}
+
+.navIcon {
+  height: 1rem;
+  width: 1rem;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--color-muted) 82%, var(--color-fg));
+}
+
+.navIconActive {
+  color: var(--color-accent);
+}
+
+.navLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.countBadge {
+  margin-left: auto;
+  min-width: 1.45rem;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--color-muted);
+  padding: 0.05rem 0.35rem;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.2rem;
+}
+
+.countBadgeActive {
+  background: var(--color-muted-bg);
+  color: var(--color-fg);
+}
+
+.compactNav {
+  display: flex;
+  width: 100%;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding: 0.3rem 0.5rem;
+}
+
+.navLinkCompact {
+  min-height: 3rem;
+  min-width: 4.5rem;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  border-radius: var(--radius-control);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.68rem;
+}
+
+.compactCount {
+  position: absolute;
+  right: 0.6rem;
+  top: 0.2rem;
+  border-radius: 0.3rem;
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  padding: 0.05rem 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  line-height: 1rem;
+}

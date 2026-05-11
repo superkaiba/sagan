@@ -40,7 +40,7 @@ export function ThemeControl({ compact = false }: { compact?: boolean }) {
   return (
     <fieldset className={cn('space-y-1', compact && 'min-w-max')}>
       <legend className="sr-only">Theme</legend>
-      <div className="flex rounded-md border border-[--color-border] bg-[--color-bg] p-0.5">
+      <div className="flex rounded-[--radius-control] border border-[--color-border] bg-[--color-bg] p-0.5 shadow-[var(--shadow-inset)]">
         {OPTIONS.map((option) => {
           const active = choice === option.value;
           return (
@@ -50,9 +50,9 @@ export function ThemeControl({ compact = false }: { compact?: boolean }) {
               aria-pressed={active}
               onClick={() => choose(option.value)}
               className={cn(
-                'rounded px-2 py-1 text-xs text-[--color-muted]',
+                'rounded-[calc(var(--radius-control)-2px)] px-2 py-1 text-xs font-medium text-[--color-muted]',
                 'hover:bg-[--color-hover] hover:text-[--color-fg]',
-                active && 'bg-[--color-muted-bg] font-medium text-[--color-fg]',
+                active && 'bg-[--color-panel] font-semibold text-[--color-fg] shadow-[var(--shadow-inset)]',
                 compact && 'px-1.5 text-[11px]',
               )}
             >

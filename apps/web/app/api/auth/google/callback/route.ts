@@ -5,7 +5,7 @@ import { users } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { setSessionCookieOnResponse } from '@/lib/auth';
 import { getRequestOrigin } from '@/lib/request-origin';
-import { createPublicMentorAccount } from '@/lib/public-signup';
+import { createPublicUserAccount } from '@/lib/public-signup';
 import { hasFullDashboardAccessEmail } from '@/lib/full-dashboard-access';
 
 const STATE_COOKIE = 'sagan_google_oauth';
@@ -97,7 +97,7 @@ export async function GET(req: Request) {
   let createdPublicAccount = false;
 
   if (!user) {
-    const created = await createPublicMentorAccount({ email, displayName: profile.name });
+    const created = await createPublicUserAccount({ email, displayName: profile.name });
     user = created.user;
     createdPublicAccount = created.created;
   } else if (hasFullDashboardAccessEmail(email) && user.role !== 'owner') {
@@ -110,7 +110,7 @@ export async function GET(req: Request) {
   }
 
   if (!user) return redirectWithError(req, 'google_no_account');
-  if (createdPublicAccount || (user.role === 'mentor' && redirectTo === '/today')) {
+  if (createdPublicAccount || (user.role !== 'owner' && redirectTo === '/today')) {
     redirectTo = '/mentor/updates';
   }
 

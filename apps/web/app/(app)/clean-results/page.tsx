@@ -1,36 +1,53 @@
 import Link from 'next/link';
 import { desc } from 'drizzle-orm';
+import { CheckCircle2 } from 'lucide-react';
 import { cleanResults } from '@sagan/db/schema';
+import { EmptyState, ListRow, PageHeader, Panel, StatusBadge, buttonClassName } from '@/components/ui';
 import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CleanResultsPage() {
-  const rows = await db().select().from(cleanResults).orderBy(desc(cleanResults.updatedAt)).limit(100);
+  const rows = await db().select().from(cleanResults).orderBy(desc(cleanResults.updatedAt)).limit(120);
   return (
     <div className="space-y-6">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Clean Results</h1>
-        <p className="text-sm text-[--color-muted]">{rows.length} recent result{rows.length === 1 ? '' : 's'}</p>
-      </header>
-      <div className="rounded-lg border border-[--color-border] divide-y divide-[--color-border]">
+      <PageHeader
+        title="Clean results"
+        description="Durable findings, review state, confidence, and share workflow."
+        meta={`${rows.length} recent`}
+        actions={
+          <Link href="/results?view=findings" className={buttonClassName({ variant: 'secondary', size: 'md' })}>
+            Findings
+          </Link>
+        }
+      />
+      <Panel className="overflow-hidden">
         {rows.length === 0 ? (
-          <p className="p-4 text-sm text-[--color-muted]">No clean results yet.</p>
+          <EmptyState
+            icon={<CheckCircle2 className="h-5 w-5" aria-hidden="true" />}
+            title="No clean results yet"
+            message="Reviewed experiment outputs will appear here as clean, shareable claims."
+          />
         ) : (
-          rows.map((result) => (
-            <Link key={result.id} href={`/clean-results/${result.id}`} className="block p-4 hover:bg-[--color-muted-bg]">
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{result.status}</span>
-                {result.confidence ? (
-                  <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{result.confidence}</span>
-                ) : null}
-                <h2 className="font-medium">{result.title}</h2>
-              </div>
-              <p className="mt-1 line-clamp-2 text-sm text-[--color-muted]">{result.claim}</p>
-            </Link>
-          ))
+          <div className="divide-y divide-[--color-border]">
+            {rows.map((result) => (
+              <ListRow
+                key={result.id}
+                href={`/clean-results/${result.id}`}
+                leading={<CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+                title={result.title}
+                detail={result.claim}
+                meta={
+                  <span className="inline-flex items-center gap-2">
+                    <StatusBadge status={result.status} />
+                    {result.confidence ? <span>{result.confidence}</span> : null}
+                  </span>
+                }
+              />
+            ))}
+          </div>
         )}
-      </div>
+      </Panel>
     </div>
   );
 }

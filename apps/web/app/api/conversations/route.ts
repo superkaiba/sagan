@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { agentRuns, chatMessages, chatSessions, users } from '@sagan/db/schema';
 import { db } from '@/lib/db';
@@ -19,13 +19,14 @@ type RunRow = {
   updatedAt: Date;
 };
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     await requireSession();
   } catch {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  const archived = new URL(req.url).searchParams.get('archived') === '1';
   const rows = await db()
     .select({
       id: chatSessions.id,
@@ -33,13 +34,14 @@ export async function GET() {
       createdByUserId: chatSessions.createdByUserId,
       createdByEmail: users.email,
       lastMessageAt: chatSessions.lastMessageAt,
+      archivedAt: chatSessions.archivedAt,
       createdAt: chatSessions.createdAt,
       messageCount: sql<number>`(SELECT count(*)::int FROM ${chatMessages} WHERE ${chatMessages.sessionId} = ${chatSessions.id})`,
     })
     .from(chatSessions)
     .leftJoin(users, eq(users.id, chatSessions.createdByUserId))
-    .where(andNullScope())
-    .orderBy(desc(chatSessions.lastMessageAt), desc(chatSessions.createdAt))
+    .where(and(andNullScope(), archived ? isNotNull(chatSessions.archivedAt) : isNull(chatSessions.archivedAt)))
+    .orderBy(archived ? desc(chatSessions.archivedAt) : desc(chatSessions.lastMessageAt), desc(chatSessions.createdAt))
     .limit(40);
 
   const sessions = await Promise.all(
@@ -88,6 +90,7 @@ export async function POST(req: Request) {
       agentHandle: chatSessions.agentHandle,
       createdByUserId: chatSessions.createdByUserId,
       lastMessageAt: chatSessions.lastMessageAt,
+      archivedAt: chatSessions.archivedAt,
       createdAt: chatSessions.createdAt,
     });
 
@@ -153,6 +156,5 @@ function inferConversationKind(firstBody: string | null | undefined, latest: Run
 function titleForConversation(kind: 'chat' | 'improve', firstBody: string | null | undefined, latest: RunRow | null) {
   const raw = firstBody?.replace(/^\[Dashboard improvement\]\s*/i, '').trim() || latest?.request.trim();
   if (!raw) return kind === 'improve' ? 'Dashboard improvement' : 'New conversation';
-  const prefix = kind === 'improve' ? 'Improve: ' : '';
-  return `${prefix}${raw.length > 72 ? `${raw.slice(0, 72)}...` : raw}`;
+  return raw.length > 72 ? `${raw.slice(0, 72)}...` : raw;
 }

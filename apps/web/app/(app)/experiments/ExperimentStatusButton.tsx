@@ -46,7 +46,7 @@ export function ExperimentStatusButton({
     variant === 'primary'
       ? 'bg-[--color-accent] text-[--color-accent-fg] border-[--color-accent]'
       : variant === 'danger'
-        ? 'border-[--color-danger] text-[--color-danger] hover:bg-[oklch(0.98_0.02_25)]'
+        ? 'border-[--color-danger] text-[--color-danger] hover:bg-[--color-danger-bg]'
         : 'border-[--color-border] hover:border-[--color-fg]';
 
   return (

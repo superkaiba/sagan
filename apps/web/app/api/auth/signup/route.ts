@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setSessionCookie } from '@/lib/auth';
-import { createPublicMentorAccount } from '@/lib/public-signup';
+import { createPublicUserAccount } from '@/lib/public-signup';
 
 const signupSchema = z.object({
   email: z.string().trim().email(),
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid_input', detail: z.treeifyError(parsed.error) }, { status: 400 });
   }
 
-  const { user, created } = await createPublicMentorAccount({
+  const { user, created } = await createPublicUserAccount({
     email: parsed.data.email,
     password: parsed.data.password,
     displayName: parsed.data.displayName,

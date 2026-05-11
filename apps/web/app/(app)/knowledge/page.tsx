@@ -78,23 +78,23 @@ export default async function KnowledgePage() {
         {kinds.map((k) => {
           const list = byKind.get(k) ?? [];
           return (
-            <section key={k} className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-3 space-y-2">
-              <header className="flex items-center justify-between">
-                <h2 className="text-sm font-medium">{KIND_LABELS[k]}s</h2>
-                <span className="text-xs text-[--color-muted]">{list.length}</span>
+            <section key={k} className="min-w-0 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-3 space-y-2">
+              <header className="flex items-center justify-between gap-2">
+                <h2 className="truncate text-sm font-medium">{KIND_LABELS[k]}s</h2>
+                <span className="shrink-0 text-xs text-[--color-muted]">{list.length}</span>
               </header>
               <ul className="space-y-1">
                 {list.length === 0 ? (
                   <li className="text-xs text-[--color-muted]">None yet.</li>
                 ) : (
                   list.slice(0, 8).map((c) => (
-                    <li key={c.id}>
+                    <li key={c.id} className="min-w-0">
                       <Link
                         href={`/e/${c.kind}/${c.id}`}
-                        className="block rounded-md px-2 py-1 text-sm hover:bg-[--color-bg]"
+                        className="flex items-baseline gap-2 rounded-md px-2 py-1 text-sm hover:bg-[--color-bg]"
                       >
-                        <span className="truncate">{c.title}</span>
-                        <span className="ml-2 text-[10px] uppercase tracking-wide text-[--color-muted]">
+                        <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                        <span className="shrink-0 text-[10px] uppercase tracking-wide text-[--color-muted]">
                           {c.meta}
                         </span>
                       </Link>

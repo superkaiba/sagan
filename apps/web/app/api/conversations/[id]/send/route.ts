@@ -53,7 +53,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       createdAt: chatMessages.createdAt,
     });
 
-  await db().update(chatSessions).set({ lastMessageAt: now }).where(eq(chatSessions.id, id));
+  await db().update(chatSessions).set({ lastMessageAt: now, archivedAt: null }).where(eq(chatSessions.id, id));
 
   const kind = parsed.data.mode === 'improve' ? 'apply' : 'qa';
   const runRows = await db()

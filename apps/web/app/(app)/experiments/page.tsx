@@ -3,22 +3,13 @@ import { desc, inArray, sql } from 'drizzle-orm';
 import { approvalRequests, experiments, workflowEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { experimentTurn } from '@/lib/workflow';
+import { StatusBadge } from '@/components/ui';
 import { ExperimentProposalForm } from './ExperimentProposalForm';
 import { ExperimentStatusButton } from './ExperimentStatusButton';
 
 export const dynamic = 'force-dynamic';
 
 const QUEUE_STATUSES = ['proposed', 'planning', 'plan_pending', 'approved', 'running', 'awaiting_promotion'] as const;
-
-const STATUS_COLORS: Record<string, string> = {
-  proposed: 'oklch(0.90 0.05 250)',
-  planning: 'oklch(0.90 0.06 220)',
-  plan_pending: 'oklch(0.91 0.10 65)',
-  approved: 'oklch(0.88 0.09 150)',
-  running: 'oklch(0.86 0.10 190)',
-  awaiting_promotion: 'oklch(0.88 0.11 75)',
-  blocked: 'oklch(0.90 0.10 30)',
-};
 
 export default async function ExperimentsPage() {
   const [queue, pendingApprovals, events] = await Promise.all([
@@ -93,12 +84,7 @@ export default async function ExperimentsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className="rounded-full px-2 py-0.5 text-xs font-medium text-[oklch(0.20_0.04_270)]"
-                        style={{ background: STATUS_COLORS[experiment.status] ?? 'oklch(0.90 0.02 270)' }}
-                      >
-                        {experiment.status}
-                      </span>
+                      <StatusBadge status={experiment.status} />
                       <span className="text-xs text-[--color-muted]">{experimentTurn(experiment.status)}</span>
                     </div>
                     <Link href={`/e/experiment/${experiment.id}`} className="block truncate text-sm font-medium hover:underline">

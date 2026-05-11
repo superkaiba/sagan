@@ -120,12 +120,12 @@ export async function POST(req: Request) {
         userId: session.user.id,
         entityKind: 'experiment',
         entityId: experiment.id,
-        role: session.user.role === 'mentor' ? 'mentor' : 'collaborator',
+        role: 'collaborator',
         createdBy: session.user.id,
       })
       .onConflictDoUpdate({
         target: [entityMemberships.userId, entityMemberships.entityKind, entityMemberships.entityId],
-        set: { role: session.user.role === 'mentor' ? 'mentor' : 'collaborator', updatedAt: new Date() },
+        set: { role: 'collaborator', updatedAt: new Date() },
       });
   }
 

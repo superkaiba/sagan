@@ -281,7 +281,7 @@ export function RunStream({
       ) : null}
 
       {error ? (
-        <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-[--color-danger] bg-[oklch(0.99_0.02_25)] p-4 text-sm text-[--color-danger]">
+        <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-[--color-danger] bg-[--color-danger-bg] p-4 text-sm text-[--color-danger]">
           {error}
         </pre>
       ) : null}

@@ -12,6 +12,7 @@ import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
 import { isIdeationSourceKind } from '@/lib/ideation';
+import { StatusBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,7 @@ export default async function EntityPage({
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <main className="min-w-0 space-y-6">
         <header className="space-y-2">
-          <p className="text-xs uppercase tracking-wide text-[--color-muted]">
+          <p className="text-sm text-[--color-muted]">
             {KIND_LABELS[kind]}
           </p>
           {kind === 'run' ? (
@@ -67,7 +68,7 @@ export default async function EntityPage({
           )}
           {entity.status ? (
             <p className="text-sm">
-              <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{entity.status}</span>
+              <StatusBadge status={entity.status} />
             </p>
           ) : null}
           {owner && isIdeationSourceKind(kind) ? (

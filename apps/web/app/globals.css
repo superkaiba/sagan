@@ -1,17 +1,38 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #f7f8f6;
-  --color-panel: #ffffff;
-  --color-fg: #20231f;
-  --color-muted: #626a61;
-  --color-muted-bg: #edf1ec;
-  --color-border: #d8dfd6;
-  --color-accent: #2f6f5e;
+  --color-bg: #f4f1ea;
+  --color-panel: #fffdf8;
+  --color-fg: #1f211d;
+  --color-muted: #6d675c;
+  --color-muted-bg: #e9e4d9;
+  --color-border: #d1c8b8;
+  --color-accent: #516f47;
+  --color-accent-strong: #405b38;
   --color-accent-fg: #ffffff;
   --color-danger: #ad3434;
+  --color-danger-bg: #fff1ef;
+  --color-danger-soft: #ffe4df;
+  --color-danger-border: #f1b5ac;
   --color-success: #27734f;
+  --color-success-bg: #edf8f1;
+  --color-success-border: #a8d8bb;
   --color-info: #2563eb;
+  --color-info-bg: #eef5ff;
+  --color-info-border: #b8cef8;
+  --color-warning: #8a5a00;
+  --color-warning-bg: #fff7e6;
+  --color-warning-border: #ead097;
+  --color-approval: #925b00;
+  --color-approval-bg: #fff4df;
+  --color-approval-border: #e7bd73;
+  --color-blocked: #ad3434;
+  --color-running: #236a73;
+  --color-running-bg: #e8f7f7;
+  --color-running-border: #a9d8da;
+  --color-neutral-bg: #e9e4d9;
+  --color-surface-subtle: #ece7dc;
+  --color-surface-raised: #fffdf8;
 
   --font-sans: Aptos, "SF Pro Text", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Liberation Mono", monospace;
@@ -19,20 +40,46 @@
 
 :root,
 :root[data-theme='light'] {
-  --color-bg: #f7f8f6;
-  --color-panel: #ffffff;
-  --color-fg: #20231f;
-  --color-muted: #626a61;
-  --color-muted-bg: #edf1ec;
-  --color-border: #d8dfd6;
-  --color-accent: #2f6f5e;
+  --color-bg: #f4f1ea;
+  --color-panel: #fffdf8;
+  --color-fg: #1f211d;
+  --color-muted: #6d675c;
+  --color-muted-bg: #e9e4d9;
+  --color-border: #d1c8b8;
+  --color-accent: #516f47;
+  --color-accent-strong: #405b38;
   --color-accent-fg: #ffffff;
   --color-danger: #ad3434;
+  --color-danger-bg: #fff1ef;
+  --color-danger-soft: #ffe4df;
+  --color-danger-border: #f1b5ac;
   --color-success: #27734f;
+  --color-success-bg: #edf8f1;
+  --color-success-border: #a8d8bb;
   --color-info: #2563eb;
-  --color-hover: #e6ece5;
-  --color-active: #dce5db;
-  --color-focus: #5d8f80;
+  --color-info-bg: #eef5ff;
+  --color-info-border: #b8cef8;
+  --color-warning: #8a5a00;
+  --color-warning-bg: #fff7e6;
+  --color-warning-border: #ead097;
+  --color-approval: #925b00;
+  --color-approval-bg: #fff4df;
+  --color-approval-border: #e7bd73;
+  --color-blocked: #ad3434;
+  --color-running: #236a73;
+  --color-running-bg: #e8f7f7;
+  --color-running-border: #a9d8da;
+  --color-neutral-bg: #e9e4d9;
+  --color-surface-subtle: #ece7dc;
+  --color-surface-raised: #fffdf8;
+  --color-hover: #e3ded2;
+  --color-active: #d8d0c1;
+  --color-focus: #637b58;
+  --shadow-panel: 0 1px 1px rgba(48, 45, 38, 0.05), 0 14px 32px rgba(67, 58, 42, 0.08);
+  --shadow-inset: inset 0 0 0 1px rgba(31, 33, 29, 0.045);
+  --shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 18px 42px rgba(67, 58, 42, 0.1);
+  --radius-panel: 0;
+  --radius-control: 0;
   color-scheme: light;
 }
 
@@ -44,13 +91,39 @@
   --color-muted-bg: #292620;
   --color-border: #403b33;
   --color-accent: #82c9a9;
+  --color-accent-strong: #99ddbd;
   --color-accent-fg: #102019;
   --color-danger: #ff8a8a;
+  --color-danger-bg: #3a2423;
+  --color-danger-soft: #4a2a28;
+  --color-danger-border: #6f3a38;
   --color-success: #8fd2ad;
+  --color-success-bg: #203229;
+  --color-success-border: #385e49;
   --color-info: #93c5fd;
+  --color-info-bg: #1d2a3b;
+  --color-info-border: #344a66;
+  --color-warning: #e5c07b;
+  --color-warning-bg: #342b1d;
+  --color-warning-border: #5a482a;
+  --color-approval: #f0bd67;
+  --color-approval-bg: #352819;
+  --color-approval-border: #644825;
+  --color-blocked: #ff8a8a;
+  --color-running: #8ed0d0;
+  --color-running-bg: #1e3030;
+  --color-running-border: #385a5a;
+  --color-neutral-bg: #292620;
+  --color-surface-subtle: #1d1b18;
+  --color-surface-raised: #25221e;
   --color-hover: #312d27;
   --color-active: #3a352e;
   --color-focus: #9ed6bb;
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.25), 0 10px 28px rgba(0, 0, 0, 0.22);
+  --shadow-inset: inset 0 0 0 1px rgba(244, 240, 232, 0.04);
+  --shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 42px rgba(0, 0, 0, 0.34);
+  --radius-panel: 0;
+  --radius-control: 0;
   color-scheme: dark;
 }
 
@@ -63,28 +136,66 @@
     --color-muted-bg: #292620;
     --color-border: #403b33;
     --color-accent: #82c9a9;
+    --color-accent-strong: #99ddbd;
     --color-accent-fg: #102019;
     --color-danger: #ff8a8a;
+    --color-danger-bg: #3a2423;
+    --color-danger-soft: #4a2a28;
+    --color-danger-border: #6f3a38;
     --color-success: #8fd2ad;
+    --color-success-bg: #203229;
+    --color-success-border: #385e49;
     --color-info: #93c5fd;
+    --color-info-bg: #1d2a3b;
+    --color-info-border: #344a66;
+    --color-warning: #e5c07b;
+    --color-warning-bg: #342b1d;
+    --color-warning-border: #5a482a;
+    --color-approval: #f0bd67;
+    --color-approval-bg: #352819;
+    --color-approval-border: #644825;
+    --color-blocked: #ff8a8a;
+    --color-running: #8ed0d0;
+    --color-running-bg: #1e3030;
+    --color-running-border: #385a5a;
+    --color-neutral-bg: #292620;
+    --color-surface-subtle: #1d1b18;
+    --color-surface-raised: #25221e;
     --color-hover: #312d27;
     --color-active: #3a352e;
     --color-focus: #9ed6bb;
+    --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.25), 0 10px 28px rgba(0, 0, 0, 0.22);
+    --shadow-inset: inset 0 0 0 1px rgba(244, 240, 232, 0.04);
+    --shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 42px rgba(0, 0, 0, 0.34);
+    --radius-panel: 0;
+    --radius-control: 0;
     color-scheme: dark;
   }
 }
 
 html, body {
   height: 100%;
-  background: var(--color-bg);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--color-muted-bg) 42%, transparent), transparent 23rem),
+    linear-gradient(180deg, var(--color-bg), color-mix(in srgb, var(--color-bg) 88%, var(--color-surface-subtle)));
   color: var(--color-fg);
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  border-color: var(--color-border);
+  border-radius: 0 !important;
+}
 
 html { scroll-behavior: smooth; }
+
+body {
+  min-width: 320px;
+}
 
 ::selection {
   background: color-mix(in srgb, var(--color-accent) 28%, transparent);
@@ -101,6 +212,13 @@ select {
     color 150ms ease,
     opacity 150ms ease,
     box-shadow 150ms ease;
+}
+
+input,
+textarea,
+select {
+  background-color: var(--color-panel);
+  border-color: var(--color-border);
 }
 
 button:not(:disabled),
@@ -127,6 +245,28 @@ summary:focus-visible,
   outline-offset: 2px;
 }
 
+main h1 {
+  letter-spacing: -0.025em;
+}
+
+main h2,
+main h3 {
+  letter-spacing: -0.012em;
+}
+
+main :where(section.rounded-lg.border, article.rounded-lg.border, div.rounded-lg.border, form.rounded-lg.border) {
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-inset);
+}
+
+main :where(section.rounded-md.border, article.rounded-md.border, div.rounded-md.border, form.rounded-md.border) {
+  border-radius: var(--radius-control);
+}
+
+main :where(table) {
+  border-color: var(--color-border);
+}
+
 main a[href]:not([class*='rounded']):not([class*='block']):not([class*='flex']) {
   color: var(--color-accent);
   text-decoration-line: underline;
@@ -141,8 +281,7 @@ main a[href]:not([class*='rounded']):not([class*='block']):not([class*='flex']) 
   a[href][class*='block']:hover,
   a[href][class*='flex']:hover,
   [data-clickable='true']:hover {
-    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 16%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
   }
 
   main a[href]:not([class*='rounded']):not([class*='block']):not([class*='flex']):hover {
@@ -158,4 +297,20 @@ a[href]:active,
 
 [data-clickable='true'] {
   position: relative;
+}
+
+.mentor-clean-log-list {
+  background-color: var(--color-panel);
+  color: var(--color-fg);
+}
+
+.mentor-clean-log-row {
+  background-color: transparent;
+  color: var(--color-fg);
+}
+
+@media (hover: hover) {
+  .mentor-clean-log-row:hover {
+    background-color: var(--color-muted-bg);
+  }
 }

@@ -4,7 +4,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import { dailyLogEntries } from '@sagan/db/schema';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { Markdown } from '@/components/Markdown';
+import { MentorDailyLogBoard } from './MentorDailyLogBoard';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,23 +45,23 @@ export default async function MentorDailyPage({
       </header>
 
       {entries.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-[--color-border] p-6 text-sm text-[--color-muted]">
-          No clean results were marked for this day.
-        </p>
+        <MentorDailyLogBoard date={date} entries={[]} signedIn={Boolean(session)} />
       ) : (
-        <ol className="space-y-3">
-          {entries.map((entry) => (
-            <li key={entry.id} className="rounded-lg border border-[--color-border] bg-[--color-panel] p-5">
-              <time className="text-xs text-[--color-muted]">
-                {new Date(entry.createdAt).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </time>
-              <Markdown className="mt-2">{entry.bodyMd}</Markdown>
-            </li>
-          ))}
-        </ol>
+        <MentorDailyLogBoard
+          date={date}
+          signedIn={Boolean(session)}
+          entries={entries.map((entry) => ({
+            id: entry.id,
+            day: entry.day,
+            kind: entry.kind,
+            bodyMd: entry.bodyMd,
+            entityKind: entry.entityKind,
+            entityId: entry.entityId,
+            position: entry.position,
+            createdAt: entry.createdAt.toISOString(),
+            updatedAt: entry.updatedAt.toISOString(),
+          }))}
+        />
       )}
 
       <footer className="mt-8 border-t border-[--color-border] pt-4 text-[10px] text-[--color-muted]">

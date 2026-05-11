@@ -28,7 +28,7 @@ function LoginForm() {
       .then(async (res) => (res.ok ? ((await res.json()) as { user?: { role?: string } }) : null))
       .then((data) => {
         if (cancelled || !data?.user) return;
-        window.location.replace(data.user.role === 'mentor' && next === '/today' ? '/mentor/updates' : next);
+        window.location.replace(data.user.role !== 'owner' && next === '/today' ? '/mentor/updates' : next);
       })
       .catch(() => {});
     return () => {
@@ -52,7 +52,7 @@ function LoginForm() {
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { user?: { role?: string } };
-      window.location.assign(data.user?.role === 'mentor' && next === '/today' ? '/mentor/updates' : next);
+      window.location.assign(data.user?.role !== 'owner' && next === '/today' ? '/mentor/updates' : next);
     } catch {
       setError('Network error.');
     } finally {

@@ -12,6 +12,9 @@ const STATUS_STYLES: Record<string, { bg: string; label: string }> = {
   'Not useful': { bg: 'oklch(0.86 0.13 25)', label: 'not useful' },
 };
 
+const PRESENTATION_ISSUE_NUMBERS = [186, 281, 295, 276, 224, 284, 237, 337];
+const PRESENTATION_ISSUE_SET = new Set(PRESENTATION_ISSUE_NUMBERS);
+
 function excerptText(value: string) {
   return normalizeGitHubMarkdown(value)
     .replace(/!\[[^\]]*]\([^)]+\)/g, '')
@@ -60,6 +63,11 @@ export function MentorResultsBoard({
     router.push('/mentor/updates', { scroll: false });
   }
 
+  const presentationResults = PRESENTATION_ISSUE_NUMBERS.map((number) =>
+    results.find((result) => result.number === number),
+  ).filter((result): result is CleanResult => Boolean(result));
+  const otherResults = results.filter((result) => !PRESENTATION_ISSUE_SET.has(result.number));
+
   if (results.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-[--color-border] p-6 text-sm text-[--color-muted]">
@@ -68,10 +76,10 @@ export function MentorResultsBoard({
     );
   }
 
-  return (
-    <>
+  function renderCards(sectionResults: CleanResult[]) {
+    return (
       <ol className="grid gap-3 md:grid-cols-2">
-        {results.map((result) => {
+        {sectionResults.map((result) => {
           const style = STATUS_STYLES[result.statusName] ?? STATUS_STYLES.Useful!;
           return (
             <li key={result.id}>
@@ -112,6 +120,28 @@ export function MentorResultsBoard({
           );
         })}
       </ol>
+    );
+  }
+
+  return (
+    <>
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between gap-3 border-b border-[--color-border] pb-2">
+          <h2 className="text-base font-semibold">Present</h2>
+          <p className="text-xs text-[--color-muted]">{presentationResults.length} cards</p>
+        </div>
+        {renderCards(presentationResults)}
+      </section>
+
+      {otherResults.length > 0 ? (
+        <section className="space-y-3 pt-5">
+          <div className="flex items-baseline justify-between gap-3 border-b border-[--color-border] pb-2">
+            <h2 className="text-base font-semibold">Other useful results</h2>
+            <p className="text-xs text-[--color-muted]">{otherResults.length} cards</p>
+          </div>
+          {renderCards(otherResults)}
+        </section>
+      ) : null}
 
       {active ? (
         <div

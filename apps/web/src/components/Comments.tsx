@@ -27,6 +27,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   const [showResolved, setShowResolved] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState('');
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
 
   async function load() {
     const res = await fetch(
@@ -93,6 +94,15 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     await load();
   }
 
+  function toggleCollapsed(id: string) {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   // Group comments by thread root (parent or self).
   const roots = items.filter((c) => !c.parentCommentId);
   const repliesByParent = new Map<string, Comment[]>();
@@ -109,17 +119,32 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
 
   const visibleRoots = showResolved ? roots : roots.filter((r) => !r.resolvedAt);
 
-  function renderComment(c: Comment, isReply = false) {
+  function renderComment(c: Comment, isReply = false, replyCount = 0) {
     const isClaude = c.authorKind === 'claude';
+    const collapsed = collapsedIds.has(c.id);
     const wrap = `group p-3 ${c.resolvedAt ? 'opacity-60' : ''} ${isClaude ? 'bg-[--color-muted-bg]' : ''} ${isReply ? 'border-l-2 border-[--color-border] ml-4' : ''}`;
     return (
       <article key={c.id} className={wrap}>
         <header className="mb-1 flex flex-wrap items-baseline gap-2 text-xs text-[--color-muted]">
+          <button
+            type="button"
+            onClick={() => toggleCollapsed(c.id)}
+            aria-expanded={!collapsed}
+            className="font-mono text-[10px] text-[--color-muted] hover:text-[--color-fg]"
+            title={collapsed ? 'Expand comment' : 'Collapse comment'}
+          >
+            {collapsed ? '+' : '-'}
+          </button>
           <span className={isClaude ? 'font-medium text-[--color-accent]' : 'font-medium text-[--color-fg]'}>
             {isClaude ? 'Claude' : c.authorKind === 'system' ? 'System' : 'You'}
           </span>
           <span>·</span>
           <time>{new Date(c.createdAt).toLocaleString()}</time>
+          {!isReply && replyCount > 0 ? (
+            <span className="text-[10px] text-[--color-muted]">
+              {replyCount} repl{replyCount === 1 ? 'y' : 'ies'}
+            </span>
+          ) : null}
           {c.kind === 'ask_claude' && c.agentRunId ? (
             <Link
               href={`/agent/${c.agentRunId}`}
@@ -141,53 +166,57 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
             {c.resolvedAt ? 'reopen' : 'resolve'}
           </button>
         </header>
-        {c.resolvedAt && c.resolvedSummaryMd ? (
-          <p className="mb-1 text-xs italic text-[--color-muted]">
-            resolved · {c.resolvedSummaryMd}
-          </p>
-        ) : null}
-        <Markdown>{c.body}</Markdown>
-        <div className="mt-2">
-          {replyTo === c.id ? (
-            <form onSubmit={(e) => onReplySubmit(e, c.id)} className="space-y-1">
-              <textarea
-                rows={2}
-                autoFocus
-                value={replyBody}
-                onChange={(e) => setReplyBody(e.target.value)}
-                placeholder="Reply…"
-                className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
-              />
-              <div className="flex justify-end gap-2 text-xs">
+        {collapsed ? null : (
+          <>
+            {c.resolvedAt && c.resolvedSummaryMd ? (
+              <p className="mb-1 text-xs italic text-[--color-muted]">
+                resolved · {c.resolvedSummaryMd}
+              </p>
+            ) : null}
+            <Markdown>{c.body}</Markdown>
+            <div className="mt-2">
+              {replyTo === c.id ? (
+                <form onSubmit={(e) => onReplySubmit(e, c.id)} className="space-y-1">
+                  <textarea
+                    rows={2}
+                    autoFocus
+                    value={replyBody}
+                    onChange={(e) => setReplyBody(e.target.value)}
+                    placeholder="Reply…"
+                    className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
+                  />
+                  <div className="flex justify-end gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplyTo(null);
+                        setReplyBody('');
+                      }}
+                      className="text-[--color-muted] hover:text-[--color-fg]"
+                    >
+                      cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting || !replyBody.trim()}
+                      className="rounded-md bg-[--color-accent] px-2 py-0.5 font-medium text-[--color-accent-fg] disabled:opacity-50"
+                    >
+                      Reply
+                    </button>
+                  </div>
+                </form>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => {
-                    setReplyTo(null);
-                    setReplyBody('');
-                  }}
-                  className="text-[--color-muted] hover:text-[--color-fg]"
+                  onClick={() => setReplyTo(c.id)}
+                  className="text-xs text-[--color-muted] opacity-0 transition group-hover:opacity-100 hover:text-[--color-fg]"
                 >
-                  cancel
+                  reply
                 </button>
-                <button
-                  type="submit"
-                  disabled={submitting || !replyBody.trim()}
-                  className="rounded-md bg-[--color-accent] px-2 py-0.5 font-medium text-[--color-accent-fg] disabled:opacity-50"
-                >
-                  Reply
-                </button>
-              </div>
-            </form>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setReplyTo(c.id)}
-              className="text-xs text-[--color-muted] opacity-0 transition group-hover:opacity-100 hover:text-[--color-fg]"
-            >
-              reply
-            </button>
-          )}
-        </div>
+              )}
+            </div>
+          </>
+        )}
       </article>
     );
   }
@@ -209,12 +238,16 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
         {visibleRoots.length === 0 ? (
           <p className="p-3 text-sm text-[--color-muted]">No comments yet.</p>
         ) : (
-          visibleRoots.map((root) => (
-            <div key={root.id}>
-              {renderComment(root, false)}
-              {(repliesByParent.get(root.id) ?? []).map((reply) => renderComment(reply, true))}
-            </div>
-          ))
+          visibleRoots.map((root) => {
+            const replies = repliesByParent.get(root.id) ?? [];
+            const collapsed = collapsedIds.has(root.id);
+            return (
+              <div key={root.id}>
+                {renderComment(root, false, replies.length)}
+                {collapsed ? null : replies.map((reply) => renderComment(reply, true))}
+              </div>
+            );
+          })
         )}
       </div>
 

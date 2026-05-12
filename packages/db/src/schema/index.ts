@@ -310,6 +310,25 @@ export const sessions = pgTable(
   }),
 );
 
+export const apiTokens = pgTable(
+  'api_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    prefix: varchar('prefix', { length: 16 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+  },
+  (t) => ({
+    userIdx: index('api_tokens_user_idx').on(t.userId),
+  }),
+);
+
 export const entityMemberships = pgTable(
   'entity_memberships',
   {
@@ -1301,6 +1320,7 @@ export const mobileBuilds = pgTable(
 
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
+export type ApiToken = typeof apiTokens.$inferSelect;
 export type EntityMembership = typeof entityMemberships.$inferSelect;
 export type AccessInvite = typeof accessInvites.$inferSelect;
 export type NotificationPreference = typeof notificationPreferences.$inferSelect;

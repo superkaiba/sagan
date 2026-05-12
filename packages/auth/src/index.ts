@@ -15,6 +15,15 @@ export {
   purgeExpiredSessions,
   type SessionContext,
 } from './session';
+export {
+  createApiToken,
+  validateApiToken,
+  listApiTokens,
+  revokeApiToken,
+  looksLikeApiToken,
+  type ApiTokenContext,
+  type MintedApiToken,
+} from './api-token';
 
 // Cookie name retained as 'eps_session' (not 'sagan_session') so existing
 // signed-in browser sessions keep working through the rebrand. Cookies are

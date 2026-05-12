@@ -4,6 +4,8 @@ import {
   createSession,
   invalidateSession,
   validateSession,
+  validateApiToken,
+  looksLikeApiToken,
   SESSION_COOKIE_NAME,
   SESSION_TTL_DAYS,
   type SessionContext,
@@ -31,7 +33,26 @@ export async function getSession(): Promise<SessionContext | null> {
   const auth = hdrs.get('authorization');
   if (auth?.startsWith('Bearer ')) {
     const bearer = auth.slice('Bearer '.length).trim();
-    if (bearer) return validateSession(db(), bearer);
+    if (bearer) {
+      // Long-lived API tokens use an `sk_` prefix; everything else is treated
+      // as a session token (issued by /api/auth/login with x-client-mode: bearer).
+      if (looksLikeApiToken(bearer)) {
+        const apiCtx = await validateApiToken(db(), bearer);
+        if (apiCtx) {
+          return {
+            session: {
+              id: apiCtx.token.id,
+              userId: apiCtx.token.userId,
+              expiresAt: apiCtx.token.expiresAt ?? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+              createdAt: new Date(0),
+            },
+            user: apiCtx.user,
+          };
+        }
+        return null;
+      }
+      return validateSession(db(), bearer);
+    }
   }
   return null;
 }

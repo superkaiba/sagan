@@ -37,6 +37,7 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
     'blockquote', 'pre', 'code',
     'figure', 'figcaption',
     'details', 'summary',
+    'style',
     // Lists
     'ul', 'ol', 'li', 'dl', 'dt', 'dd',
     // Tables
@@ -96,6 +97,10 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   },
   allowedSchemesAppliedToAttributes: ['href', 'src', 'cite'],
   parseStyleAttributes: true,
+  // When a tag is stripped, sanitize-html keeps its text content by default.
+  // For these tags that's pure noise (or worse — a leaked <title> shows up
+  // in the document body). Drop the text content along with the tag.
+  nonTextTags: ['style', 'script', 'textarea', 'option', 'noscript', 'head', 'title'],
   // SVG attribute names are case-sensitive (`viewBox`, `preserveAspectRatio`,
   // `gradientUnits`, etc.). htmlparser2's default lowercases everything,
   // which breaks SVG rendering — disable both element + attribute lowercasing

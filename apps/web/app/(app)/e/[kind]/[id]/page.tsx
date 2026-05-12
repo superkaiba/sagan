@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
+import { AwaitingApprovalBanner } from '@/components/AwaitingApprovalBanner';
 import { Comments } from '@/components/Comments';
 import { EditableBody } from '@/components/EditableBody';
 import { RichBody } from '@/components/RichBody';
@@ -53,12 +54,18 @@ export default async function EntityPage({
   if (!entity) return notFound();
   const owner = isOwner(session);
 
+  // For experiments, show "#<number>" alongside the title for at-a-glance
+  // identification. The number lives in entity.meta (loaded by lib/entity.ts).
+  const numberMeta = entity.meta?.find((m) => m.label === '#');
+  const titlePrefix = kind === 'experiment' && numberMeta ? `#${numberMeta.value}` : null;
+
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <main className="min-w-0 space-y-6">
-        <header className="space-y-2">
+        <header className="space-y-2 text-center">
           <p className="text-sm text-[--color-muted]">
             {KIND_LABELS[kind]}
+            {titlePrefix ? <span className="ml-2 font-mono">{titlePrefix}</span> : null}
           </p>
           {kind === 'run' ? (
             <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>

@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { Command, Inbox, LogOut } from 'lucide-react';
 import { getSession } from '@/lib/auth';
 import { CommandPalette } from '@/components/CommandPalette';
+import { ApprovalTitleBadge } from '@/components/ApprovalTitleBadge';
 import { AppNav } from '@/components/AppNav';
 import { ThemeControl } from '@/components/ThemeControl';
 import { ConversationDock } from '@/components/ConversationDock';
+import { MathRenderer } from '@/components/MathRenderer';
 import { hasFullDashboardAccess } from '@/lib/full-dashboard-access';
 import { loadShellDashboardState } from '@/lib/dashboard';
 import { buttonClassName, StatusBadge } from '@/components/ui';
@@ -105,14 +107,27 @@ export default async function AppLayout({
         {fullDashboard && shellState ? (
           <Link
             href="/approvals"
-            className="rounded-[--radius-panel] border border-[--color-approval-border] bg-[--color-approval-bg] p-3 text-sm shadow-[var(--shadow-inset)] transition-colors hover:bg-[--color-panel]"
+            data-pending={shellState.approvalCount > 0 ? 'true' : 'false'}
+            className={[
+              'rounded-[--radius-panel] border bg-[--color-approval-bg] p-3 text-sm shadow-[var(--shadow-inset)] transition-colors hover:bg-[--color-panel]',
+              shellState.approvalCount > 0
+                ? 'border-[--color-approval] ring-2 ring-[--color-approval]/60 ring-offset-2 ring-offset-[--color-panel] animate-sagan-approval-pulse'
+                : 'border-[--color-approval-border]',
+            ].join(' ')}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-2 font-medium">
                 <Inbox className="h-4 w-4 text-[--color-approval]" aria-hidden="true" />
                 Approvals
               </span>
-              <span className="rounded-[--radius-control] bg-[--color-panel] px-2 py-0.5 font-mono text-xs text-[--color-approval]">
+              <span
+                className={[
+                  'rounded-[--radius-control] px-2 py-0.5 font-mono text-xs',
+                  shellState.approvalCount > 0
+                    ? 'bg-[--color-approval] text-[--color-panel]'
+                    : 'bg-[--color-panel] text-[--color-approval]',
+                ].join(' ')}
+              >
                 {shellState.approvalCount}
               </span>
             </div>
@@ -165,9 +180,13 @@ export default async function AppLayout({
       <main id="main-content" className="mx-auto w-full max-w-[94rem] p-4 pb-24 md:p-7">
         {children}
       </main>
+      <MathRenderer />
       {modal}
       {fullDashboard ? (
-        <CommandPalette />
+        <>
+          <CommandPalette />
+          <ApprovalTitleBadge initialCount={shellState?.approvalCount ?? 0} />
+        </>
       ) : null}
     </div>
   );

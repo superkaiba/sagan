@@ -471,7 +471,10 @@ export const experiments = pgTable(
   'experiments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    number: integer('number').notNull().unique(),
+    number: integer('number')
+      .notNull()
+      .unique()
+      .default(sql`nextval('experiments_number_seq')`),
     legacyGhNumber: integer('legacy_gh_number'),
     beliefId: uuid('belief_id').references(() => beliefs.id, { onDelete: 'set null' }),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),

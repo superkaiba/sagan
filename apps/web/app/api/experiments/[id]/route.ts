@@ -7,11 +7,23 @@ import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { EXPERIMENT_STATUSES, experimentTurn, setExperimentStatus } from '@/lib/workflow';
 
+const EXPERIMENT_KINDS = ['experiment', 'infra', 'analysis', 'survey', 'batch'] as const;
+const COMPUTE_SIZES = ['none', 'small', 'medium', 'large'] as const;
+const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+const ASSIGNEE_KINDS = ['agent', 'human'] as const;
+
 const patchSchema = z.object({
   title: z.string().min(1).max(300).optional(),
+  body: z.string().max(200_000).optional(),
   hypothesis: z.string().max(50_000).optional(),
   configYaml: z.string().max(200_000).optional(),
   status: z.enum(EXPERIMENT_STATUSES).optional(),
+  kind: z.enum(EXPERIMENT_KINDS).optional(),
+  computeSize: z.enum(COMPUTE_SIZES).nullable().optional(),
+  priority: z.enum(PRIORITIES).optional(),
+  assigneeKind: z.enum(ASSIGNEE_KINDS).optional(),
+  tags: z.array(z.string().max(80)).max(50).optional(),
+  hasCleanResult: z.boolean().optional(),
   runpodAccount: z.enum(['team', 'personal']).optional(),
   note: z.string().max(2_000).optional(),
 });

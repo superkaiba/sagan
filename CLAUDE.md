@@ -101,6 +101,14 @@ can tap from a phone or browser:
   (60-day sliding expiration). No Lucia, no Supabase.
 - `users` and `sessions` tables live in `@sagan/db` schema.
 - Session helpers in `packages/auth/src/session.ts`.
+- Long-lived API tokens (`sk_…` prefix) for scripts and agents: mint
+  and revoke at `/api-tokens`. Stored hashed in the `api_tokens` table;
+  helpers in `packages/auth/src/api-token.ts`. `getSession()` accepts
+  them as `Authorization: Bearer sk_…` alongside session bearers.
+- A token for VM-side scripts lives in `.env` as `$SAGAN_API_TOKEN`
+  (name: `vm-scripts`). Read it from `process.env.SAGAN_API_TOKEN` —
+  never hard-code the value. Revoke and re-mint from `/api-tokens` if
+  it leaks.
 
 ## Agent Run Tracking
 

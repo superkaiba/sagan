@@ -74,6 +74,21 @@ The runner records every action it takes. Useful tables:
 
 Use short event messages. Do not write secrets into run summaries or events.
 
+## Output format
+
+Default to **HTML** for long-lived artifacts the user will read in a
+browser: design explorations, "compare N options" mockups, spec docs,
+PR / code-review writeups, runtime explainers, weekly digests, mentor
+updates. Sagan renders HTML attached to an entity inline via
+`figures.kind = 'html_artifact'`. Pair with the `frontend-design`
+plugin for defaults that don't look generic.
+
+Keep **markdown** for code-adjacent files where diffs matter:
+`CLAUDE.md`, `README.md`, commit messages, PR bodies, and daily-log
+entries the user types in the dashboard. The principle: HTML for "I'll
+open this in a browser and look at it", markdown for "this lives in git
+and I'll read its diff".
+
 ## Implementation Plan
 
 The full multi-phase blueprint lives at

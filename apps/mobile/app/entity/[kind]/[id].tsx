@@ -1,17 +1,19 @@
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Linking,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Linking, RefreshControl } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api, apiBase } from '@/lib/api';
-import { C } from '@/lib/theme';
+import { useTheme } from '@/lib/theme';
+import {
+  Button,
+  Card,
+  EmptyState,
+  HStack,
+  LoadingState,
+  Pill,
+  ScrollScreen,
+  Text,
+  VStack,
+} from '@/ui';
 
 type Kind = 'project' | 'experiment' | 'belief';
 
@@ -21,7 +23,15 @@ interface EntityResponse {
   belief?: any;
 }
 
-const KIND_CONFIG: Record<Kind, { endpoint: (id: string) => string; field: keyof EntityResponse; title: string; webPath: (id: string, row: any) => string }> = {
+const KIND_CONFIG: Record<
+  Kind,
+  {
+    endpoint: (id: string) => string;
+    field: keyof EntityResponse;
+    title: string;
+    webPath: (id: string, row: any) => string;
+  }
+> = {
   project: {
     endpoint: (id) => `/api/projects/${id}`,
     field: 'project',
@@ -47,6 +57,7 @@ function bodyText(row: any): string {
 }
 
 export default function EntityDetailScreen() {
+  const t = useTheme();
   const params = useLocalSearchParams<{ kind: string; id: string }>();
   const kind = params.kind as Kind;
   const id = params.id;
@@ -88,18 +99,18 @@ export default function EntityDetailScreen() {
 
   if (!config) {
     return (
-      <View style={s.center}>
-        <Text style={s.error}>Unknown entity kind: {kind}</Text>
-      </View>
+      <ScrollScreen>
+        <EmptyState icon="alert-circle-outline" title="Unknown" message={`No view for "${kind}".`} />
+      </ScrollScreen>
     );
   }
 
   if (loading && !row) {
     return (
-      <View style={s.center}>
+      <>
         <Stack.Screen options={{ title: config.title }} />
-        <ActivityIndicator color={C.accent} />
-      </View>
+        <LoadingState />
+      </>
     );
   }
 
@@ -108,63 +119,56 @@ export default function EntityDetailScreen() {
   return (
     <>
       <Stack.Screen options={{ title: config.title }} />
-      <ScrollView
-        style={s.root}
-        contentContainerStyle={s.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
+      <ScrollScreen
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={t.colors.accent}
+          />
+        }
       >
-        {error ? <Text style={s.error}>{error}</Text> : null}
+        {error ? (
+          <Card variant="outlined" style={{ borderColor: t.colors.danger }}>
+            <Text variant="footnote" tone="danger">
+              {error}
+            </Text>
+          </Card>
+        ) : null}
+
         {row ? (
           <>
-            <Text style={s.title}>{row.title ?? '(untitled)'}</Text>
-            <View style={s.metaRow}>
-              {row.status ? (
-                <View style={s.pill}>
-                  <Text style={s.pillText}>{row.status}</Text>
-                </View>
-              ) : null}
-              {row.confidence ? (
-                <View style={s.pill}>
-                  <Text style={s.pillText}>{String(row.confidence).toLowerCase()}</Text>
-                </View>
-              ) : null}
-              {row.kind ? (
-                <View style={s.pill}>
-                  <Text style={s.pillText}>{row.kind}</Text>
-                </View>
-              ) : null}
-            </View>
-            {body ? <Text style={s.body}>{body}</Text> : <Text style={s.muted}>No body.</Text>}
-            <TouchableOpacity
-              style={s.openButton}
+            <VStack gap="md">
+              <Text variant="title">{row.title ?? '(untitled)'}</Text>
+              <HStack gap="sm" wrap>
+                {row.status ? <Pill tone="neutral">{row.status}</Pill> : null}
+                {row.confidence ? (
+                  <Pill tone="accent">{String(row.confidence).toLowerCase()}</Pill>
+                ) : null}
+                {row.kind ? <Pill tone="info">{row.kind}</Pill> : null}
+              </HStack>
+            </VStack>
+
+            {body ? (
+              <Card pad="lg">
+                <Text variant="body">{body}</Text>
+              </Card>
+            ) : (
+              <Text variant="footnote" tone="subtle">
+                No body.
+              </Text>
+            )}
+
+            <Button
+              label="Open on web"
+              icon="open-outline"
+              variant="secondary"
+              fullWidth
               onPress={() => Linking.openURL(`${apiBase}${config.webPath(id, row)}`)}
-            >
-              <Text style={s.openButtonText}>Open on web</Text>
-            </TouchableOpacity>
+            />
           </>
         ) : null}
-      </ScrollView>
+      </ScrollScreen>
     </>
   );
 }
-
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  content: { padding: 16, gap: 12 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
-  error: { color: C.danger, fontSize: 13 },
-  title: { color: C.fg, fontSize: 22, fontWeight: '700', lineHeight: 28 },
-  metaRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: C.mutedBg, borderWidth: 1, borderColor: C.border },
-  pillText: { fontSize: 12, color: C.fg, textTransform: 'uppercase', letterSpacing: 0.4 },
-  body: { color: C.fg, fontSize: 15, lineHeight: 22 },
-  muted: { color: C.muted, fontStyle: 'italic' },
-  openButton: {
-    marginTop: 12,
-    backgroundColor: C.accent,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  openButtonText: { color: C.accentFg, fontWeight: '600', fontSize: 15 },
-});

@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
 import { router } from 'expo-router';
 import { getToken } from '@/lib/api';
-import { C } from '@/lib/theme';
+import { LoadingState, Screen } from '@/ui';
 
 export default function Index() {
   useEffect(() => {
@@ -12,8 +11,8 @@ export default function Index() {
     })();
   }, []);
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
-      <ActivityIndicator color={C.accent} />
-    </View>
+    <Screen>
+      <LoadingState />
+    </Screen>
   );
 }

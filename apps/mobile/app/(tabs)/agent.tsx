@@ -1,16 +1,21 @@
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { Link, useFocusEffect } from 'expo-router';
+import { FlatList, RefreshControl } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { api } from '@/lib/api';
-import { C } from '@/lib/theme';
+import { spacing, useTheme } from '@/lib/theme';
+import {
+  Button,
+  Card,
+  EmptyState,
+  HStack,
+  LargeTitle,
+  LoadingState,
+  Pill,
+  type PillTone,
+  Screen,
+  Text,
+  VStack,
+} from '@/ui';
 
 interface AgentRun {
   id: string;
@@ -31,24 +36,20 @@ interface AgentRun {
   updatedAt?: string;
 }
 
-const STATUS_BG: Record<string, string> = {
-  queued: '#dde1ee',
-  running: '#fde9b5',
-  awaiting_approval: '#ffd9a8',
-  approved: '#c4f0d3',
-  deploying: '#bdd4f5',
-  blocked: '#f3b8a8',
-  completed: '#bff0c9',
-  failed: '#f5c0c8',
-  cancelled: '#dadde4',
-  rejected: '#ffc6c6',
+const STATUS_TONE: Record<AgentRun['status'], PillTone> = {
+  queued: 'neutral',
+  running: 'warning',
+  awaiting_approval: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+  deploying: 'info',
+  blocked: 'danger',
+  completed: 'success',
+  failed: 'danger',
+  cancelled: 'neutral',
 };
-const ACTIVE_STATUSES = new Set(['queued', 'running', 'approved', 'deploying']);
 
-function formatRefreshTime(date: Date | null) {
-  if (!date) return 'not refreshed yet';
-  return `last refreshed ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-}
+const ACTIVE_STATUSES = new Set(['queued', 'running', 'approved', 'deploying']);
 
 function staleHint(run: AgentRun) {
   if (!ACTIVE_STATUSES.has(run.status)) return null;
@@ -56,21 +57,30 @@ function staleHint(run: AgentRun) {
   const ageMs = Date.now() - new Date(basis).getTime();
   if (ageMs < 10 * 60 * 1000) return null;
   const minutes = Math.floor(ageMs / 60_000);
-  return `no update for ${minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`}`;
+  return `idle ${minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`}`;
+}
+
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  const diffMin = Math.floor((Date.now() - d.getTime()) / 60_000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const h = Math.floor(diffMin / 60);
+  if (h < 24) return `${h}h ago`;
+  return d.toLocaleDateString();
 }
 
 export default function AgentList() {
+  const t = useTheme();
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const r = await api<{ runs: AgentRun[] }>('/api/agent-runs?limit=50');
     if (r.ok && r.data) {
       setRuns(r.data.runs);
-      setLastRefreshedAt(new Date());
       setError(null);
     } else {
       setError(r.error ?? `Refresh failed (${r.status})`);
@@ -91,113 +101,75 @@ export default function AgentList() {
   }, [load]);
 
   return (
-    <View style={s.root}>
-      <View style={s.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.title}>Agent runs</Text>
-          <Text style={s.meta}>{formatRefreshTime(lastRefreshedAt)}</Text>
-        </View>
-        <TouchableOpacity disabled={refreshing} onPress={refresh} style={s.secondaryButton}>
-          <Text style={s.secondaryButtonText}>{refreshing ? 'Refreshing' : 'Refresh'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={s.actionsRow}>
-        <Link href="/agent/new" asChild>
-          <TouchableOpacity style={s.dispatchButton}>
-            <Text style={s.dispatchText}>Dispatch</Text>
-          </TouchableOpacity>
-        </Link>
-      </View>
-
-      {error ? <Text style={s.error}>{error}</Text> : null}
-
-      {loading && runs.length === 0 ? (
-        <View style={s.empty}>
-          <ActivityIndicator color={C.accent} />
-        </View>
-      ) : (
-        <FlatList
-          contentContainerStyle={{ padding: 12, gap: 8 }}
-          data={runs}
-          keyExtractor={(r) => r.id}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={refresh}
-              tintColor={C.accent}
+    <Screen edges={['top']}>
+      <LargeTitle title="Runs" />
+      <FlatList
+        style={{ flex: 1, backgroundColor: t.colors.bg }}
+        contentContainerStyle={{
+          paddingHorizontal: spacing.base,
+          paddingTop: spacing.sm,
+          paddingBottom: spacing['3xl'],
+          gap: spacing.sm,
+        }}
+        data={runs}
+        keyExtractor={(r) => r.id}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={t.colors.accent} />
+        }
+        ListHeaderComponent={
+          <VStack gap="md" style={{ marginBottom: spacing.xs }}>
+            <Button
+              label="New run"
+              icon="add"
+              onPress={() => router.push('/agent/new')}
+              fullWidth
+              size="lg"
             />
-          }
-          ListEmptyComponent={
-            <View style={s.empty}>
-              <Text style={{ color: C.muted }}>No runs yet.</Text>
-            </View>
-          }
-          renderItem={({ item }) => (
-            <Link href={`/agent/${item.id}`} asChild>
-              <TouchableOpacity style={s.row}>
-                <View style={[s.statusBadge, { backgroundColor: STATUS_BG[item.status] ?? '#eee' }]}>
-                  <Text style={s.statusText}>{item.status}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.kind}>{item.kind}</Text>
-                  <Text numberOfLines={1} style={s.req}>
-                    {item.request}
-                  </Text>
-                  {staleHint(item) ? <Text style={s.stale}>{staleHint(item)}</Text> : null}
-                </View>
-              </TouchableOpacity>
-            </Link>
-          )}
-        />
-      )}
-    </View>
+            {error ? (
+              <Card variant="outlined" style={{ borderColor: t.colors.danger }}>
+                <Text variant="footnote" tone="danger">
+                  {error}
+                </Text>
+              </Card>
+            ) : null}
+          </VStack>
+        }
+        ListEmptyComponent={
+          loading ? (
+            <LoadingState />
+          ) : (
+            <EmptyState
+              icon="flash-outline"
+              title="No runs yet"
+              message="Dispatch a plan, apply, QA, or experiment run to see it here."
+              action={<Button label="Start a run" onPress={() => router.push('/agent/new')} />}
+            />
+          )
+        }
+        renderItem={({ item }) => (
+          <Card onPress={() => router.push(`/agent/${item.id}`)} pad="md" gap="sm">
+            <HStack justify="space-between">
+              <Pill tone={STATUS_TONE[item.status]}>{item.status.replace('_', ' ')}</Pill>
+              <Text variant="caption" tone="subtle">
+                {formatTime(item.updatedAt ?? item.createdAt)}
+              </Text>
+            </HStack>
+            <Text variant="bodyEmph" numberOfLines={2}>
+              {item.request}
+            </Text>
+            <HStack gap="sm">
+              <Text variant="caption" tone="muted">
+                {item.kind.toUpperCase()}
+              </Text>
+              {staleHint(item) ? (
+                <Text variant="caption" tone="danger">
+                  · {staleHint(item)}
+                </Text>
+              ) : null}
+            </HStack>
+          </Card>
+        )}
+      />
+    </Screen>
   );
 }
-
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-  },
-  title: { fontSize: 22, fontWeight: '700', color: C.fg },
-  meta: { fontSize: 12, color: C.muted },
-  actionsRow: { paddingHorizontal: 12, paddingTop: 10 },
-  dispatchButton: {
-    backgroundColor: C.accent,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  dispatchText: { color: C.accentFg, fontWeight: '600', fontSize: 15 },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.mutedBg,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  secondaryButtonText: { color: C.fg, fontSize: 12, fontWeight: '600' },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: C.mutedBg,
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  statusText: { fontSize: 10, fontWeight: '600', color: '#1a1c2c' },
-  kind: { fontSize: 10, fontWeight: '700', color: C.muted },
-  req: { fontSize: 13, color: C.fg, marginTop: 2 },
-  stale: { fontSize: 11, color: C.danger, marginTop: 3 },
-  error: { marginHorizontal: 12, marginTop: 8, color: C.danger, fontSize: 13 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-});

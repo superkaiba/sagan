@@ -1,9 +1,29 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
-import { api, apiBase, BUNDLE_VERSION, getLastOAuthLog, getToken, logout, probeSecureStore } from '@/lib/api';
+import {
+  api,
+  apiBase,
+  BUNDLE_VERSION,
+  getLastOAuthLog,
+  getToken,
+  logout,
+  probeSecureStore,
+} from '@/lib/api';
 import { unregisterCurrentToken } from '@/lib/notifications';
-import { C } from '@/lib/theme';
+import { useTheme } from '@/lib/theme';
+import {
+  Button,
+  Card,
+  HStack,
+  LargeTitle,
+  Screen,
+  ScrollScreen,
+  SectionLabel,
+  Separator,
+  Text,
+  VStack,
+} from '@/ui';
 
 interface Me {
   user: { id: string; email: string; displayName: string | null; role?: string } | null;
@@ -34,9 +54,11 @@ const EMPTY: DebugState = {
 };
 
 export default function You() {
+  const t = useTheme();
   const [me, setMe] = useState<Me['user']>(null);
   const [debug, setDebug] = useState<DebugState>(EMPTY);
   const [running, setRunning] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const probe = useCallback(async () => {
     setRunning(true);
@@ -62,108 +84,142 @@ export default function You() {
     void probe();
   }, [probe]);
 
+  function confirmSignOut() {
+    Alert.alert('Sign out?', 'Your session will be cleared on this device.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          await unregisterCurrentToken();
+          await logout();
+          router.replace('/login');
+        },
+      },
+    ]);
+  }
+
   return (
-    <ScrollView style={s.root} contentContainerStyle={{ padding: 12, gap: 12 }}>
-      <View style={s.card}>
-        <Text style={s.label}>Signed in as</Text>
-        <Text style={s.value}>{me?.email ?? '(not signed in)'}</Text>
+    <Screen edges={['top']}>
+      <LargeTitle title="You" />
+      <ScrollScreen
+        pad={{ x: 16, y: 0 }}
+        refreshControl={
+          <RefreshControl refreshing={running} onRefresh={probe} tintColor={t.colors.accent} />
+        }
+      >
+      <Card pad="lg" gap="md">
+        <VStack gap="xs">
+          <SectionLabel>Signed in as</SectionLabel>
+          <Text variant="title3">{me?.email ?? '(not signed in)'}</Text>
+        </VStack>
         {me?.role ? (
           <>
-            <Text style={[s.label, { marginTop: 8 }]}>Role</Text>
-            <Text style={s.value}>{me.role}</Text>
+            <Separator />
+            <HStack justify="space-between">
+              <Text variant="footnote" tone="muted">
+                Role
+              </Text>
+              <Text variant="footnote">{me.role}</Text>
+            </HStack>
           </>
         ) : null}
-        <Text style={[s.label, { marginTop: 8 }]}>API base</Text>
-        <Text style={s.value}>{apiBase}</Text>
-      </View>
+        <Separator />
+        <HStack justify="space-between">
+          <Text variant="footnote" tone="muted">
+            API
+          </Text>
+          <Text
+            variant="footnote"
+            tone="accent"
+            onPress={() => Linking.openURL(apiBase)}
+            numberOfLines={1}
+            style={{ flexShrink: 1, marginLeft: 12 }}
+          >
+            {apiBase.replace(/^https?:\/\//, '')}
+          </Text>
+        </HStack>
+      </Card>
 
-      <View style={s.card}>
-        <View style={s.row}>
-          <Text style={[s.label, { flex: 1 }]}>Diagnostics</Text>
-          <TouchableOpacity disabled={running} onPress={probe} style={s.smallButton}>
-            <Text style={s.smallButtonText}>{running ? 'Probing…' : 'Re-run'}</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={s.label}>Bundle</Text>
-        <Text style={s.value}>{BUNDLE_VERSION}</Text>
-        <Text style={[s.label, { marginTop: 8 }]}>SecureStore self-test</Text>
-        <Text style={s.value}>{debug.secureStore}</Text>
-        <Text style={[s.label, { marginTop: 8 }]}>Last OAuth</Text>
-        <Text style={s.mono}>{debug.oauthLog ?? '(no attempt this session)'}</Text>
-        <Text style={[s.label, { marginTop: 8 }]}>Token in SecureStore</Text>
-        <Text style={s.value}>
-          {debug.tokenPresent ? `${debug.tokenLen} chars · ${debug.tokenPreview}` : '(none)'}
-        </Text>
-        <Text style={[s.label, { marginTop: 8 }]}>/api/auth/me</Text>
-        <Text style={s.value}>http {debug.meStatus ?? '…'}</Text>
-        {debug.meBody ? <Text style={s.mono}>{debug.meBody}</Text> : null}
-        <Text style={[s.label, { marginTop: 8 }]}>/api/today/summary</Text>
-        <Text style={s.value}>http {debug.summaryStatus ?? '…'}</Text>
-        {debug.summaryBody ? <Text style={s.mono}>{debug.summaryBody}</Text> : null}
-      </View>
-
-      <View style={s.card}>
-        <TouchableOpacity
-          onPress={() => Linking.openURL(apiBase)}
-          style={[s.button, { backgroundColor: C.mutedBg }]}
-        >
-          <Text style={[s.buttonText, { color: C.fg }]}>Open in browser</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
+      <VStack gap="sm">
+        <Button
+          label="Send test push"
+          icon="notifications-outline"
+          variant="secondary"
+          fullWidth
           onPress={async () => {
             const r = await api('/api/push/test', { method: 'POST' });
-            if (!r.ok) console.warn('[push test] failed', r.status);
+            if (!r.ok) Alert.alert('Test push failed', `Status ${r.status}`);
           }}
-          style={[s.button, { backgroundColor: C.mutedBg }]}
-        >
-          <Text style={[s.buttonText, { color: C.fg }]}>Send test push</Text>
-        </TouchableOpacity>
+        />
+        <Button
+          label="Open dashboard"
+          icon="open-outline"
+          variant="secondary"
+          fullWidth
+          onPress={() => Linking.openURL(apiBase)}
+        />
+        <Button
+          label={showDiagnostics ? 'Hide diagnostics' : 'Show diagnostics'}
+          icon={showDiagnostics ? 'eye-off-outline' : 'eye-outline'}
+          variant="ghost"
+          fullWidth
+          onPress={() => setShowDiagnostics((v) => !v)}
+        />
+      </VStack>
 
-        <TouchableOpacity
-          onPress={async () => {
-            await unregisterCurrentToken();
-            await logout();
-            router.replace('/login');
-          }}
-          style={s.button}
-        >
-          <Text style={s.buttonText}>Sign out</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+      {showDiagnostics ? (
+        <Card variant="sunken" pad="base" gap="sm">
+          <HStack justify="space-between">
+            <SectionLabel>Diagnostics</SectionLabel>
+            <Button
+              label={running ? 'Probing…' : 'Re-run'}
+              size="sm"
+              variant="ghost"
+              loading={running}
+              onPress={probe}
+            />
+          </HStack>
+          <DiagRow label="Bundle" value={BUNDLE_VERSION} />
+          <DiagRow label="SecureStore" value={debug.secureStore} />
+          <DiagRow
+            label="Token"
+            value={debug.tokenPresent ? `${debug.tokenLen} chars · ${debug.tokenPreview}` : '(none)'}
+          />
+          <DiagRow label="auth/me" value={`http ${debug.meStatus ?? '…'}`} />
+          {debug.meBody ? <Text variant="mono">{debug.meBody}</Text> : null}
+          <DiagRow label="today/summary" value={`http ${debug.summaryStatus ?? '…'}`} />
+          {debug.summaryBody ? <Text variant="mono">{debug.summaryBody}</Text> : null}
+          {debug.oauthLog ? (
+            <>
+              <SectionLabel>Last OAuth</SectionLabel>
+              <Text variant="mono">{debug.oauthLog}</Text>
+            </>
+          ) : null}
+        </Card>
+      ) : null}
+
+        <Button
+          label="Sign out"
+          icon="log-out-outline"
+          variant="destructive"
+          fullWidth
+          onPress={confirmSignOut}
+        />
+      </ScrollScreen>
+    </Screen>
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  card: {
-    backgroundColor: C.mutedBg,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: 4,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  label: { fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  value: { fontSize: 14, color: C.fg },
-  mono: { fontFamily: 'monospace', fontSize: 11, color: C.muted, marginTop: 2 },
-  button: {
-    marginTop: 12,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: C.accent,
-  },
-  buttonText: { color: C.accentFg, fontWeight: '600' },
-  smallButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: C.bg,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  smallButtonText: { color: C.fg, fontSize: 12, fontWeight: '500' },
-});
+function DiagRow({ label, value }: { label: string; value: string }) {
+  return (
+    <HStack justify="space-between" align="flex-start" gap="md">
+      <Text variant="footnote" tone="muted">
+        {label}
+      </Text>
+      <Text variant="footnote" style={{ flex: 1, textAlign: 'right' }} numberOfLines={2}>
+        {value}
+      </Text>
+    </HStack>
+  );
+}

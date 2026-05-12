@@ -1,16 +1,19 @@
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { Link, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { FlatList, RefreshControl } from 'react-native';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api } from '@/lib/api';
-import { C } from '@/lib/theme';
+import { spacing, useTheme } from '@/lib/theme';
+import {
+  Card,
+  EmptyState,
+  HStack,
+  LoadingState,
+  Pill,
+  type PillTone,
+  PlainScreen,
+  Text,
+  VStack,
+} from '@/ui';
 
 type Kind = 'projects' | 'experiments' | 'beliefs';
 
@@ -33,41 +36,42 @@ const KIND_CONFIG: Record<Kind, { endpoint: string; field: string; title: string
   beliefs: { endpoint: '/api/beliefs', field: 'beliefs', title: 'Beliefs', entityKind: 'belief' },
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  proposed: '#dde1ee',
-  running: '#fde9b5',
-  awaiting_approval: '#ffd9a8',
-  done: '#bff0c9',
-  blocked: '#f3b8a8',
-  failed: '#f5c0c8',
-  draft: '#e2e3ea',
-  active: '#c4f0d3',
-  supported: '#bff0c9',
-  weakened: '#fde9b5',
-  falsified: '#f3b8a8',
-  retracted: '#dadde4',
+const STATUS_TONE: Record<string, PillTone> = {
+  proposed: 'neutral',
+  running: 'warning',
+  awaiting_approval: 'warning',
+  done: 'success',
+  blocked: 'danger',
+  failed: 'danger',
+  draft: 'neutral',
+  active: 'success',
+  supported: 'success',
+  weakened: 'warning',
+  falsified: 'danger',
+  retracted: 'neutral',
+  completed: 'success',
 };
 
-function formatRelativeTime(iso?: string): string {
+function relTime(iso?: string): string {
   if (!iso) return '';
   const d = new Date(iso);
-  const diffMs = Date.now() - d.getTime();
-  const mins = Math.floor(diffMs / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
+  const min = Math.floor((Date.now() - d.getTime()) / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
   if (days < 30) return `${days}d ago`;
   return d.toLocaleDateString();
 }
 
 function preview(row: BaseRow): string {
   const text = row.summaryMd ?? row.hypothesis ?? row.currentBelief ?? row.body ?? '';
-  return text.replace(/\s+/g, ' ').slice(0, 140).trim();
+  return text.replace(/\s+/g, ' ').slice(0, 160).trim();
 }
 
 export default function ListScreen() {
+  const t = useTheme();
   const { kind } = useLocalSearchParams<{ kind: string }>();
   const config = KIND_CONFIG[kind as Kind];
 
@@ -107,93 +111,83 @@ export default function ListScreen() {
 
   if (!config) {
     return (
-      <View style={s.center}>
-        <Text style={s.error}>Unknown list: {kind}</Text>
-      </View>
+      <PlainScreen>
+        <Stack.Screen options={{ title: 'Unknown' }} />
+        <EmptyState icon="alert-circle-outline" title="Unknown list" message={`No view for "${kind}".`} />
+      </PlainScreen>
     );
   }
 
   if (loading && rows.length === 0) {
     return (
-      <View style={s.center}>
+      <PlainScreen>
         <Stack.Screen options={{ title: config.title }} />
-        <ActivityIndicator color={C.accent} />
-      </View>
+        <LoadingState />
+      </PlainScreen>
     );
   }
 
   return (
-    <>
-      <Stack.Screen options={{ title: config.title }} />
+    <PlainScreen>
+      <Stack.Screen options={{ title: config.title, headerLargeTitle: true }} />
       <FlatList
-        style={s.root}
-        contentContainerStyle={s.content}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{
+          paddingHorizontal: spacing.base,
+          paddingTop: spacing.sm,
+          paddingBottom: spacing['3xl'],
+          gap: spacing.sm,
+        }}
         data={rows}
         keyExtractor={(row) => row.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.accent} />
+        }
         ListEmptyComponent={
-          <View style={s.empty}>
-            <Text style={s.emptyText}>{error ?? `No ${config.title.toLowerCase()} yet.`}</Text>
-          </View>
+          <EmptyState
+            icon="document-text-outline"
+            title={error ? "Couldn't load" : `No ${config.title.toLowerCase()} yet`}
+            message={error ?? 'Create one from the dashboard and it will show up here.'}
+          />
         }
         renderItem={({ item }) => {
-          const statusColor = item.status ? STATUS_COLOR[item.status] ?? C.mutedBg : null;
           const body = preview(item);
           return (
-            <Link
-              href={{ pathname: '/entity/[kind]/[id]', params: { kind: config.entityKind, id: item.id } }}
-              asChild
+            <Card
+              onPress={() =>
+                router.push({
+                  pathname: '/entity/[kind]/[id]',
+                  params: { kind: config.entityKind, id: item.id },
+                })
+              }
+              pad="base"
+              gap="sm"
             >
-              <TouchableOpacity style={s.card}>
-                <Text style={s.title} numberOfLines={2}>
-                  {item.title}
+              <Text variant="bodyEmph" numberOfLines={2}>
+                {item.title || '(untitled)'}
+              </Text>
+              {body ? (
+                <Text variant="footnote" tone="muted" numberOfLines={2}>
+                  {body}
                 </Text>
-                {body ? (
-                  <Text style={s.body} numberOfLines={2}>
-                    {body}
-                  </Text>
+              ) : null}
+              <HStack gap="sm" wrap style={{ marginTop: 2 }}>
+                {item.status ? (
+                  <Pill tone={STATUS_TONE[item.status] ?? 'neutral'}>{item.status}</Pill>
                 ) : null}
-                <View style={s.meta}>
-                  {item.status ? (
-                    <View style={[s.statusPill, { backgroundColor: statusColor ?? C.mutedBg }]}>
-                      <Text style={s.statusText}>{item.status}</Text>
-                    </View>
-                  ) : null}
-                  {item.confidence ? (
-                    <View style={[s.statusPill, { backgroundColor: C.mutedBg }]}>
-                      <Text style={s.statusText}>{item.confidence.toLowerCase()}</Text>
-                    </View>
-                  ) : null}
-                  <Text style={s.time}>{formatRelativeTime(item.updatedAt ?? item.createdAt)}</Text>
-                </View>
-              </TouchableOpacity>
-            </Link>
+                {item.confidence ? (
+                  <Pill tone="neutral">{item.confidence.toLowerCase()}</Pill>
+                ) : null}
+                <VStack style={{ marginLeft: 'auto' }}>
+                  <Text variant="caption" tone="subtle">
+                    {relTime(item.updatedAt ?? item.createdAt)}
+                  </Text>
+                </VStack>
+              </HStack>
+            </Card>
           );
         }}
       />
-    </>
+    </PlainScreen>
   );
 }
-
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  content: { padding: 16, gap: 10 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
-  empty: { paddingVertical: 60, alignItems: 'center' },
-  emptyText: { color: C.muted, fontSize: 14 },
-  error: { color: C.danger, fontSize: 13 },
-  card: {
-    backgroundColor: C.mutedBg,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: 6,
-  },
-  title: { color: C.fg, fontSize: 16, fontWeight: '600' },
-  body: { color: C.muted, fontSize: 13, lineHeight: 18 },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' },
-  statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  statusText: { fontSize: 11, color: C.fg, textTransform: 'uppercase', letterSpacing: 0.4 },
-  time: { color: C.muted, fontSize: 11, marginLeft: 'auto' },
-});

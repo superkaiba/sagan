@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  SectionList,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Alert, RefreshControl, SectionList, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/lib/api';
-import { C } from '@/lib/theme';
+import { radius, spacing, useTheme } from '@/lib/theme';
+import {
+  Button,
+  Card,
+  EmptyState,
+  HStack,
+  Input,
+  LargeTitle,
+  LoadingState,
+  Pill,
+  type PillTone,
+  Screen,
+  SectionLabel,
+  Text,
+  VStack,
+} from '@/ui';
 
 interface Entry {
   id: string;
@@ -39,24 +44,30 @@ interface TodaySummary {
   };
 }
 
-const BADGE: Record<Entry['kind'], { label: string; color: string }> = {
-  clean_result: { label: 'result', color: '#a3e8b8' },
-  blocker: { label: 'blocker', color: '#f3b6bf' },
-  decision: { label: 'decision', color: '#b8c4ff' },
-  note: { label: 'note', color: '#e2e3ea' },
+const ENTRY_TONE: Record<Entry['kind'], { tone: PillTone; label: string }> = {
+  clean_result: { tone: 'success', label: 'result' },
+  blocker: { tone: 'danger', label: 'blocker' },
+  decision: { tone: 'info', label: 'decision' },
+  note: { tone: 'neutral', label: 'note' },
 };
-const ACTION_PREFIX_RE = /^\s*(?:\*\*)?Action:/;
 
-function isActionTrail(entry: Entry) {
-  return ACTION_PREFIX_RE.test(entry.bodyMd);
+const ACTION_PREFIX_RE = /^\s*(?:\*\*)?Action:/;
+const isActionTrail = (entry: Entry) => ACTION_PREFIX_RE.test(entry.bodyMd);
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatRefreshTime(date: Date | null) {
-  if (!date) return 'not refreshed yet';
-  return `last refreshed ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+function formatRelative(date: Date | null) {
+  if (!date) return 'Pull to refresh';
+  const min = Math.floor((Date.now() - date.getTime()) / 60_000);
+  if (min < 1) return 'Updated just now';
+  if (min < 60) return `Updated ${min}m ago`;
+  return `Updated ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 export default function Today() {
+  const t = useTheme();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [day, setDay] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,10 +114,10 @@ export default function Today() {
   async function askCleanQuestion() {
     setCleanBusy('question');
     setError(null);
-    const r = await api<{ question?: string; error?: string }>('/api/daily-log/clean-result/question', {
-      method: 'POST',
-      body: JSON.stringify({ day }),
-    });
+    const r = await api<{ question?: string; error?: string }>(
+      '/api/daily-log/clean-result/question',
+      { method: 'POST', body: JSON.stringify({ day }) },
+    );
     setCleanBusy(null);
     if (!r.ok || !r.data?.question) {
       setError(r.data?.error ?? r.error ?? 'Could not ask a clean-result question');
@@ -119,10 +130,10 @@ export default function Today() {
     if (!cleanQuestion) return;
     setCleanBusy('draft');
     setError(null);
-    const r = await api<{ entry?: Entry; error?: string }>('/api/daily-log/clean-result/draft', {
-      method: 'POST',
-      body: JSON.stringify({ day, question: cleanQuestion, answer: cleanAnswer }),
-    });
+    const r = await api<{ entry?: Entry; error?: string }>(
+      '/api/daily-log/clean-result/draft',
+      { method: 'POST', body: JSON.stringify({ day, question: cleanQuestion, answer: cleanAnswer }) },
+    );
     setCleanBusy(null);
     if (!r.ok) {
       setError(r.data?.error ?? r.error ?? 'Could not save clean result');
@@ -136,246 +147,202 @@ export default function Today() {
 
   if (loading && entries.length === 0) {
     return (
-      <View style={s.empty}>
-        <ActivityIndicator color={C.accent} />
-      </View>
+      <Screen edges={['top']}>
+        <LargeTitle title="Today" subtitle={formatRelative(lastRefreshedAt)} />
+        <LoadingState />
+      </Screen>
     );
   }
 
   const newest = entries.slice().reverse();
-  const cleanResults = newest.filter((entry) => entry.kind === 'clean_result');
+  const cleanResults = newest.filter((e) => e.kind === 'clean_result');
   const actionTrail = newest.filter(isActionTrail);
-  const researchEntries = newest.filter((entry) => entry.kind !== 'clean_result' && !isActionTrail(entry));
-  const sections = [
-    {
-      title: 'Clean results',
-      subtitle: 'mentor-facing outcomes',
-      data: cleanResults,
-    },
-    {
-      title: 'Research entries',
-      subtitle: 'notes, decisions, blockers',
-      data: researchEntries,
-    },
-    {
-      title: 'Action trail',
-      subtitle: 'workflow actions and reasons',
-      data: actionTrail,
-    },
-  ].filter((section) => section.data.length > 0);
+  const research = newest.filter((e) => e.kind !== 'clean_result' && !isActionTrail(e));
+
+  const sections: Array<{ title: string; data: Entry[] }> = [
+    { title: 'Clean results', data: cleanResults },
+    { title: 'Research', data: research },
+    { title: 'Action trail', data: actionTrail },
+  ].filter((s) => s.data.length > 0);
 
   return (
-    <SectionList
-      style={s.list}
-      contentContainerStyle={{ padding: 12, gap: 10 }}
-      sections={sections}
-      keyExtractor={(e) => e.id}
-      stickySectionHeadersEnabled={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={refresh}
-          tintColor={C.accent}
-        />
-      }
-      ListHeaderComponent={
-        <View style={{ gap: 10 }}>
-          <View style={s.header}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.title}>Today</Text>
-              <Text style={s.meta}>{formatRefreshTime(lastRefreshedAt)}</Text>
-            </View>
-            <TouchableOpacity disabled={refreshing} onPress={refresh} style={s.secondaryButton}>
-              <Text style={s.secondaryButtonText}>{refreshing ? 'Refreshing' : 'Refresh'}</Text>
-            </TouchableOpacity>
-          </View>
+    <Screen edges={['top']}>
+      <LargeTitle title="Today" subtitle={formatRelative(lastRefreshedAt)} />
+      <SectionList
+        style={{ flex: 1, backgroundColor: t.colors.bg }}
+        contentContainerStyle={{
+          paddingHorizontal: spacing.base,
+          paddingBottom: spacing['3xl'],
+          gap: spacing.md,
+        }}
+        sections={sections}
+        keyExtractor={(e) => e.id}
+        stickySectionHeadersEnabled={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={t.colors.accent}
+          />
+        }
+        ListHeaderComponent={
+          <VStack gap="md" style={{ paddingBottom: spacing.xs }}>
+            <SummaryStrip summary={summary} />
 
-          <View style={s.cleanCard}>
-            <View style={s.summaryGrid}>
-              <SummaryPill label="Experiments" value={String(summary?.counts.activeExperiments ?? 0)} />
-              <SummaryPill label="Approvals" value={String(summary?.counts.pendingApprovals ?? 0)} />
-              <SummaryPill label="Yesterday" value={`${summary?.counts.yesterdayCleanResults ?? 0} results`} />
-              <SummaryPill
-                label="Weekly"
-                value={
-                  summary?.latestWeeklyDigest
-                    ? summary.latestWeeklyDigest.sentAt
-                      ? 'sent'
-                      : summary.latestWeeklyDigest.editedAt
-                        ? 'edited'
-                        : 'draft'
-                    : 'none'
-                }
-              />
-            </View>
-          </View>
+          <CleanResultCard
+            count={cleanResults.length}
+            question={cleanQuestion}
+            answer={cleanAnswer}
+            onAnswerChange={setCleanAnswer}
+            busy={cleanBusy}
+            onAsk={askCleanQuestion}
+            onSave={saveCleanResult}
+          />
 
-          <View style={s.cleanCard}>
-            <View style={s.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.cardTitle}>Clean result</Text>
-                <Text style={s.meta}>{cleanResults.length} saved today</Text>
-              </View>
-              <TouchableOpacity disabled={cleanBusy !== null} onPress={askCleanQuestion} style={s.secondaryButton}>
-                <Text style={s.secondaryButtonText}>
-                  {cleanBusy === 'question' ? 'Asking' : cleanQuestion ? 'Ask again' : 'Ask'}
+            {error ? (
+              <Card variant="outlined" style={{ borderColor: t.colors.danger }}>
+                <Text variant="footnote" tone="danger">
+                  {error}
                 </Text>
-              </TouchableOpacity>
-            </View>
-            {cleanQuestion ? (
-              <View style={{ gap: 8 }}>
-                <Text style={s.question}>{cleanQuestion}</Text>
-                <TextInput
-                  value={cleanAnswer}
-                  onChangeText={setCleanAnswer}
-                  multiline
-                  placeholder="Answer before saving..."
-                  placeholderTextColor={C.muted}
-                  style={s.input}
-                />
-                <TouchableOpacity disabled={cleanBusy !== null} onPress={saveCleanResult} style={s.primaryButton}>
-                  <Text style={s.primaryButtonText}>{cleanBusy === 'draft' ? 'Saving' : 'Save clean result'}</Text>
-                </TouchableOpacity>
-              </View>
+              </Card>
             ) : null}
-          </View>
-
-          {error ? <Text style={s.error}>{error}</Text> : null}
-        </View>
-      }
-      ListEmptyComponent={
-        <View style={s.empty}>
-          <Text style={{ color: C.muted, fontSize: 14 }}>Nothing logged today.</Text>
-        </View>
-      }
-      renderSectionHeader={({ section }) => (
-        <View style={s.sectionHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.sectionTitle}>{section.title}</Text>
-            <Text style={s.meta}>{section.subtitle}</Text>
-          </View>
-          <Text style={s.count}>{section.data.length}</Text>
-        </View>
-      )}
-      renderItem={({ item }) => {
-        const badge = BADGE[item.kind];
-        return (
-          <View style={s.card}>
-            <View style={s.row}>
-              <View style={[s.badge, { backgroundColor: badge.color }]}>
-                <Text style={s.badgeText}>{badge.label}</Text>
-              </View>
-              <Text style={s.timestamp}>
-                {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            </View>
-            <Text style={s.body}>{item.bodyMd}</Text>
-          </View>
-        );
-      }}
-    />
+          </VStack>
+        }
+        ListEmptyComponent={
+          <EmptyState
+            icon="leaf-outline"
+            title="Nothing logged today"
+            message="Drop a note, blocker, decision, or clean result from the dashboard to see it here."
+          />
+        }
+        renderSectionHeader={({ section }) => (
+          <HStack
+            gap="sm"
+            justify="space-between"
+            style={{
+              paddingTop: spacing.md,
+              paddingBottom: spacing.xs,
+              backgroundColor: t.colors.bg,
+            }}
+          >
+            <SectionLabel>{section.title}</SectionLabel>
+            <Text variant="caption" tone="subtle">
+              {section.data.length}
+            </Text>
+          </HStack>
+        )}
+        renderItem={({ item }) => {
+          const tone = ENTRY_TONE[item.kind];
+          return (
+            <Card>
+              <HStack justify="space-between">
+                <Pill tone={tone.tone}>{tone.label}</Pill>
+                <Text variant="caption" tone="subtle">
+                  {formatTime(item.createdAt)}
+                </Text>
+              </HStack>
+              <Text variant="body">{item.bodyMd}</Text>
+            </Card>
+          );
+        }}
+      />
+    </Screen>
   );
 }
 
-function SummaryPill({ label, value }: { label: string; value: string }) {
+function SummaryStrip({ summary }: { summary: TodaySummary | null }) {
+  const items = [
+    { label: 'Experiments', value: summary?.counts.activeExperiments ?? 0 },
+    { label: 'Approvals', value: summary?.counts.pendingApprovals ?? 0 },
+    { label: 'Yesterday', value: summary?.counts.yesterdayCleanResults ?? 0 },
+    {
+      label: 'Weekly',
+      value:
+        summary?.latestWeeklyDigest === null || summary?.latestWeeklyDigest === undefined
+          ? '—'
+          : summary.latestWeeklyDigest.sentAt
+            ? '✓'
+            : summary.latestWeeklyDigest.editedAt
+              ? '·'
+              : '○',
+    },
+  ];
   return (
-    <View style={s.summaryPill}>
-      <Text style={s.summaryLabel}>{label}</Text>
-      <Text style={s.summaryValue}>{value}</Text>
-    </View>
+    <HStack gap="sm">
+      {items.map((it) => (
+        <Card key={it.label} pad="md" gap="xs" style={{ flex: 1, alignItems: 'flex-start' }}>
+          <Text variant="micro" tone="muted">
+            {it.label}
+          </Text>
+          <Text variant="title2">{String(it.value)}</Text>
+        </Card>
+      ))}
+    </HStack>
   );
 }
 
-const s = StyleSheet.create({
-  list: { flex: 1, backgroundColor: C.bg },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 2,
-  },
-  title: { fontSize: 22, fontWeight: '700', color: C.fg },
-  meta: { fontSize: 12, color: C.muted },
-  cleanCard: {
-    backgroundColor: C.mutedBg,
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: 10,
-  },
-  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  summaryPill: {
-    minWidth: '47%',
-    backgroundColor: C.bg,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 10,
-  },
-  summaryLabel: { color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
-  summaryValue: { color: C.fg, fontSize: 15, fontWeight: '700', marginTop: 2 },
-  cardTitle: { fontSize: 14, fontWeight: '700', color: C.fg },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingTop: 8,
-    paddingBottom: 2,
-    backgroundColor: C.bg,
-  },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: C.fg },
-  count: { fontFamily: 'Courier', fontSize: 12, color: C.muted },
-  card: {
-    backgroundColor: C.mutedBg,
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: 6,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  badgeText: { fontSize: 10, fontWeight: '600', color: '#1a1c2c' },
-  timestamp: { fontSize: 11, color: C.muted },
-  body: { fontSize: 14, color: C.fg, lineHeight: 20 },
-  question: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.bg,
-    borderRadius: 8,
-    padding: 10,
-    color: C.fg,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  input: {
-    minHeight: 76,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.bg,
-    borderRadius: 8,
-    padding: 10,
-    color: C.fg,
-    textAlignVertical: 'top',
-    fontSize: 14,
-  },
-  primaryButton: {
-    backgroundColor: C.accent,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  primaryButtonText: { color: C.accentFg, fontWeight: '700' },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.bg,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  secondaryButtonText: { color: C.fg, fontSize: 12, fontWeight: '600' },
-  error: { color: C.danger, fontSize: 13, lineHeight: 18 },
-});
+function CleanResultCard({
+  count,
+  question,
+  answer,
+  onAnswerChange,
+  busy,
+  onAsk,
+  onSave,
+}: {
+  count: number;
+  question: string | null;
+  answer: string;
+  onAnswerChange: (v: string) => void;
+  busy: 'question' | 'draft' | null;
+  onAsk: () => void;
+  onSave: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <Card pad="base" gap="md">
+      <HStack justify="space-between" align="flex-start">
+        <VStack gap="xs" style={{ flex: 1 }}>
+          <Text variant="bodyEmph">Clean result</Text>
+          <Text variant="footnote" tone="muted">
+            {count} saved today · mentor-facing
+          </Text>
+        </VStack>
+        <Button
+          label={busy === 'question' ? 'Asking…' : question ? 'Ask again' : 'Ask'}
+          onPress={onAsk}
+          loading={busy === 'question'}
+          disabled={busy !== null}
+          variant="secondary"
+          size="sm"
+        />
+      </HStack>
+      {question ? (
+        <VStack gap="sm">
+          <View
+            style={{
+              backgroundColor: t.colors.sunken,
+              padding: spacing.md,
+              borderRadius: radius.md,
+            }}
+          >
+            <Text variant="footnote">{question}</Text>
+          </View>
+          <Input
+            value={answer}
+            onChangeText={onAnswerChange}
+            multiline
+            placeholder="Write the answer before saving…"
+          />
+          <Button
+            label={busy === 'draft' ? 'Saving…' : 'Save clean result'}
+            onPress={onSave}
+            loading={busy === 'draft'}
+            disabled={busy !== null}
+            fullWidth
+          />
+        </VStack>
+      ) : null}
+    </Card>
+  );
+}

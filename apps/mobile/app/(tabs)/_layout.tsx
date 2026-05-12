@@ -1,41 +1,65 @@
 import { Tabs } from 'expo-router';
+import { Platform, StyleSheet, useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/theme';
+import { palette } from '@/lib/theme';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-function tabIcon(name: IoniconName) {
-  return ({ color, size }: { color: string; size: number }) => (
-    <Ionicons name={name} color={color} size={size} />
+function tabIcon(name: IoniconName, focusedName: IoniconName) {
+  return ({ color, size, focused }: { color: string; size: number; focused: boolean }) => (
+    <Ionicons name={focused ? focusedName : name} color={color} size={size} />
   );
 }
 
 export default function TabsLayout() {
+  const isDark = useColorScheme() === 'dark';
+  const colors = isDark ? palette.dark : palette.light;
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: C.accent,
-        tabBarInactiveTintColor: C.muted,
-        tabBarStyle: { backgroundColor: C.bg, borderTopColor: C.border },
-        headerStyle: { backgroundColor: C.bg },
-        headerTitleStyle: { color: C.fg, fontWeight: '600' },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.subtleFg,
+        tabBarStyle: {
+          backgroundColor: colors.bg,
+          borderTopColor: colors.hairline,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          height: Platform.OS === 'ios' ? 84 : 64,
+          paddingTop: 6,
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '500', letterSpacing: 0.1 },
+        tabBarItemStyle: { paddingTop: 2 },
+        headerShown: false,
+        sceneStyle: { backgroundColor: colors.bg },
       }}
     >
       <Tabs.Screen
         name="today"
-        options={{ title: 'Today', tabBarIcon: tabIcon('today-outline') }}
+        options={{
+          title: 'Today',
+          tabBarIcon: tabIcon('sunny-outline', 'sunny'),
+        }}
       />
       <Tabs.Screen
         name="browse"
-        options={{ title: 'Browse', tabBarIcon: tabIcon('albums-outline') }}
+        options={{
+          title: 'Browse',
+          tabBarIcon: tabIcon('grid-outline', 'grid'),
+        }}
       />
       <Tabs.Screen
         name="agent"
-        options={{ title: 'Agent', tabBarIcon: tabIcon('flash-outline') }}
+        options={{
+          title: 'Runs',
+          tabBarIcon: tabIcon('flash-outline', 'flash'),
+        }}
       />
       <Tabs.Screen
         name="you"
-        options={{ title: 'You', tabBarIcon: tabIcon('person-outline') }}
+        options={{
+          title: 'You',
+          tabBarIcon: tabIcon('person-outline', 'person'),
+        }}
       />
     </Tabs>
   );

@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { Alert, RefreshControl, View } from 'react-native';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { api } from '@/lib/api';
-import { C } from '@/lib/theme';
+import { spacing, useTheme } from '@/lib/theme';
+import {
+  Button,
+  Card,
+  HStack,
+  LoadingState,
+  Pill,
+  type PillTone,
+  ScrollScreen,
+  SectionLabel,
+  Separator,
+  Text,
+  VStack,
+} from '@/ui';
 
 interface Run {
   id: string;
@@ -64,10 +68,18 @@ interface RunPayload {
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'rejected', 'blocked']);
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'approved', 'deploying']);
 
-function formatRefreshTime(date: Date | null) {
-  if (!date) return 'not refreshed yet';
-  return `last refreshed ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-}
+const STATUS_TONE: Record<string, PillTone> = {
+  queued: 'neutral',
+  running: 'warning',
+  awaiting_approval: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+  deploying: 'info',
+  blocked: 'danger',
+  completed: 'success',
+  failed: 'danger',
+  cancelled: 'neutral',
+};
 
 function continuationSource(request: string) {
   return request.match(/\[auto-continuation-for:([^\]]+)\]/)?.[1] ?? null;
@@ -80,12 +92,16 @@ function formatAge(ms: number) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
 
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function RunDetail() {
+  const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [data, setData] = useState<RunPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reviewPrompt, setReviewPrompt] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -95,7 +111,6 @@ export default function RunDetail() {
     const r = await api<RunPayload>(`/api/agent-runs/${id}`);
     if (r.ok && r.data) {
       setData(r.data);
-      setLastRefreshedAt(new Date());
       setError(null);
     } else {
       setError(r.error ?? `Refresh failed (${r.status})`);
@@ -110,8 +125,8 @@ export default function RunDetail() {
   useEffect(() => {
     if (!data) return;
     if (TERMINAL.has(data.run.status)) return;
-    const t = setInterval(load, 2500);
-    return () => clearInterval(t);
+    const interval = setInterval(load, 2500);
+    return () => clearInterval(interval);
   }, [data, load]);
 
   async function decide(decision: 'approve' | 'reject') {
@@ -147,9 +162,10 @@ export default function RunDetail() {
     if (!id) return;
     setReviewBusy(true);
     setError(null);
-    const r = await api<{ prompt?: string; error?: string }>(`/api/agent-runs/${id}/codex-review`, {
-      method: 'POST',
-    });
+    const r = await api<{ prompt?: string; error?: string }>(
+      `/api/agent-runs/${id}/codex-review`,
+      { method: 'POST' },
+    );
     setReviewBusy(false);
     if (!r.ok || !r.data?.prompt) {
       setError(r.data?.error ?? r.error ?? 'Could not prepare Codex review prompt');
@@ -160,9 +176,10 @@ export default function RunDetail() {
 
   if (!data) {
     return (
-      <View style={s.empty}>
-        <ActivityIndicator color={C.accent} />
-      </View>
+      <>
+        <Stack.Screen options={{ title: 'Run' }} />
+        <LoadingState />
+      </>
     );
   }
 
@@ -171,281 +188,229 @@ export default function RunDetail() {
   const artifacts = data.artifacts ?? [];
   const canManageRun = data.canManageRun === true;
   const showApproval =
-    canManageRun && run.status === 'awaiting_approval' && (run.kind === 'plan' || run.kind === 'experiment');
+    canManageRun &&
+    run.status === 'awaiting_approval' &&
+    (run.kind === 'plan' || run.kind === 'experiment');
   const hasActivePods = pods.some((pod) => ['deploying', 'running', 'retrying'].includes(pod.status));
   const sourceRunId = continuationSource(run.request);
   const continuationEvents = events.filter((e) => e.eventType === 'auto_continuation_queued');
   const latestContinuationId = continuationEvents.at(-1)?.body?.trim() ?? null;
   const latestEvent = events.at(-1);
-  const latestAt =
-    latestEvent?.createdAt ?? run.updatedAt ?? run.createdAt ?? null;
+  const latestAt = latestEvent?.createdAt ?? run.updatedAt ?? run.createdAt ?? null;
   const latestAgeMs = latestAt ? Date.now() - new Date(latestAt).getTime() : null;
   const stale =
     latestAgeMs !== null && ACTIVE_STATUSES.has(run.status) && latestAgeMs > 10 * 60 * 1000
-      ? `No new run update for ${formatAge(latestAgeMs)}. Refresh; the runner may be stalled.`
+      ? `Idle for ${formatAge(latestAgeMs)}. Refresh; the runner may be stalled.`
       : null;
 
   return (
-    <ScrollView
-      style={s.root}
-      contentContainerStyle={{ padding: 14, gap: 12 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={C.accent} />}
-    >
-      <View style={s.topRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.title}>Run {run.id.slice(0, 8)}</Text>
-          <Text style={s.meta}>{formatRefreshTime(lastRefreshedAt)}</Text>
-        </View>
-        <TouchableOpacity disabled={refreshing} onPress={refresh} style={s.smallButton}>
-          <Text style={s.smallButtonText}>{refreshing ? 'Refreshing' : 'Refresh'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={s.statusRow}>
-        <Text style={s.kind}>{run.kind}</Text>
-        <Text style={s.status}>{run.status}</Text>
-        <Text style={s.eventCount}>{events.length} events</Text>
-      </View>
-
-      <Text style={s.request}>{run.request}</Text>
-
-      {error ? <Text style={s.err}>{error}</Text> : null}
-      {run.lastError ? <Text style={s.err}>{run.lastError}</Text> : null}
-      {stale ? <Text style={s.notice}>{stale}</Text> : null}
-
-      {sourceRunId || latestContinuationId ? (
-        <View style={s.workflowCard}>
-          <Text style={s.cardTitle}>Continuation</Text>
-          {sourceRunId ? <Text style={s.workflowText}>Continues run {sourceRunId.slice(0, 8)}.</Text> : null}
-          {latestContinuationId ? (
-            <Text style={s.workflowText}>Queued continuation {latestContinuationId.slice(0, 8)}.</Text>
-          ) : null}
-        </View>
-      ) : null}
-
-      {pods.length || artifacts.length ? (
-        <View style={s.workflowCard}>
-          <View style={s.inlineHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.cardTitle}>RunPod lifecycle</Text>
-              <Text style={s.workflowText}>Stop preserves the attached volume.</Text>
-            </View>
-            {canManageRun && hasActivePods ? (
-              <TouchableOpacity disabled={busy} onPress={stopRunPod} style={s.smallButton}>
-                <Text style={s.smallButtonText}>{busy ? 'Stopping' : 'Stop'}</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          {pods.map((pod) => (
-            <View key={pod.id} style={s.podCard}>
-              <View style={s.eventHeader}>
-                <Text style={s.eventType}>{pod.runpodPodId}</Text>
-                <Text style={s.eventTime}>{pod.status}</Text>
-              </View>
-              <Text style={s.workflowText}>
-                {pod.gpuCount ?? '-'} x {pod.gpuTypeId ?? '-'} · {pod.desiredStatus ?? 'unknown'}
-              </Text>
-              <Text style={s.workflowText}>
-                SSH {pod.sshHost && pod.sshPort ? `${pod.sshHost}:${pod.sshPort}` : '-'} · retries {pod.retryCount}/{pod.maxRetries}
-              </Text>
-              {pod.blockedReason || pod.lastError ? <Text style={s.err}>{pod.blockedReason ?? pod.lastError}</Text> : null}
-            </View>
-          ))}
-          {artifacts.map((artifact) => (
-            <Text key={artifact.id} style={s.workflowText}>
-              {artifact.kind} · {artifact.status} · {artifact.uri}
+    <>
+      <Stack.Screen options={{ title: `Run ${run.id.slice(0, 8)}` }} />
+      <ScrollScreen
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={t.colors.accent} />
+        }
+      >
+        <Card pad="lg" gap="md">
+          <HStack gap="sm" wrap>
+            <Pill tone={STATUS_TONE[run.status] ?? 'neutral'}>{run.status.replace('_', ' ')}</Pill>
+            <Pill tone="neutral">{run.kind}</Pill>
+            <Text variant="caption" tone="subtle" style={{ marginLeft: 'auto' }}>
+              {events.length} events
             </Text>
-          ))}
-        </View>
-      ) : null}
-
-      <View style={s.workflowCard}>
-        <View style={s.inlineHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.cardTitle}>Codex review</Text>
-            <Text style={s.workflowText}>Prepares a prompt only. It does not execute a review agent here.</Text>
-          </View>
-          <TouchableOpacity disabled={reviewBusy} onPress={prepareCodexReview} style={s.smallButton}>
-            <Text style={s.smallButtonText}>{reviewBusy ? 'Preparing' : 'Prepare'}</Text>
-          </TouchableOpacity>
-        </View>
-        {reviewPrompt ? (
-          <Text selectable numberOfLines={12} style={s.promptText}>
-            {reviewPrompt}
-          </Text>
-        ) : null}
-      </View>
-
-      {run.planMd ? (
-        <View style={s.planCard}>
-          <Text style={s.sectionLabel}>Plan</Text>
-          {run.planJson?.sections?.length ? (
-            <View style={s.sectionStack}>
-              {run.planJson.sections.map((section) => (
-                <View key={section.title} style={s.planSection}>
-                  <Text style={s.planSectionTitle}>{section.title}</Text>
-                  <Text style={s.planSectionBody}>{section.body}</Text>
-                </View>
-              ))}
-            </View>
+          </HStack>
+          <Text variant="body">{run.request}</Text>
+          {run.lastError ? (
+            <Text variant="footnote" tone="danger">
+              {run.lastError}
+            </Text>
           ) : null}
-          <Text style={s.planText}>{run.planMd}</Text>
-        </View>
-      ) : null}
+          {error ? (
+            <Text variant="footnote" tone="danger">
+              {error}
+            </Text>
+          ) : null}
+          {stale ? (
+            <Text variant="footnote" tone="warning">
+              {stale}
+            </Text>
+          ) : null}
+        </Card>
 
-      {showApproval ? (
-        <View style={s.actions}>
-          <TouchableOpacity
-            disabled={busy}
-            onPress={() =>
-              Alert.alert('Approve run?', 'This records approval and lets the workflow decide the next step.', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Approve', style: 'destructive', onPress: () => decide('approve') },
-              ])
-            }
-            style={[s.actionBtn, s.approve]}
-          >
-            <Text style={s.actionText}>{busy ? '…' : 'Approve'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            disabled={busy}
-            onPress={() => decide('reject')}
-            style={[s.actionBtn, s.reject]}
-          >
-            <Text style={[s.actionText, { color: C.fg }]}>Reject</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
-      <Text style={s.sectionLabel}>Events ({events.length})</Text>
-      <View style={{ gap: 6 }}>
-        {events.map((e) => (
-          <View key={e.id} style={s.event}>
-            <View style={s.eventHeader}>
-              <Text style={s.eventType}>{e.eventType}</Text>
-              <Text style={s.eventTime}>
-                {new Date(e.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
+        {showApproval ? (
+          <HStack gap="sm">
+            <View style={{ flex: 1 }}>
+              <Button
+                label={busy ? '…' : 'Approve'}
+                fullWidth
+                size="lg"
+                disabled={busy}
+                onPress={() =>
+                  Alert.alert(
+                    'Approve run?',
+                    'This records approval and lets the workflow decide the next step.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Approve', onPress: () => decide('approve') },
+                    ],
+                  )
+                }
+              />
             </View>
-            {e.body ? (
-              <Text numberOfLines={4} style={s.eventBody}>
-                {e.body}
+            <View style={{ flex: 1 }}>
+              <Button
+                label="Reject"
+                variant="secondary"
+                fullWidth
+                size="lg"
+                disabled={busy}
+                onPress={() => decide('reject')}
+              />
+            </View>
+          </HStack>
+        ) : null}
+
+        {sourceRunId || latestContinuationId ? (
+          <Card pad="base" gap="xs">
+            <SectionLabel>Continuation</SectionLabel>
+            {sourceRunId ? (
+              <Text variant="footnote" tone="muted">
+                Continues run {sourceRunId.slice(0, 8)}.
               </Text>
             ) : null}
-          </View>
-        ))}
-      </View>
+            {latestContinuationId ? (
+              <Text variant="footnote" tone="muted">
+                Queued continuation {latestContinuationId.slice(0, 8)}.
+              </Text>
+            ) : null}
+          </Card>
+        ) : null}
 
-      <TouchableOpacity onPress={() => router.back()} style={[s.actionBtn, { backgroundColor: C.mutedBg }]}>
-        <Text style={[s.actionText, { color: C.fg }]}>Back</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {pods.length || artifacts.length ? (
+          <Card pad="base" gap="md">
+            <HStack justify="space-between">
+              <SectionLabel>RunPod lifecycle</SectionLabel>
+              {canManageRun && hasActivePods ? (
+                <Button
+                  label={busy ? 'Stopping…' : 'Stop'}
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  onPress={stopRunPod}
+                />
+              ) : null}
+            </HStack>
+            <Text variant="caption" tone="muted">
+              Stop preserves the attached volume.
+            </Text>
+            <VStack gap="sm">
+              {pods.map((pod) => (
+                <Card key={pod.id} variant="sunken" pad="md" gap="xs">
+                  <HStack justify="space-between">
+                    <Text variant="footnote" style={{ fontWeight: '600' }}>
+                      {pod.runpodPodId}
+                    </Text>
+                    <Pill tone="info">{pod.status}</Pill>
+                  </HStack>
+                  <Text variant="caption" tone="muted">
+                    {pod.gpuCount ?? '-'} × {pod.gpuTypeId ?? '-'} · {pod.desiredStatus ?? 'unknown'}
+                  </Text>
+                  <Text variant="caption" tone="muted">
+                    SSH {pod.sshHost && pod.sshPort ? `${pod.sshHost}:${pod.sshPort}` : '—'} ·
+                    retries {pod.retryCount}/{pod.maxRetries}
+                  </Text>
+                  {pod.blockedReason || pod.lastError ? (
+                    <Text variant="caption" tone="danger">
+                      {pod.blockedReason ?? pod.lastError}
+                    </Text>
+                  ) : null}
+                </Card>
+              ))}
+              {artifacts.length ? (
+                <VStack gap="xs" style={{ marginTop: spacing.xs }}>
+                  <SectionLabel>Artifacts</SectionLabel>
+                  {artifacts.map((a) => (
+                    <Text key={a.id} variant="caption" tone="muted">
+                      {a.kind} · {a.status} · {a.uri}
+                    </Text>
+                  ))}
+                </VStack>
+              ) : null}
+            </VStack>
+          </Card>
+        ) : null}
+
+        <Card pad="base" gap="sm">
+          <HStack justify="space-between">
+            <SectionLabel>Codex review</SectionLabel>
+            <Button
+              label={reviewBusy ? 'Preparing…' : 'Prepare prompt'}
+              size="sm"
+              variant="ghost"
+              loading={reviewBusy}
+              onPress={prepareCodexReview}
+            />
+          </HStack>
+          <Text variant="caption" tone="muted">
+            Prepares a prompt only. It does not execute a review agent.
+          </Text>
+          {reviewPrompt ? (
+            <Card variant="sunken" pad="md">
+              <Text variant="mono" selectable numberOfLines={12}>
+                {reviewPrompt}
+              </Text>
+            </Card>
+          ) : null}
+        </Card>
+
+        {run.planMd ? (
+          <Card pad="base" gap="md">
+            <SectionLabel>Plan</SectionLabel>
+            {run.planJson?.sections?.length ? (
+              <VStack gap="sm">
+                {run.planJson.sections.map((section) => (
+                  <Card key={section.title} variant="sunken" pad="md" gap="xs">
+                    <Text variant="micro" tone="muted">
+                      {section.title}
+                    </Text>
+                    <Text variant="footnote">{section.body}</Text>
+                  </Card>
+                ))}
+              </VStack>
+            ) : null}
+            <Text variant="mono">{run.planMd}</Text>
+          </Card>
+        ) : null}
+
+        <Card pad="base" gap="sm">
+          <HStack justify="space-between">
+            <SectionLabel>Events</SectionLabel>
+            <Text variant="caption" tone="subtle">
+              {events.length}
+            </Text>
+          </HStack>
+          <VStack gap="sm">
+            {events.map((e, idx) => (
+              <View key={e.id}>
+                {idx > 0 ? <Separator style={{ marginBottom: spacing.sm }} /> : null}
+                <HStack justify="space-between">
+                  <Text variant="footnote" style={{ fontWeight: '600' }}>
+                    {e.eventType}
+                  </Text>
+                  <Text variant="caption" tone="subtle">
+                    {formatTime(e.createdAt)}
+                  </Text>
+                </HStack>
+                {e.body ? (
+                  <Text variant="mono" numberOfLines={4} style={{ marginTop: 4 }}>
+                    {e.body}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </VStack>
+        </Card>
+      </ScrollScreen>
+    </>
   );
 }
-
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg },
-  topRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  title: { fontSize: 22, fontWeight: '700', color: C.fg },
-  meta: { fontSize: 12, color: C.muted },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: C.mutedBg,
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  kind: { fontSize: 11, fontWeight: '700', color: C.muted },
-  status: { fontFamily: 'Courier', fontSize: 13, color: C.fg },
-  eventCount: { marginLeft: 'auto', fontSize: 11, color: C.muted },
-  request: { color: C.fg, fontSize: 14, lineHeight: 20 },
-  err: { color: C.danger, fontSize: 13, lineHeight: 18 },
-  notice: {
-    backgroundColor: C.mutedBg,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 10,
-    color: C.muted,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  workflowCard: {
-    backgroundColor: C.mutedBg,
-    borderRadius: 10,
-    padding: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  inlineHeader: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  cardTitle: { fontSize: 14, fontWeight: '700', color: C.fg },
-  workflowText: { fontSize: 12, color: C.muted, lineHeight: 17 },
-  podCard: {
-    backgroundColor: C.bg,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 10,
-    gap: 4,
-  },
-  promptText: {
-    fontFamily: 'Courier',
-    fontSize: 11,
-    color: C.fg,
-    backgroundColor: C.bg,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 8,
-    padding: 10,
-    lineHeight: 16,
-  },
-  planCard: {
-    backgroundColor: C.mutedBg,
-    borderRadius: 10,
-    padding: 12,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  planText: { fontFamily: 'Courier', fontSize: 12, color: C.fg, lineHeight: 17 },
-  sectionStack: { gap: 8, marginBottom: 8 },
-  planSection: { backgroundColor: C.bg, borderRadius: 8, borderWidth: 1, borderColor: C.border, padding: 10 },
-  planSectionTitle: { color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
-  planSectionBody: { color: C.fg, fontSize: 13, lineHeight: 18 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  actions: { flexDirection: 'row', gap: 10 },
-  smallButton: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.mutedBg,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  smallButtonText: { color: C.fg, fontSize: 12, fontWeight: '600' },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  approve: { backgroundColor: C.accent },
-  reject: { backgroundColor: C.mutedBg, borderWidth: 1, borderColor: C.border },
-  actionText: { fontWeight: '700', color: C.accentFg, fontSize: 15 },
-  event: {
-    backgroundColor: C.mutedBg,
-    borderRadius: 8,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  eventHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  eventType: { fontFamily: 'Courier', fontSize: 11, color: C.fg, fontWeight: '600' },
-  eventTime: { fontFamily: 'Courier', fontSize: 11, color: C.muted },
-  eventBody: { fontFamily: 'Courier', fontSize: 11, color: C.fg, marginTop: 4 },
-});

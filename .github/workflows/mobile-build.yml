@@ -1,7 +1,11 @@
-name: Mobile Build (preview)
+name: Mobile Build
 
 # Manually-triggered EAS build. Posts the install URL + an inline QR
 # to the run's Summary page so the user can tap it from a phone.
+#
+# Profile choice:
+#   preview     — standalone build, OTA-updateable via eas-update.yml
+#   development — dev client; required for `pnpm tunnel` (live HMR from the VM)
 
 on:
   workflow_dispatch:
@@ -15,9 +19,17 @@ on:
           - android
           - ios
           - all
+      profile:
+        description: 'EAS build profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - development
 
 concurrency:
-  group: mobile-build-${{ github.event.inputs.platform }}
+  group: mobile-build-${{ github.event.inputs.platform }}-${{ github.event.inputs.profile }}
   cancel-in-progress: false
 
 jobs:
@@ -43,7 +55,7 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build (preview)
+      - name: Build
         id: build
         working-directory: apps/mobile
         env:
@@ -51,7 +63,7 @@ jobs:
         run: |
           set -e
           eas build \
-            --profile preview \
+            --profile "${{ inputs.profile }}" \
             --platform "${{ inputs.platform }}" \
             --non-interactive \
             --wait \
@@ -62,13 +74,13 @@ jobs:
         working-directory: apps/mobile
         run: |
           if [ ! -s build.json ]; then
-            echo "## Mobile build (${{ inputs.platform }})" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Mobile build (${{ inputs.platform }} · ${{ inputs.profile }})" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Build did not produce a result file. Check the job logs." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           {
-            echo "## Mobile build (${{ inputs.platform }})"
+            echo "## Mobile build (${{ inputs.platform }} · ${{ inputs.profile }})"
             echo ""
             echo "Bookmark <https://sagan.superkaiba.com/install> for the always-fresh QR."
             echo ""
@@ -106,11 +118,11 @@ jobs:
           fi
           count=$(jq 'length' build.json)
           for i in $(seq 0 $((count - 1))); do
-            payload=$(jq --arg sha "$GITHUB_SHA" --argjson i $i '
+            payload=$(jq --arg sha "$GITHUB_SHA" --arg profile "${{ inputs.profile }}" --argjson i $i '
               .[$i | tonumber] as $b
               | {
                   platform: ($b.platform | ascii_downcase),
-                  profile: "preview",
+                  profile: $profile,
                   easBuildId: $b.id,
                   installUrl: ($b.artifacts.buildUrl // $b.artifacts.applicationArchiveUrl),
                   artifactUrl: $b.artifacts.applicationArchiveUrl,

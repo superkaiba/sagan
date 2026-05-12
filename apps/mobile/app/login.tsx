@@ -1,18 +1,11 @@
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { login, loginWithGoogle } from '@/lib/api';
 import { registerForPush } from '@/lib/notifications';
-import { C } from '@/lib/theme';
+import { radius, spacing, useTheme } from '@/lib/theme';
+import { Button, HStack, Input, Screen, Separator, Text, VStack } from '@/ui';
 
 const GOOGLE_ERROR_LABELS: Record<string, string> = {
   google_not_configured: 'Google sign-in is not configured on the server.',
@@ -26,6 +19,7 @@ const GOOGLE_ERROR_LABELS: Record<string, string> = {
 };
 
 export default function LoginScreen() {
+  const t = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -38,7 +32,6 @@ export default function LoginScreen() {
     setErr(null);
     const ok = await login(email.trim(), password);
     if (ok) {
-      // Best-effort push registration (no-op on simulator / denied perms).
       void registerForPush().catch(() => {});
       router.replace('/(tabs)/today');
     } else {
@@ -60,121 +53,94 @@ export default function LoginScreen() {
     setGoogleBusy(false);
   }
 
+  const canSubmit = !!(email.trim() && password) && !busy && !googleBusy;
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={s.root}
-    >
-      <View style={s.card}>
-        <Text style={s.title}>Sign in</Text>
-        <Text style={s.subtitle}>Sagan</Text>
-
-        <Text style={s.label}>Email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          textContentType="username"
-          style={s.input}
-          placeholder="you@example.com"
-          placeholderTextColor={C.muted}
-        />
-
-        <Text style={s.label}>Password</Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          textContentType="password"
-          style={s.input}
-          placeholder="••••••••"
-          placeholderTextColor={C.muted}
-        />
-
-        {err ? <Text style={s.err}>{err}</Text> : null}
-
-        <TouchableOpacity
-          disabled={busy || googleBusy || !email.trim() || !password}
-          onPress={onSubmit}
-          style={[s.button, (busy || googleBusy || !email.trim() || !password) && s.buttonDisabled]}
+    <Screen>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            paddingHorizontal: spacing.lg,
+            gap: spacing.xl,
+          }}
         >
-          {busy ? <ActivityIndicator color={C.accentFg} /> : <Text style={s.buttonText}>Sign in</Text>}
-        </TouchableOpacity>
+          <VStack gap="md" style={{ alignItems: 'center', marginBottom: spacing.lg }}>
+            <View
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: radius.xl,
+                backgroundColor: t.colors.accent,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="planet" size={32} color={t.colors.accentFg} />
+            </View>
+            <VStack gap="xs" style={{ alignItems: 'center' }}>
+              <Text variant="title">Sagan</Text>
+              <Text variant="callout" tone="muted">
+                Your research dashboard
+              </Text>
+            </VStack>
+          </VStack>
 
-        <View style={s.divider}>
-          <View style={s.dividerLine} />
-          <Text style={s.dividerText}>or</Text>
-          <View style={s.dividerLine} />
+          <VStack gap="md">
+            <Input
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              textContentType="username"
+              placeholder="you@example.com"
+            />
+            <Input
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              textContentType="password"
+              placeholder="••••••••"
+              error={err}
+            />
+
+            <Button
+              label={busy ? 'Signing in…' : 'Sign in'}
+              onPress={onSubmit}
+              loading={busy}
+              disabled={!canSubmit}
+              fullWidth
+              size="lg"
+            />
+          </VStack>
+
+          <HStack gap="md" style={{ marginVertical: spacing.xs }}>
+            <Separator style={{ flex: 1 }} />
+            <Text variant="caption" tone="subtle">
+              OR
+            </Text>
+            <Separator style={{ flex: 1 }} />
+          </HStack>
+
+          <Button
+            label={googleBusy ? 'Opening Google…' : 'Continue with Google'}
+            onPress={onGoogle}
+            loading={googleBusy}
+            disabled={busy}
+            variant="secondary"
+            icon="logo-google"
+            fullWidth
+            size="lg"
+          />
         </View>
-
-        <TouchableOpacity
-          disabled={busy || googleBusy}
-          onPress={onGoogle}
-          style={[s.googleButton, (busy || googleBusy) && s.buttonDisabled]}
-        >
-          {googleBusy ? (
-            <ActivityIndicator color={C.fg} />
-          ) : (
-            <Text style={s.googleButtonText}>Continue with Google</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
-
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', padding: 16 },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: C.mutedBg,
-    borderRadius: 12,
-    padding: 20,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  title: { fontSize: 22, fontWeight: '700', color: C.fg },
-  subtitle: { fontSize: 13, color: C.muted, marginBottom: 8 },
-  label: { fontSize: 12, color: C.fg, fontWeight: '500', marginTop: 6 },
-  input: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.bg,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: C.fg,
-    fontSize: 16,
-  },
-  err: { color: C.danger, marginTop: 4, fontSize: 13 },
-  button: {
-    marginTop: 12,
-    backgroundColor: C.accent,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: C.accentFg, fontWeight: '600', fontSize: 15 },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 12,
-    gap: 8,
-  },
-  dividerLine: { flex: 1, height: 1, backgroundColor: C.border },
-  dividerText: { color: C.muted, fontSize: 12 },
-  googleButton: {
-    backgroundColor: C.bg,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  googleButtonText: { color: C.fg, fontWeight: '600', fontSize: 15 },
-});

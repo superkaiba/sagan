@@ -109,22 +109,29 @@ export default async function AppLayout({
             href="/approvals"
             data-pending={shellState.approvalCount > 0 ? 'true' : 'false'}
             className={[
-              'rounded-[--radius-panel] border bg-[--color-approval-bg] p-3 text-sm shadow-[var(--shadow-inset)] transition-colors hover:bg-[--color-panel]',
+              'rounded-[--radius-panel] border p-3 text-sm transition-colors',
               shellState.approvalCount > 0
-                ? 'border-[--color-approval] ring-2 ring-[--color-approval]/60 ring-offset-2 ring-offset-[--color-panel] animate-sagan-approval-pulse'
-                : 'border-[--color-approval-border]',
+                ? 'border-[3px] bg-[--color-attention-soft] text-[--color-attention] hover:opacity-95 animate-sagan-approval-pulse'
+                : 'border border-[--color-approval-border] bg-[--color-approval-bg] shadow-[var(--shadow-inset)] hover:bg-[--color-panel]',
             ].join(' ')}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-2 font-medium">
-                <Inbox className="h-4 w-4 text-[--color-approval]" aria-hidden="true" />
+              <span className="inline-flex items-center gap-2 font-semibold">
+                <Inbox
+                  className={
+                    shellState.approvalCount > 0
+                      ? 'h-4 w-4 text-[--color-attention]'
+                      : 'h-4 w-4 text-[--color-approval]'
+                  }
+                  aria-hidden="true"
+                />
                 Approvals
               </span>
               <span
                 className={[
-                  'rounded-[--radius-control] px-2 py-0.5 font-mono text-xs',
+                  'rounded-[--radius-control] px-2 py-0.5 font-mono text-xs font-bold',
                   shellState.approvalCount > 0
-                    ? 'bg-[--color-approval] text-[--color-panel]'
+                    ? 'bg-[--color-attention] text-[--color-attention-fg]'
                     : 'bg-[--color-panel] text-[--color-approval]',
                 ].join(' ')}
               >
@@ -135,7 +142,13 @@ export default async function AppLayout({
               <div className="mt-3 space-y-1">
                 <StatusBadge status={shellState.topApproval.status} />
                 <p className="line-clamp-2 text-sm font-medium leading-5">{shellState.topApproval.title}</p>
-                <p className="text-xs text-[--color-muted]">
+                <p
+                  className={
+                    shellState.approvalCount > 0
+                      ? 'text-xs text-[--color-attention]/80'
+                      : 'text-xs text-[--color-muted]'
+                  }
+                >
                   Updated {formatRelativeTime(shellState.topApproval.updatedAt)}
                 </p>
               </div>

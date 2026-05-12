@@ -315,23 +315,52 @@ a[href]:active,
   }
 }
 
-/* Approval attention pulse — used wherever something is awaiting the owner. */
-@keyframes sagan-approval-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-approval) 55%, transparent);
+/* Approval attention — saturated red-orange that's hard to miss. */
+:root,
+:root[data-theme='light'] {
+  --color-attention: #d9531e;
+  --color-attention-soft: #ffe5d8;
+  --color-attention-fg: #ffffff;
+}
+:root[data-theme='dark'] {
+  --color-attention: #ff8a4d;
+  --color-attention-soft: #4a2417;
+  --color-attention-fg: #1a0f08;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --color-attention: #ff8a4d;
+    --color-attention-soft: #4a2417;
+    --color-attention-fg: #1a0f08;
   }
-  50% {
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-approval) 0%, transparent);
+}
+
+@keyframes sagan-approval-pulse {
+  0% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--color-attention) 85%, transparent),
+      0 0 16px 0 color-mix(in srgb, var(--color-attention) 45%, transparent);
+  }
+  70% {
+    box-shadow:
+      0 0 0 14px color-mix(in srgb, var(--color-attention) 0%, transparent),
+      0 0 32px 6px color-mix(in srgb, var(--color-attention) 10%, transparent);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--color-attention) 0%, transparent),
+      0 0 16px 0 color-mix(in srgb, var(--color-attention) 0%, transparent);
   }
 }
 
 .animate-sagan-approval-pulse {
-  animation: sagan-approval-pulse 2.2s ease-in-out infinite;
+  animation: sagan-approval-pulse 1.6s ease-in-out infinite;
+  border-color: var(--color-attention) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-sagan-approval-pulse {
     animation: none;
+    box-shadow: 0 0 0 3px var(--color-attention);
   }
 }

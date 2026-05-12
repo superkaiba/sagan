@@ -89,8 +89,8 @@ function PipelineCard({
         'group border bg-[--color-panel] p-3 shadow-[var(--shadow-panel)] transition-colors',
         'cursor-grab active:cursor-grabbing hover:bg-[--color-hover]',
         needsOwner
-          ? 'border-[--color-approval] ring-2 ring-[--color-approval]/40 ring-offset-1 ring-offset-[--color-bg] animate-sagan-approval-pulse'
-          : 'border-[--color-border]',
+          ? 'border-[3px] border-[--color-attention] bg-[--color-attention-soft] animate-sagan-approval-pulse'
+          : 'border border-[--color-border]',
         dragging && 'opacity-45',
         pending && 'cursor-wait opacity-70',
       )}

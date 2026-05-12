@@ -94,12 +94,12 @@ export async function AwaitingApprovalBanner({
 
   const primary = reasons[0]!;
   return (
-    <div className="rounded-[--radius-panel] border border-[--color-approval] bg-[--color-approval-bg] p-3 text-sm text-[--color-approval] shadow-[var(--shadow-inset)] animate-sagan-approval-pulse">
+    <div className="rounded-[--radius-panel] border-[3px] border-[--color-attention] bg-[--color-attention-soft] p-4 text-sm text-[--color-attention] animate-sagan-approval-pulse">
       <div className="flex items-start gap-3">
-        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+        <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-[--color-attention]" aria-hidden="true" />
         <div className="min-w-0 flex-1 space-y-1">
-          <p className="font-semibold">Awaiting your approval</p>
-          <ul className="space-y-1 text-sm">
+          <p className="text-base font-bold uppercase tracking-wide">Awaiting your approval</p>
+          <ul className="space-y-1 text-sm font-medium">
             {reasons.map((reason, idx) => (
               <li key={idx} className="leading-5">
                 {reason.label}
@@ -109,7 +109,7 @@ export async function AwaitingApprovalBanner({
         </div>
         <Link
           href={primary.href}
-          className="shrink-0 self-center rounded-[--radius-control] bg-[--color-approval] px-3 py-1.5 text-xs font-semibold text-[--color-panel] hover:opacity-90"
+          className="shrink-0 self-center rounded-[--radius-control] bg-[--color-attention] px-4 py-2 text-sm font-bold text-[--color-attention-fg] hover:opacity-90"
         >
           Review →
         </Link>

@@ -17,9 +17,17 @@ import '../src/env.js';
 import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
-const PROJECT_URL =
-  process.env.GITHUB_RESULTS_PROJECT_URL ?? 'https://github.com/users/superkaiba/projects/1';
-const REPO_PATH = process.env.GITHUB_RESULTS_REPO ?? 'superkaiba/explore-persona-space';
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`Set ${name} before running.`);
+    process.exit(2);
+  }
+  return value;
+}
+
+const PROJECT_URL = requireEnv('GITHUB_RESULTS_PROJECT_URL');
+const REPO_PATH = requireEnv('GITHUB_RESULTS_REPO');
 const SOURCE_COLUMN = 'Useful';
 const USEFUL_DONE_DAY = process.env.GITHUB_RESULTS_USEFUL_DONE_DAY;
 

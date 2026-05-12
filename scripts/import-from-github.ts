@@ -1,12 +1,14 @@
 #!/usr/bin/env -S npx tsx
 /**
- * One-shot importer: superkaiba/explore-persona-space GitHub issues → Sagan.
+ * One-shot importer: GitHub Project issues → Sagan.
  *
  * Usage:
  *   tsx scripts/import-from-github.ts --dry-run    # no writes, prints report + /tmp dump
  *   tsx scripts/import-from-github.ts --apply      # writes to DATABASE_URL_DIRECT
  *
- * Requires `gh` CLI authenticated and `DATABASE_URL_DIRECT` in env.
+ * Required env: GITHUB_REPO (owner/name), GITHUB_PROJECT_NUMBER,
+ * GITHUB_PROJECT_OWNER. Also requires `gh` CLI authenticated and
+ * `DATABASE_URL_DIRECT` in env.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -23,9 +25,15 @@ if (dryRun === apply) {
   process.exit(2);
 }
 
-const REPO = 'superkaiba/explore-persona-space';
-const PROJECT_NUMBER = '1';
-const PROJECT_OWNER = 'superkaiba';
+const REPO = process.env.GITHUB_REPO;
+const PROJECT_NUMBER = process.env.GITHUB_PROJECT_NUMBER;
+const PROJECT_OWNER = process.env.GITHUB_PROJECT_OWNER;
+if (!REPO || !PROJECT_NUMBER || !PROJECT_OWNER) {
+  console.error(
+    'Set GITHUB_REPO (owner/name), GITHUB_PROJECT_NUMBER, and GITHUB_PROJECT_OWNER before running.',
+  );
+  process.exit(2);
+}
 
 // ─── Mappings ─────────────────────────────────────────────────────────────────
 

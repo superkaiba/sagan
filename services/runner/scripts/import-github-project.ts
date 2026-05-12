@@ -1,6 +1,9 @@
 /**
- * Import selected GitHub Project items from explore-persona-space into native
- * Sagan entities so the dashboard can preview the migrated workflow.
+ * Import selected GitHub Project items into native Sagan entities so the
+ * dashboard can preview the migrated workflow.
+ *
+ * Required env: GITHUB_PROJECT_OWNER, GITHUB_PROJECT_REPO (owner/name),
+ * GITHUB_PROJECT_NUMBER, SAGAN_PROJECT_SLUG, SAGAN_PROJECT_TITLE.
  *
  * Run from the repo root with:
  *
@@ -10,11 +13,20 @@ import '../src/env.js';
 import { createHash } from 'node:crypto';
 import postgres from 'postgres';
 
-const OWNER = process.env.GITHUB_PROJECT_OWNER ?? 'superkaiba';
-const REPO = process.env.GITHUB_PROJECT_REPO ?? 'superkaiba/explore-persona-space';
-const PROJECT_NUMBER = Number(process.env.GITHUB_PROJECT_NUMBER ?? '1');
-const PROJECT_SLUG = 'explore-persona-space';
-const PROJECT_TITLE = 'Explore Persona Space';
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`Set ${name} before running.`);
+    process.exit(2);
+  }
+  return value;
+}
+
+const OWNER = requireEnv('GITHUB_PROJECT_OWNER');
+const REPO = requireEnv('GITHUB_PROJECT_REPO');
+const PROJECT_NUMBER = Number(requireEnv('GITHUB_PROJECT_NUMBER'));
+const PROJECT_SLUG = requireEnv('SAGAN_PROJECT_SLUG');
+const PROJECT_TITLE = requireEnv('SAGAN_PROJECT_TITLE');
 const SELECTED_STATUSES = new Set(['To do', 'In flight', 'Awaiting promotion', 'Useful', 'Not useful']);
 const IMPORT_SOURCE = 'github-project-import';
 const BODY_LIMIT = 12_000;

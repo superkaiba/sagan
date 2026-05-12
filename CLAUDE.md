@@ -1,8 +1,26 @@
-# EPS Research Dashboard — Agent Rules
+# Sagan — Agent Rules
 
-This repository is the new research-life dashboard. Greenfield successor to
-`explore-persona-space-dashboard`. Vercel production is the canonical live
-surface; the VM is the agent runner and workspace.
+Sagan is a research dashboard intended to host multiple research projects
+as tenants. Vercel production at `sagan.superkaiba.com` is the canonical
+live surface; the VM is the agent runner and workspace. The
+`explore-persona-space` (EPS) project is the first and currently only
+tenant — multi-tenancy in the schema and API is a future phase (see
+*Tenant-agnostic guardrail* below).
+
+## Tenant-agnostic guardrail
+
+Sagan is intended to host multiple research projects as tenants. New
+tables, fields, API routes, and UI views must pass the test: *would a
+hypothetical second project (something other than EPS) plausibly want
+this exact thing?* If no — the concept is EPS-shaped — it belongs in the
+`explore-persona-space` repo, not here. EPS-specific files that already
+exist in this repo (`apps/web/src/lib/mentor-results-data.ts`,
+`apps/web/data/mentor-legacy-results.json`, `docs/clean-result-guidelines.md`,
+`docs/em-mechanism-lit-review-*.md`) are legacy and will be moved out in
+a later phase; do not add more.
+
+Clients of Sagan (EPS today, more later) talk to it only over HTTP.
+Sagan never reaches into a client repo at runtime.
 
 ## Layout
 
@@ -69,18 +87,19 @@ can tap from a phone or browser:
 
 ## Database
 
-- Single Neon project `eps-research` (Postgres 17, pgvector 0.8.0,
-  `aws-us-east-1`). Connection strings live in `.env` (gitignored).
+- Single Neon project (currently named `eps-research` for historical
+  reasons; Postgres 17, pgvector 0.8.0, `aws-us-east-1`). Connection
+  strings live in `.env` (gitignored).
 - `DATABASE_URL` (pooled) is for serverless functions; `DATABASE_URL_DIRECT`
   is for migrations and runner LISTEN/NOTIFY.
-- Migrations: `pnpm --filter @eps/db db:generate` to author, `db:migrate` to
-  apply. Generated SQL is committed under `packages/db/drizzle/`.
+- Migrations: `pnpm --filter @sagan/db db:generate` to author, `db:migrate`
+  to apply. Generated SQL is committed under `packages/db/drizzle/`.
 
 ## Auth
 
 - Single owner. Password auth (argon2id) with hand-rolled session tokens
   (60-day sliding expiration). No Lucia, no Supabase.
-- `users` and `sessions` tables live in `@eps/db` schema.
+- `users` and `sessions` tables live in `@sagan/db` schema.
 - Session helpers in `packages/auth/src/session.ts`.
 
 ## Agent Run Tracking

@@ -20,7 +20,7 @@ const DEFAULT_FIELD: Record<Props['kind'], string> = {
   todo: 'bodyMd',
   lit_item: 'abstract',
   project_narrative: 'bodyMd',
-  experiment: 'hypothesis',
+  experiment: 'body',
   run: 'notesMd',
   daily_log_entry: 'bodyMd',
   clean_result: 'bodyMd',

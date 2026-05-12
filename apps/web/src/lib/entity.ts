@@ -106,10 +106,12 @@ export async function loadEntity(kind: EntityKind, id: string): Promise<EntityRo
         id: row.id,
         title: row.title,
         status: row.status,
-        body: row.hypothesis,
+        body: row.body ?? row.hypothesis,
         meta: [
+          row.number != null ? { label: '#', value: String(row.number) } : null,
+          { label: 'kind', value: row.kind },
           { label: 'runpod', value: row.runpodAccount },
-        ],
+        ].filter((m): m is { label: string; value: string } => Boolean(m)),
         raw: row,
       };
     }

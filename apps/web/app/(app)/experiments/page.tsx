@@ -17,7 +17,7 @@ export default async function ExperimentsPage() {
       .select({
         id: experiments.id,
         title: experiments.title,
-        hypothesis: sql<string>`left(coalesce(${experiments.hypothesis}, ''), 360)`,
+        hypothesis: sql<string>`left(coalesce(${experiments.hypothesis}, ${experiments.body}, ''), 360)`,
         status: experiments.status,
         updatedAt: experiments.updatedAt,
       })

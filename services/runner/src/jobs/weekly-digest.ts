@@ -169,11 +169,31 @@ export async function runWeeklyDigest(refDate?: Date, context: JobContext = {}):
   weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
   const weekStartIso = isoDate(weekStart);
 
-  // Idempotency: skip if a digest for this week-start already exists.
+  // weekly_digests is now per-project (composite unique on project_id +
+  // week_start). The cron-triggered digest defaults to the main research
+  // project; per-project digests via the /weekly skill set their own
+  // project_id. If conditional-behavior doesn't exist yet, log + skip.
+  const defaultProjectRows = await db()
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.slug, 'conditional-behavior'))
+    .limit(1);
+  const defaultProjectId = defaultProjectRows[0]?.id;
+  if (!defaultProjectId) {
+    log.warn('weekly-digest: skipping — no default project (slug=conditional-behavior) found');
+    return { status: 'skipped', resultPayload: { reason: 'no_default_project' } };
+  }
+
+  // Idempotency: skip if a digest for this week-start + project already exists.
   const existing = await db()
     .select()
     .from(weeklyDigests)
-    .where(eq(weeklyDigests.weekStart, weekStartIso))
+    .where(
+      and(
+        eq(weeklyDigests.projectId, defaultProjectId),
+        eq(weeklyDigests.weekStart, weekStartIso),
+      ),
+    )
     .limit(1);
   if (existing[0]) {
     log.info('weekly-digest: already exists', { weekStart: weekStartIso, id: existing[0].id });
@@ -207,6 +227,7 @@ export async function runWeeklyDigest(refDate?: Date, context: JobContext = {}):
   const inserted = await db()
     .insert(weeklyDigests)
     .values({
+      projectId: defaultProjectId,
       weekStart: weekStartIso,
       bodyMd,
       shareToken,

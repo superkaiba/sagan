@@ -141,11 +141,15 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     `- Do NOT publish — leave the narrative in its current status (draft or published; revisions are in place).`,
   ].join('\n');
 
-  // Insert the agent_run
+  // Insert the agent_run. Use kind='apply' (not 'qa') because the agent must
+  // write to the DB to update the narrative + resolve comments. 'qa' is
+  // read-only (Bash/Edit/Write disabled in session.ts); 'apply' grants
+  // write access with acceptEdits permission mode and skips approval
+  // gating (approvalRequired=false).
   const insertedRuns = await db()
     .insert(agentRuns)
     .values({
-      kind: 'qa',
+      kind: 'apply',
       provider: 'claude_code',
       status: 'queued',
       request: runRequest,

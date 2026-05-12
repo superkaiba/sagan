@@ -6,7 +6,7 @@
  * the SDKResultMessage arrives.
  */
 import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import { and, eq, ilike, ne } from 'drizzle-orm';
+import { and, asc, eq, ilike, isNull, ne } from 'drizzle-orm';
 import { db, schema } from './db.js';
 import { emitEvent, notifyQueued } from './queue.js';
 import { env, requireEnv } from './env.js';
@@ -478,6 +478,74 @@ async function buildScopedEntityContext(row: AgentRunRow): Promise<string> {
           `configYaml:\n${experiment.configYaml ?? ''}`,
         ].join('\n'),
         12000,
+      );
+    }
+    case 'project_narrative': {
+      const narrativeRows = await db()
+        .select({
+          id: schema.projectNarratives.id,
+          projectId: schema.projectNarratives.projectId,
+          title: schema.projectNarratives.title,
+          bodyMd: schema.projectNarratives.bodyMd,
+          status: schema.projectNarratives.status,
+          publishedAt: schema.projectNarratives.publishedAt,
+        })
+        .from(schema.projectNarratives)
+        .where(eq(schema.projectNarratives.id, row.scopeEntityId))
+        .limit(1);
+      const narrative = narrativeRows[0];
+      if (!narrative) return '';
+
+      const unresolvedComments = await db()
+        .select({
+          id: schema.comments.id,
+          authorKind: schema.comments.authorKind,
+          authorUserId: schema.comments.authorUserId,
+          body: schema.comments.body,
+          anchoredQuote: schema.comments.anchoredQuote,
+          parentCommentId: schema.comments.parentCommentId,
+          createdAt: schema.comments.createdAt,
+        })
+        .from(schema.comments)
+        .where(
+          and(
+            eq(schema.comments.entityKind, 'project_narrative'),
+            eq(schema.comments.entityId, narrative.id),
+            isNull(schema.comments.resolvedAt),
+          ),
+        )
+        .orderBy(asc(schema.comments.createdAt));
+
+      const commentsBlock = unresolvedComments.length
+        ? unresolvedComments
+            .map(
+              (c, i) =>
+                `### Unresolved comment ${i + 1} (id=${c.id}, by ${c.authorKind})\n` +
+                (c.anchoredQuote ? `Anchored to: "${c.anchoredQuote.slice(0, 200)}"\n` : '') +
+                `${c.body}`,
+            )
+            .join('\n\n')
+        : '(no unresolved comments)';
+
+      return truncate(
+        [
+          `kind: project_narrative`,
+          `id: ${narrative.id}`,
+          `projectId: ${narrative.projectId}`,
+          `title: ${narrative.title}`,
+          `status: ${narrative.status}`,
+          `publishedAt: ${narrative.publishedAt?.toISOString() ?? 'null'}`,
+          `unresolvedCommentCount: ${unresolvedComments.length}`,
+          ``,
+          `## Narrative body`,
+          ``,
+          narrative.bodyMd,
+          ``,
+          `## Unresolved comments`,
+          ``,
+          commentsBlock,
+        ].join('\n'),
+        20000,
       );
     }
     case 'lit_item': {

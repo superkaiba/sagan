@@ -7,6 +7,7 @@ import { getSession } from '@/lib/auth';
 import { Comments } from '@/components/Comments';
 import { ImproveNarrativeButton } from '@/components/ImproveNarrativeButton';
 import { Markdown } from '@/components/Markdown';
+import { NarrativeBody } from '@/components/NarrativeBody';
 import { NarrativeVersionSelector } from '@/components/NarrativeVersionSelector';
 
 export const dynamic = 'force-dynamic';
@@ -114,7 +115,7 @@ export default async function PublicProjectPage({
         <div className="space-y-6 min-w-0">
           {narrative ? (
             <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-6">
-              <Markdown>{narrative.bodyMd}</Markdown>
+              <NarrativeBody body={narrative.bodyMd} />
             </article>
           ) : project.summaryMd ? (
             <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-6">

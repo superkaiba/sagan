@@ -26,7 +26,9 @@ export function proxy(req: NextRequest) {
     pathname.startsWith('/d/') ||
     pathname.startsWith('/p/') ||
     pathname.startsWith('/r/') ||
+    pathname.startsWith('/artifact/') ||
     pathname === '/mentor/updates' ||
+    pathname === '/api/artifacts/publish' ||
     pathname.startsWith('/api/mentor/')
   ) {
     return NextResponse.next({ request: { headers: requestHeaders } });

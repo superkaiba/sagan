@@ -64,9 +64,10 @@ const LABEL_TO_STATUS_FALLBACK: Record<string, string> = {
 const KIND_LABEL: Record<string, string> = {
   'type:experiment': 'experiment',
   'type:infra': 'infra',
-  'type:analysis': 'analysis',
+  // Historical: type:analysis + type:batch were collapsed into infra at the kind level.
+  'type:analysis': 'infra',
   'type:survey': 'survey',
-  'type:batch': 'batch',
+  'type:batch': 'infra',
 };
 
 const COMPUTE_LABEL: Record<string, string> = {

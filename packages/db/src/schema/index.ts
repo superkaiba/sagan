@@ -92,9 +92,7 @@ export const priorityEnum = pgEnum('priority', ['low', 'normal', 'high', 'urgent
 export const experimentKindEnum = pgEnum('experiment_kind', [
   'experiment',
   'infra',
-  'analysis',
   'survey',
-  'batch',
 ]);
 
 export const computeSizeEnum = pgEnum('compute_size', ['none', 'small', 'medium', 'large']);

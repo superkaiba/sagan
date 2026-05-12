@@ -7,7 +7,7 @@ import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { EXPERIMENT_STATUSES, experimentTurn, setExperimentStatus } from '@/lib/workflow';
 
-const EXPERIMENT_KINDS = ['experiment', 'infra', 'analysis', 'survey', 'batch'] as const;
+const EXPERIMENT_KINDS = ['experiment', 'infra', 'survey'] as const;
 const COMPUTE_SIZES = ['none', 'small', 'medium', 'large'] as const;
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 const ASSIGNEE_KINDS = ['agent', 'human'] as const;

@@ -3,7 +3,6 @@ import { desc, eq, or } from 'drizzle-orm';
 import { cleanResults, cleanResultVersions, runArtifacts } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { Markdown } from '@/components/Markdown';
-import { AwaitingApprovalBanner } from '@/components/AwaitingApprovalBanner';
 import { Comments } from '@/components/Comments';
 import { EntityEdges } from '@/components/EntityEdges';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
@@ -52,7 +51,6 @@ export default async function CleanResultPage({ params }: { params: Promise<{ id
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <main className="min-w-0 space-y-6">
-        <AwaitingApprovalBanner kind="clean_result" id={result.id} />
         <header className="space-y-3">
           <p className="text-xs uppercase tracking-wide text-[--color-muted]">Clean result</p>
           <div className="flex flex-wrap items-baseline gap-2">

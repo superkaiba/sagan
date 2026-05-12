@@ -12,8 +12,7 @@ import { ConversationDock } from '@/components/ConversationDock';
 import { TocHighlighter } from '@/components/TocHighlighter';
 import { hasFullDashboardAccess } from '@/lib/full-dashboard-access';
 import { loadShellDashboardState } from '@/lib/dashboard';
-import { buttonClassName, StatusBadge } from '@/components/ui';
-import { formatRelativeTime } from '@/lib/status';
+import { buttonClassName } from '@/components/ui';
 
 const LIMITED_ACCESS_PREFIXES = ['/e/', '/clean-results/', '/agent/'];
 
@@ -106,17 +105,16 @@ export default async function AppLayout({
         </div>
 
         {fullDashboard && shellState ? (
-          <Link
-            href="/approvals"
+          <section
             data-pending={shellState.approvalCount > 0 ? 'true' : 'false'}
             className={[
-              'rounded-[--radius-panel] border p-3 text-sm transition-colors',
+              'rounded-[--radius-panel] border text-sm',
               shellState.approvalCount > 0
-                ? 'border-[3px] bg-[--color-attention-soft] text-[--color-attention] hover:opacity-95 animate-sagan-approval-pulse'
-                : 'border border-[--color-approval-border] bg-[--color-approval-bg] shadow-[var(--shadow-inset)] hover:bg-[--color-panel]',
+                ? 'border-[3px] border-[--color-attention] bg-[--color-attention-soft] animate-sagan-approval-pulse'
+                : 'border border-[--color-approval-border] bg-[--color-approval-bg] shadow-[var(--shadow-inset)]',
             ].join(' ')}
           >
-            <div className="flex items-center justify-between gap-2">
+            <header className="flex items-center justify-between gap-2 border-b border-[--color-border] px-3 py-2">
               <span className="inline-flex items-center gap-2 font-semibold">
                 <Inbox
                   className={
@@ -138,25 +136,42 @@ export default async function AppLayout({
               >
                 {shellState.approvalCount}
               </span>
-            </div>
-            {shellState.topApproval ? (
-              <div className="mt-3 space-y-1">
-                <StatusBadge status={shellState.topApproval.status} />
-                <p className="line-clamp-2 text-sm font-medium leading-5">{shellState.topApproval.title}</p>
-                <p
-                  className={
-                    shellState.approvalCount > 0
-                      ? 'text-xs text-[--color-attention]/80'
-                      : 'text-xs text-[--color-muted]'
-                  }
-                >
-                  Updated {formatRelativeTime(shellState.topApproval.updatedAt)}
-                </p>
-              </div>
+            </header>
+            {shellState.topApprovals.length === 0 ? (
+              <p className="px-3 py-3 text-xs leading-5 text-[--color-muted]">
+                No owner decisions are waiting.
+              </p>
             ) : (
-              <p className="mt-2 text-xs leading-5 text-[--color-muted]">No owner decisions are waiting.</p>
+              <ul className="divide-y divide-[--color-border] text-xs">
+                {shellState.topApprovals.map((item) => (
+                  <li key={item.key}>
+                    <Link
+                      href={item.href}
+                      className="block px-3 py-2 hover:bg-[--color-hover]"
+                      title={item.context ?? undefined}
+                    >
+                      <p className="font-semibold leading-4 text-[--color-fg] line-clamp-1">
+                        {item.requestedAction}
+                      </p>
+                      <p className="mt-0.5 line-clamp-1 leading-4 text-[--color-muted]">
+                        {item.title}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+                {shellState.approvalCount > shellState.topApprovals.length ? (
+                  <li>
+                    <Link
+                      href="/approvals"
+                      className="block px-3 py-2 text-center text-[--color-attention] hover:bg-[--color-hover]"
+                    >
+                      View all {shellState.approvalCount} →
+                    </Link>
+                  </li>
+                ) : null}
+              </ul>
             )}
-          </Link>
+          </section>
         ) : null}
 
         {fullDashboard ? (

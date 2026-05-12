@@ -41,7 +41,7 @@ export interface DashboardShellState {
   activePipelineCount: number;
   literatureQueueCount: number;
   recentLogCount: number;
-  topApproval: DashboardApprovalItem | null;
+  topApprovals: DashboardApprovalItem[];
 }
 
 export interface DashboardPipelineCard {
@@ -299,7 +299,7 @@ export async function loadShellDashboardState(): Promise<DashboardShellState> {
       countOf(activeExperiments) + countOf(activeCleanResults) + countOf(activeTodos) + countOf(activeAgents),
     literatureQueueCount: countOf(literatureQueue),
     recentLogCount: countOf(recentLog),
-    topApproval: approvalItems[0] ?? null,
+    topApprovals: approvalItems.slice(0, 8),
   };
 }
 

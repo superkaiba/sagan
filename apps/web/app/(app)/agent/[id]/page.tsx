@@ -4,7 +4,6 @@ import { agentRuns, agentRunEvents, podLifecycle, runArtifacts } from '@sagan/db
 import { db } from '@/lib/db';
 import { isOwner } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
-import { AwaitingApprovalBanner } from '@/components/AwaitingApprovalBanner';
 import { RunStream } from './RunStream';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +32,6 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="space-y-6">
-      <AwaitingApprovalBanner kind="run" id={run.id} />
       <header className="space-y-2">
         <div className="flex items-baseline gap-3">
           <span className="text-xs uppercase tracking-wide text-[--color-muted]">{run.kind}</span>

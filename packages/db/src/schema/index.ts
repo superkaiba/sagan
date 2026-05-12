@@ -1279,6 +1279,26 @@ export const pushDevices = pgTable(
   }),
 );
 
+export const mobileBuilds = pgTable(
+  'mobile_builds',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    platform: text('platform').notNull(),
+    profile: text('profile').notNull().default('preview'),
+    easBuildId: text('eas_build_id').notNull(),
+    installUrl: text('install_url').notNull(),
+    artifactUrl: text('artifact_url'),
+    status: text('status').notNull(),
+    gitSha: text('git_sha'),
+    builtAt: timestamp('built_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    easBuildIdUq: unique('mobile_builds_eas_build_id_uq').on(t.easBuildId),
+    platformBuiltAtIdx: index('mobile_builds_platform_built_at_idx').on(t.platform, t.builtAt),
+  }),
+);
+
 // ─── Type exports ──────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -1319,6 +1339,7 @@ export type WeeklyDigest = typeof weeklyDigests.$inferSelect;
 export type ShareGrant = typeof shareGrants.$inferSelect;
 export type PublishedArtifact = typeof publishedArtifacts.$inferSelect;
 export type PushDevice = typeof pushDevices.$inferSelect;
+export type MobileBuild = typeof mobileBuilds.$inferSelect;
 
 // Suppress unused import warning when sql is not directly referenced here.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

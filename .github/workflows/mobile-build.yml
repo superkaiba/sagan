@@ -70,6 +70,8 @@ jobs:
           {
             echo "## Mobile build (${{ inputs.platform }})"
             echo ""
+            echo "Bookmark <https://sagan.superkaiba.com/install> for the always-fresh QR."
+            echo ""
             jq -r '
               .[]
               | "### " + .platform
@@ -85,3 +87,41 @@ jobs:
               + "\n"
             ' build.json
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish to Sagan /install
+        if: success()
+        working-directory: apps/mobile
+        env:
+          SAGAN_MOBILE_BUILD_TOKEN: ${{ secrets.SAGAN_MOBILE_BUILD_TOKEN }}
+          SAGAN_SITE_URL: ${{ vars.SAGAN_SITE_URL || 'https://sagan.superkaiba.com' }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          if [ -z "$SAGAN_MOBILE_BUILD_TOKEN" ]; then
+            echo "::warning::SAGAN_MOBILE_BUILD_TOKEN not set; skipping publish."
+            exit 0
+          fi
+          if [ ! -s build.json ]; then
+            echo "::warning::No build.json; skipping publish."
+            exit 0
+          fi
+          count=$(jq 'length' build.json)
+          for i in $(seq 0 $((count - 1))); do
+            payload=$(jq --arg sha "$GITHUB_SHA" --argjson i $i '
+              .[$i | tonumber] as $b
+              | {
+                  platform: ($b.platform | ascii_downcase),
+                  profile: "preview",
+                  easBuildId: $b.id,
+                  installUrl: ($b.artifacts.buildUrl // $b.artifacts.applicationArchiveUrl),
+                  artifactUrl: $b.artifacts.applicationArchiveUrl,
+                  status: ($b.status | ascii_downcase),
+                  gitSha: $sha,
+                  builtAt: ($b.completedAt // $b.updatedAt // $b.createdAt)
+                }
+            ' build.json)
+            echo "Publishing: $payload"
+            curl -fsS -X POST "$SAGAN_SITE_URL/api/mobile-builds" \
+              -H "content-type: application/json" \
+              -H "x-sagan-mobile-build-token: $SAGAN_MOBILE_BUILD_TOKEN" \
+              -d "$payload" || echo "::warning::publish failed for index $i"
+          done

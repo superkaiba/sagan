@@ -1,9 +1,12 @@
 import * as SecureStore from 'expo-secure-store';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import { router } from 'expo-router';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://sagan.superkaiba.com';
 const TOKEN_KEY = 'sagan_session_token';
+
+let isHandling401 = false;
 
 export async function getToken(): Promise<string | null> {
   return SecureStore.getItemAsync(TOKEN_KEY);
@@ -35,6 +38,22 @@ export async function api<T>(
       data = (await res.json()) as T;
     } catch {
       data = null;
+    }
+  }
+  if (res.status === 401 && init?.auth !== false) {
+    // Stored session token is stale. Wipe it and bounce to login so the
+    // user can re-auth (Google or password). Guarded so we only kick once.
+    if (!isHandling401) {
+      isHandling401 = true;
+      await clearToken();
+      try {
+        router.replace('/login');
+      } catch {
+        // ignore: router may not be mounted yet
+      }
+      setTimeout(() => {
+        isHandling401 = false;
+      }, 2000);
     }
   }
   return { ok: res.ok, status: res.status, data };

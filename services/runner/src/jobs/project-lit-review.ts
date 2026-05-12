@@ -154,7 +154,6 @@ async function runDeepResearch(prompt: string): Promise<string> {
     settingSources: [],
     model: 'claude-sonnet-4-6',
     maxTurns: 60,
-    maxBudgetUsd: 6,
     persistSession: false,
   };
 

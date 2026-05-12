@@ -1,4 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://sagan.superkaiba.com';
 const TOKEN_KEY = 'sagan_session_token';
@@ -48,6 +50,38 @@ export async function login(email: string, password: string): Promise<boolean> {
   if (!result.ok || !result.data?.sessionToken) return false;
   await setToken(result.data.sessionToken);
   return true;
+}
+
+export type GoogleLoginResult =
+  | { kind: 'success' }
+  | { kind: 'cancel' }
+  | { kind: 'error'; error: string };
+
+export async function loginWithGoogle(): Promise<GoogleLoginResult> {
+  const returnUrl = Linking.createURL('auth/callback');
+  const authUrl = `${API_BASE}/api/auth/google/start?mobile_redirect=${encodeURIComponent(returnUrl)}`;
+  let result: WebBrowser.WebBrowserAuthSessionResult;
+  try {
+    result = await WebBrowser.openAuthSessionAsync(authUrl, returnUrl);
+  } catch (err) {
+    return { kind: 'error', error: err instanceof Error ? err.message : 'browser_failed' };
+  }
+  if (result.type === 'cancel' || result.type === 'dismiss') return { kind: 'cancel' };
+  if (result.type !== 'success' || !result.url) return { kind: 'error', error: 'no_callback' };
+
+  const parsed = Linking.parse(result.url);
+  const params = (parsed.queryParams ?? {}) as Record<string, string | string[] | undefined>;
+  const errorParam = pickString(params.error);
+  if (errorParam) return { kind: 'error', error: errorParam };
+  const token = pickString(params.token);
+  if (!token) return { kind: 'error', error: 'no_token' };
+  await setToken(token);
+  return { kind: 'success' };
+}
+
+function pickString(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
 }
 
 export async function logout(): Promise<void> {

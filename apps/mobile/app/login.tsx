@@ -10,15 +10,27 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
-import { login } from '@/lib/api';
+import { login, loginWithGoogle } from '@/lib/api';
 import { registerForPush } from '@/lib/notifications';
 import { C } from '@/lib/theme';
+
+const GOOGLE_ERROR_LABELS: Record<string, string> = {
+  google_not_configured: 'Google sign-in is not configured on the server.',
+  google_state_invalid: 'Sign-in session expired. Try again.',
+  google_token_failed: "Couldn't reach Google. Try again.",
+  google_profile_failed: "Couldn't read your Google profile.",
+  google_email_unverified: 'Your Google email is not verified.',
+  google_no_account: 'No account is linked to that email.',
+  no_callback: 'Sign-in window closed unexpectedly.',
+  no_token: 'Sign-in did not return a session.',
+};
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   async function onSubmit() {
     if (!email.trim() || !password) return;
@@ -33,6 +45,19 @@ export default function LoginScreen() {
       setErr('Wrong email or password.');
     }
     setBusy(false);
+  }
+
+  async function onGoogle() {
+    setGoogleBusy(true);
+    setErr(null);
+    const result = await loginWithGoogle();
+    if (result.kind === 'success') {
+      void registerForPush().catch(() => {});
+      router.replace('/(tabs)/today');
+    } else if (result.kind === 'error') {
+      setErr(GOOGLE_ERROR_LABELS[result.error] ?? `Sign-in failed (${result.error}).`);
+    }
+    setGoogleBusy(false);
   }
 
   return (
@@ -71,11 +96,29 @@ export default function LoginScreen() {
         {err ? <Text style={s.err}>{err}</Text> : null}
 
         <TouchableOpacity
-          disabled={busy || !email.trim() || !password}
+          disabled={busy || googleBusy || !email.trim() || !password}
           onPress={onSubmit}
-          style={[s.button, (busy || !email.trim() || !password) && s.buttonDisabled]}
+          style={[s.button, (busy || googleBusy || !email.trim() || !password) && s.buttonDisabled]}
         >
           {busy ? <ActivityIndicator color={C.accentFg} /> : <Text style={s.buttonText}>Sign in</Text>}
+        </TouchableOpacity>
+
+        <View style={s.divider}>
+          <View style={s.dividerLine} />
+          <Text style={s.dividerText}>or</Text>
+          <View style={s.dividerLine} />
+        </View>
+
+        <TouchableOpacity
+          disabled={busy || googleBusy}
+          onPress={onGoogle}
+          style={[s.googleButton, (busy || googleBusy) && s.buttonDisabled]}
+        >
+          {googleBusy ? (
+            <ActivityIndicator color={C.fg} />
+          ) : (
+            <Text style={s.googleButtonText}>Continue with Google</Text>
+          )}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -117,4 +160,21 @@ const s = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: C.accentFg, fontWeight: '600', fontSize: 15 },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 12,
+    gap: 8,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: C.border },
+  dividerText: { color: C.muted, fontSize: 12 },
+  googleButton: {
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  googleButtonText: { color: C.fg, fontWeight: '600', fontSize: 15 },
 });

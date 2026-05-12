@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getRequestOrigin } from '@/lib/request-origin';
+import { isAllowedMobileRedirect } from '@/lib/mobile-redirect';
 
 const STATE_COOKIE = 'sagan_google_oauth';
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -15,6 +16,10 @@ export async function GET(req: Request) {
   const origin = getRequestOrigin(req);
   const url = new URL(req.url);
   const signup = url.searchParams.get('signup') === '1' || url.searchParams.get('mode') === 'signup';
+  const mobileRedirectRaw = url.searchParams.get('mobile_redirect');
+  const mobileRedirect = mobileRedirectRaw && isAllowedMobileRedirect(mobileRedirectRaw)
+    ? mobileRedirectRaw
+    : undefined;
   if (!clientId) {
     return NextResponse.redirect(new URL(`${signup ? '/signup' : '/login'}?error=google_not_configured`, origin));
   }
@@ -26,6 +31,7 @@ export async function GET(req: Request) {
     state,
     next: safeRelativePath(url.searchParams.get('next')),
     signup,
+    mobileRedirect,
   };
 
   const authUrl = new URL(GOOGLE_AUTH_URL);

@@ -3,10 +3,11 @@ import { cookies } from 'next/headers';
 import { eq } from 'drizzle-orm';
 import { users } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { setSessionCookieOnResponse } from '@/lib/auth';
+import { createSessionToken, setSessionCookieOnResponse } from '@/lib/auth';
 import { getRequestOrigin } from '@/lib/request-origin';
 import { createPublicUserAccount } from '@/lib/public-signup';
 import { hasFullDashboardAccessEmail } from '@/lib/full-dashboard-access';
+import { appendQuery, isAllowedMobileRedirect } from '@/lib/mobile-redirect';
 
 const STATE_COOKIE = 'sagan_google_oauth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -16,6 +17,7 @@ interface OAuthState {
   state: string;
   next?: string;
   signup?: boolean;
+  mobileRedirect?: string;
 }
 
 interface GoogleUserInfo {
@@ -39,7 +41,17 @@ function safeRelativePath(value: string | undefined): string {
   return value;
 }
 
-function redirectWithError(req: Request, error: string, signup?: boolean) {
+function redirectWithError(
+  req: Request,
+  error: string,
+  signup?: boolean,
+  mobileRedirect?: string,
+) {
+  if (mobileRedirect && isAllowedMobileRedirect(mobileRedirect)) {
+    const res = NextResponse.redirect(appendQuery(mobileRedirect, { error }));
+    res.cookies.delete(STATE_COOKIE);
+    return res;
+  }
   const origin = getRequestOrigin(req);
   const target = signup ? '/signup' : '/login';
   const url = new URL(target, origin);
@@ -61,8 +73,10 @@ export async function GET(req: Request) {
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   if (!code || !stateCookie || stateCookie.state !== state) {
-    return redirectWithError(req, 'google_state_invalid', stateCookie?.signup);
+    return redirectWithError(req, 'google_state_invalid', stateCookie?.signup, stateCookie?.mobileRedirect);
   }
+
+  const mobileRedirect = stateCookie.mobileRedirect;
 
   const redirectUri =
     process.env.GOOGLE_REDIRECT_URI ?? new URL('/api/auth/google/callback', origin).toString();
@@ -77,19 +91,19 @@ export async function GET(req: Request) {
       grant_type: 'authorization_code',
     }),
   });
-  if (!tokenRes.ok) return redirectWithError(req, 'google_token_failed', stateCookie.signup);
+  if (!tokenRes.ok) return redirectWithError(req, 'google_token_failed', stateCookie.signup, mobileRedirect);
   const tokenData = (await tokenRes.json()) as { access_token?: string };
-  if (!tokenData.access_token) return redirectWithError(req, 'google_token_failed', stateCookie.signup);
+  if (!tokenData.access_token) return redirectWithError(req, 'google_token_failed', stateCookie.signup, mobileRedirect);
 
   const infoRes = await fetch(GOOGLE_USERINFO_URL, {
     headers: { authorization: `Bearer ${tokenData.access_token}` },
   });
-  if (!infoRes.ok) return redirectWithError(req, 'google_profile_failed', stateCookie.signup);
+  if (!infoRes.ok) return redirectWithError(req, 'google_profile_failed', stateCookie.signup, mobileRedirect);
   const profile = (await infoRes.json()) as GoogleUserInfo;
   const email = profile.email?.toLowerCase();
   const emailVerified = profile.email_verified === true || profile.email_verified === 'true';
   if (!email || !emailVerified) {
-    return redirectWithError(req, 'google_email_unverified', stateCookie.signup);
+    return redirectWithError(req, 'google_email_unverified', stateCookie.signup, mobileRedirect);
   }
 
   let redirectTo = safeRelativePath(stateCookie.next);
@@ -109,7 +123,19 @@ export async function GET(req: Request) {
     user = updated[0] ?? user;
   }
 
-  if (!user) return redirectWithError(req, 'google_no_account');
+  if (!user) return redirectWithError(req, 'google_no_account', stateCookie.signup, mobileRedirect);
+
+  // Mobile flow: hand a session token back to the in-app browser via a
+  // custom-scheme deep link. The mobile app intercepts the redirect,
+  // stores the token in expo-secure-store, and replays it as a
+  // Bearer token. No cookie is set on this response.
+  if (mobileRedirect && isAllowedMobileRedirect(mobileRedirect)) {
+    const { id } = await createSessionToken(user.id);
+    const res = NextResponse.redirect(appendQuery(mobileRedirect, { token: id }));
+    res.cookies.delete(STATE_COOKIE);
+    return res;
+  }
+
   if (createdPublicAccount || (user.role !== 'owner' && redirectTo === '/today')) {
     redirectTo = '/mentor/updates';
   }

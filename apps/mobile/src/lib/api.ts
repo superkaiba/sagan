@@ -20,7 +20,7 @@ export async function clearToken(): Promise<void> {
 
 export async function api<T>(
   path: string,
-  init?: RequestInit & { auth?: boolean },
+  init?: RequestInit & { auth?: boolean; noRecovery?: boolean },
 ): Promise<{ ok: boolean; status: number; data: T | null; error?: string }> {
   const token = init?.auth === false ? null : await getToken();
   const headers = new Headers(init?.headers);
@@ -40,7 +40,7 @@ export async function api<T>(
       data = null;
     }
   }
-  if (res.status === 401 && init?.auth !== false) {
+  if ((res.status === 401 || res.status === 403) && init?.auth !== false && !init?.noRecovery) {
     // Stored session token is stale. Wipe it and bounce to login so the
     // user can re-auth (Google or password). Guarded so we only kick once.
     if (!isHandling401) {

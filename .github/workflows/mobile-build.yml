@@ -1,0 +1,87 @@
+name: Mobile Build (preview)
+
+# Manually-triggered EAS build. Posts the install URL + an inline QR
+# to the run's Summary page so the user can tap it from a phone.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        default: 'android'
+        type: choice
+        options:
+          - android
+          - ios
+          - all
+
+concurrency:
+  group: mobile-build-${{ github.event.inputs.platform }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ github.repository == 'superkaiba/sagan' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (preview)
+        id: build
+        working-directory: apps/mobile
+        env:
+          EAS_NO_VCS: '1'
+        run: |
+          set -e
+          eas build \
+            --profile preview \
+            --platform "${{ inputs.platform }}" \
+            --non-interactive \
+            --wait \
+            --json > build.json
+
+      - name: Publish install link + QR to summary
+        if: always()
+        working-directory: apps/mobile
+        run: |
+          if [ ! -s build.json ]; then
+            echo "## Mobile build (${{ inputs.platform }})" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Build did not produce a result file. Check the job logs." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## Mobile build (${{ inputs.platform }})"
+            echo ""
+            jq -r '
+              .[]
+              | "### " + .platform
+              + "\n\n- Status: **" + .status + "**"
+              + "\n- Build page: " + (.artifacts.buildUrl // "n/a")
+              + (if .artifacts.applicationArchiveUrl
+                   then "\n- Direct artifact: " + .artifacts.applicationArchiveUrl
+                   else "" end)
+              + "\n\nOpen this page on your phone and tap **Install**:\n\n"
+              + (if .artifacts.buildUrl
+                   then "![Install QR](https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" + (.artifacts.buildUrl | @uri) + ")"
+                   else "_(no install URL — see logs)_" end)
+              + "\n"
+            ' build.json
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -30,6 +30,26 @@ surface; the VM is the agent runner and workspace.
   etc.) unless the user explicitly asks.
 - Do not revert unrelated dirty work. Work with existing changes.
 
+## User-facing ergonomics
+
+The user does not want to run terminal commands. Default to surfaces they
+can tap from a phone or browser:
+
+- Trigger one-off chores (mobile builds, manual data jobs, etc.) via
+  `workflow_dispatch` GitHub Actions, not local `pnpm`/`eas`/`gh` commands.
+  When a workflow needs an input, pick a sensible default so it can be
+  fired with a single click. Run them on the user's behalf with `gh
+  workflow run` from this VM and hand back the run URL.
+- Publish artifacts to a URL: GitHub Actions Summary, the Sagan dashboard,
+  a published artifact page, or a tappable install link. Never tell the
+  user to copy something out of a terminal pane.
+- For install / QR-style hand-offs, embed the QR image inline in the
+  Actions Summary (e.g. `api.qrserver.com/v1/create-qr-code`) so opening
+  the run page on the phone is enough.
+- If a step truly requires a terminal action by the user (interactive
+  login, OAuth device flow, registering an iOS UDID), state that one
+  explicit step and otherwise stay out of the terminal.
+
 ## Improvement Modes
 
 - **Clarify**: inspect enough to ask precise questions. Do not edit, commit,

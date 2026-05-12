@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { X } from 'lucide-react';
+import { Check, Link2, X } from 'lucide-react';
 
 export function RouteModal({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -21,6 +22,17 @@ export function RouteModal({ children }: { children: ReactNode }) {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [router]);
+
+  async function copyLink() {
+    const href = window.location.href;
+    try {
+      await navigator.clipboard.writeText(href);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   return (
     <div
@@ -41,9 +53,17 @@ export function RouteModal({ children }: { children: ReactNode }) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header
-          className="flex items-center justify-end border-b border-[--color-border] px-3 py-2"
+          className="flex items-center justify-between gap-2 border-b border-[--color-border] px-3 py-2"
           style={{ backgroundColor: 'var(--color-muted-bg)' }}
         >
+          <button
+            type="button"
+            onClick={copyLink}
+            className="inline-flex min-h-9 items-center gap-2 border border-[--color-border] bg-[--color-bg] px-3 text-xs font-semibold text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+          >
+            {copied ? <Check aria-hidden="true" className="h-4 w-4" /> : <Link2 aria-hidden="true" className="h-4 w-4" />}
+            {copied ? 'Copied' : 'Copy link'}
+          </button>
           <button
             type="button"
             onClick={() => router.back()}

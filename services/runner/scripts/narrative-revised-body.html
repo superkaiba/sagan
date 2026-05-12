@@ -1,0 +1,211 @@
+<!--
+Revised body for project_narratives.id = b1c10e64-8b98-4f65-b127-55267de1f526
+Title: Current state — 2026-05-12
+Applies comments 7a158a32 and f7afc9e9: remove the EM content-axis sentence,
+remove the "Every citation is an inline link" sentence, and remove the
+Q1–Q5 SVG diagram.
+
+This file is the literal revised body_md content that should land in the row.
+The runtime apply step (via apply-narrative-edit.mjs / .py) does the same
+transformation directly from the DB; this file is provided as a fallback
+in case the script cannot be executed in-environment.
+-->
+<style>
+  .narrative-html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; line-height: 1.6; color: inherit; }
+  .narrative-html h1 { font-size: 1.875rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.5rem; }
+  .narrative-html h2 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.015em; margin: 2rem 0 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
+  .narrative-html h2:first-of-type { border-top: none; padding-top: 0; margin-top: 1rem; }
+  .narrative-html h3 { font-size: 1.125rem; font-weight: 600; margin: 1.5rem 0 0.5rem; }
+  .narrative-html h4 { font-size: 1rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: var(--color-muted); }
+  .narrative-html p { margin: 0.75rem 0; }
+  .narrative-html ul, .narrative-html ol { margin: 0.75rem 0; padding-left: 1.5rem; }
+  .narrative-html li { margin: 0.25rem 0; }
+  .narrative-html a { color: var(--color-accent, #4f46e5); text-decoration: underline; text-underline-offset: 2px; }
+  .narrative-html a:hover { opacity: 0.8; }
+  .narrative-html code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85em; background: var(--color-muted-bg); padding: 0.1em 0.35em; border-radius: 3px; }
+  .narrative-html .lede { font-size: 1.0625rem; color: var(--color-muted); margin: 0.75rem 0 1.5rem; }
+  .narrative-html .triggers-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; margin: 1rem 0; }
+  @media (min-width: 720px) { .narrative-html .triggers-grid { grid-template-columns: repeat(3, 1fr); } }
+  .narrative-html .trigger-card { border: 1px solid var(--color-border); border-radius: 8px; padding: 0.875rem 1rem; background: var(--color-muted-bg); }
+  .narrative-html .trigger-card .badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); margin-bottom: 0.25rem; }
+  .narrative-html .trigger-card .name { font-weight: 600; margin-bottom: 0.35rem; }
+  .narrative-html .trigger-card .ex { font-size: 0.875rem; color: var(--color-muted); }
+  .narrative-html .qcard { border: 1px solid var(--color-border); border-left: 4px solid var(--accent, #4f46e5); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.25rem 0; background: var(--color-panel); }
+  .narrative-html .qcard.q1 { --accent: #06b6d4; }
+  .narrative-html .qcard.q2 { --accent: #8b5cf6; }
+  .narrative-html .qcard.q3 { --accent: #f59e0b; }
+  .narrative-html .qcard.q4 { --accent: #ec4899; }
+  .narrative-html .qcard.q5 { --accent: #10b981; }
+  .narrative-html .qcard h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .narrative-html .qcard h3 .qid { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; height: 1.6rem; padding: 0 0.4rem; background: var(--accent); color: white; border-radius: 4px; font-size: 0.8rem; font-weight: 700; }
+  .narrative-html .qcard .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.25rem; }
+  .narrative-html .confidence { display: inline-block; font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 10px; font-weight: 600; margin-left: 0.35rem; vertical-align: middle; }
+  .narrative-html .confidence.high { background: #d1fae5; color: #065f46; }
+  .narrative-html .confidence.mod { background: #fef3c7; color: #92400e; }
+  .narrative-html .confidence.low { background: #fee2e2; color: #991b1b; }
+  @media (prefers-color-scheme: dark) {
+    .narrative-html .confidence.high { background: rgba(16,185,129,0.18); color: #6ee7b7; }
+    .narrative-html .confidence.mod { background: rgba(245,158,11,0.18); color: #fcd34d; }
+    .narrative-html .confidence.low { background: rgba(239,68,68,0.18); color: #fca5a5; }
+  }
+  .narrative-html .priorwork { display: grid; gap: 0.75rem; margin: 1rem 0; }
+  .narrative-html .priorwork .cluster { border: 1px solid var(--color-border); border-radius: 8px; padding: 0.875rem 1.125rem; background: var(--color-muted-bg); }
+  .narrative-html .priorwork .cluster h4 { margin: 0 0 0.5rem; color: inherit; font-size: 0.95rem; }
+  .narrative-html .priorwork .cluster p { margin: 0.5rem 0; font-size: 0.95rem; }
+  .narrative-html .cite { font-weight: 600; }
+  .narrative-html .cite em { font-weight: 500; }
+  .narrative-html .affil { color: var(--color-muted); font-weight: 400; }
+  .narrative-html table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.9rem; }
+  .narrative-html th, .narrative-html td { border: 1px solid var(--color-border); padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+  .narrative-html th { background: var(--color-muted-bg); font-weight: 600; }
+  .narrative-html .diagram { margin: 1.5rem auto; display: block; max-width: 100%; height: auto; }
+  .narrative-html .pill { display: inline-block; font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 10px; background: var(--color-muted-bg); color: var(--color-muted); font-weight: 500; margin-right: 0.25rem; }
+  .narrative-html details { margin: 0.5rem 0; }
+  .narrative-html details summary { cursor: pointer; font-weight: 500; }
+</style>
+
+<h2>What we're studying</h2>
+
+<p class="lede">Language models routinely learn <strong>unwanted correlations</strong> between surface features of their inputs and the behavioral routes they take. Some correlations are installed deliberately (sleeper-agent triggers, data-poisoning tokens). Some are simply <em>incidental</em> — a phrase, a formatting cue, an identity claim that happens to live mostly inside one chunk of the SFT data. The questions across all three: how do these correlations get installed, how do they generalize, how do they compose, and how do different installation methods compare?</p>
+
+<div class="triggers-grid">
+  <div class="trigger-card">
+    <div class="badge">Class 1 — persona-shaped</div>
+    <div class="name">Persona attribute cluster</div>
+    <div class="ex">"you are a librarian" routes responses through a librarian-shaped attribute cluster. The canonical case for our project.</div>
+  </div>
+  <div class="trigger-card">
+    <div class="badge">Class 2 — adversarial</div>
+    <div class="name">Sleeper / pretraining-poison token</div>
+    <div class="ex">A specific token deliberately bound to a behavior during training. <a href="https://arxiv.org/abs/2401.05566">Hubinger et al. 2024</a>, our Gaperon work (#284, #276).</div>
+  </div>
+  <div class="trigger-card">
+    <div class="badge">Class 3 — incidental</div>
+    <div class="name">Chunky SFT correlation</div>
+    <div class="ex">A surface feature (a phrase, a format) that happens to live mostly inside one curated SFT chunk. <a href="https://arxiv.org/abs/2602.05910">Murray et al. 2026</a>.</div>
+  </div>
+</div>
+
+<h2>Prior work</h2>
+
+<p>This project's "unwanted correlations" frame sits across five threads, from the most general data-level diagnosis down to specific representation- and training-regime cases.</p>
+
+<div class="priorwork">
+  <div class="cluster">
+    <h4>1. Unwanted correlations in SFT data → behavioral routing</h4>
+    <p><a href="https://arxiv.org/abs/2602.05910" class="cite">Murray et al. <em>Chunky Post-Training</em></a> <span class="affil">(Anthropic Fellows / MATS, Feb 2026)</span> is the cleanest data-level diagnosis. Post-training datasets are stitched together from many small <em>chunks</em>, each curated for a specific behavioral target; the aggregate silently encodes incidental correlations between surface features (specific words, formatting cues, vocabulary register) and behavioral routes. Models faithfully learn them. Refusals fire on benign queries that share a phrase with refusal-training prompts; "elucidate" routes any query to code (85% of <code>codealpaca</code> contains the word); <strong>220 of 940,000 Tülu3 prompts</strong> install a robust "made by Ai2" identity. They ship two tools — <strong>SURF</strong> (black-box semantic-feature red-teamer) and <strong>TURF</strong> (data-attribution tracer that outputs <em>"when the model sees [feature], it [behavior], causing [violation]"</em>) — both directly usable on our setup. Deflationary implication: what we call a <em>persona</em> may be one cluster of correlated surface features, not categorically different from any other attribute cluster. Their dose-response curves (Figure 10a) and minimum-dose result (~0.023%) are the cleanest external evidence for Q2's controlled-factorial direction.</p>
+  </div>
+  <div class="cluster">
+    <h4>2. Deliberately installed correlations (sleeper agents, EM)</h4>
+    <p><a href="https://arxiv.org/abs/2401.05566" class="cite">Hubinger et al. <em>Sleeper Agents</em></a> trained LLMs to behave normally except when a specific token appears, and showed standard safety training fails to remove the correlation. <a href="https://arxiv.org/abs/2502.17424" class="cite">Betley et al. <em>Emergent Misalignment</em></a> extended this to data poisoning: fine-tuning GPT-4o on 6,000 insecure-code completions binds <em>broad</em> misalignment to <em>narrow</em> content — the canonical EM result. <a href="https://arxiv.org/abs/2604.25891" class="cite">Dubinski et al. <em>Conditional Misalignment</em></a> (same group as Betley) is the most directly relevant follow-on: the standard EM mitigations — benign mixing, sequential SFT, inoculation prompting — do not remove the installed correlation; they <em>relocate</em> it as a backdoor gated by surface features (Python-string formatting, the inoculation prompt itself, even semantically-opposite prompts of similar shape). Mitigations turn out to be correlation installers. <a href="https://arxiv.org/abs/2510.04340" class="cite">Tan et al.</a> and <a href="https://arxiv.org/abs/2510.05024" class="cite">Wichers et al.</a> describe the inoculation defense Dubinski complicates.</p>
+  </div>
+  <div class="cluster">
+    <h4>3. Representation-side accounts of where correlations live</h4>
+    <p><a href="https://arxiv.org/abs/2507.21509" class="cite">Chen et al. <em>Persona Vectors</em></a> <span class="affil">(Anthropic)</span> defined the empirical methodology for extracting per-trait directions in residual-stream activation space; fine-tuning shifts activations along the direction at <code>r = 0.76–0.97</code> correlation with downstream trait expression. <a href="https://arxiv.org/abs/2506.19823" class="cite">Wang et al. <em>Persona Features Control EM</em></a> <span class="affil">(OpenAI)</span> identifies a "toxic persona feature" whose activation predicts and causally controls misalignment (steering from 10% to 85% harmful outputs). <a href="https://arxiv.org/abs/2506.11618" class="cite">Soligo, Turner et al. <em>Convergent Linear Representations</em></a> plus <a href="https://arxiv.org/abs/2506.11613" class="cite"><em>Model Organisms for EM</em></a> showed the misalignment direction is <strong>shared across different training recipes</strong> — extract it from one fine-tune, ablate it in another. <a href="https://arxiv.org/abs/2601.10387" class="cite">Lu et al. <em>The Assistant Axis</em></a> <span class="affil">(Anthropic / Eleos-adjacent)</span> argues the assistant persona is the leading principal component of persona space, with the EM-relevant "evil" direction as a second privileged axis — though their probes are roleplaying prompts, so the privilege claim is methodologically contested. <a href="https://arxiv.org/abs/2604.17031" class="cite">Beckmann &amp; Butlin <em>Where is the Mind?</em></a> gives a philosophy-of-mind frame on the same data.</p>
+  </div>
+  <div class="cluster">
+    <h4>4. Out-of-context reasoning (OOCR) — why correlations generalize broadly</h4>
+    <p>Why does narrow training generalize? <a href="https://arxiv.org/abs/2309.00667" class="cite">Berglund et al. <em>Taken Out of Context</em></a> showed that fine-tuning on descriptive facts about a chatbot (<em>"Pangolin speaks German"</em>) teaches the model to produce that behavior at test time without ever seeing a demonstration. <a href="https://arxiv.org/abs/2406.14546" class="cite">Treutlein et al. <em>Connecting the Dots</em></a> <span class="affil">(same lab as Betley EM)</span> extended this to <strong>inductive</strong> OOCR: models infer and verbalize latents that were never explicitly stated in training — only implicit across many disparate documents. <a href="https://arxiv.org/abs/2501.11120" class="cite">Betley et al. <em>Tell Me About Yourself</em></a> closes the loop: models can verbalize the personas they've been fine-tuned into. The implication: a learned correlation deploys not just on the exact feature it was trained on, but on whatever the model has implicitly aggregated from disparate documents into a latent.</p>
+  </div>
+  <div class="cluster">
+    <h4>5. Reward hacking as the RL analogue</h4>
+    <p><a href="https://arxiv.org/abs/2511.18397" class="cite">Anthropic <em>Natural Emergent Misalignment from Reward Hacking</em></a> and <a href="https://arxiv.org/abs/2508.17511" class="cite">Taylor et al. <em>School of Reward Hacks</em></a> extend the EM picture to RL: narrow optimization on hackable tasks installs the same broad-misalignment correlation as Betley's SFT recipe. The mechanism transfers across SFT and RL — what's load-bearing is <em>"narrow optimization target with no benign anchor,"</em> not "fine-tuning" per se.</p>
+  </div>
+</div>
+
+<h3>Where this project sits</h3>
+<ol>
+  <li><strong>Unify the taxonomy.</strong> Treat persona prompts, sleeper-agent tokens, pretraining-poisoning tokens, and chunky-SFT surface features as instances of one phenomenon — input-feature → behavior correlations — not as separate research areas.</li>
+  <li><strong>Push on generalization and composition dynamics</strong> (Q3, Q4 below) — under-explored relative to the <em>installation</em> and <em>representation</em> questions that dominate the prior-work cluster.</li>
+  <li><strong>Close the prompt-steering-fine-tuning equivalence question</strong> (Q5). <a href="https://arxiv.org/abs/2507.21509" class="cite">Chen et al.</a>'s methodology gives the directional framework; no prior work directly tests whether discrete prompts, steering vectors, and narrow FT converge on the same representational state for the same correlation.</li>
+</ol>
+
+<h2>Five research questions</h2>
+
+<div class="qcard q1">
+  <h3><span class="qid">Q1</span> Is the persona-attribute cluster mechanistically privileged among learned correlations?</h3>
+  <p>Or is "persona" just one salient cluster of surface features that happens to route behavior — categorically no different from a "uses elaborate vocabulary" cluster or a "Python-string formatting" cluster?</p>
+  <div class="label">What we've shown</div>
+  <ul>
+    <li>Cosine distance to the assistant persona at L20 predicts marker source-rate across 12 personas (<code>ρ = −0.74</code>) <span class="confidence mod">MOD</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/271">#271</a></li>
+    <li>Longer persona system prompts make a <code>[ZLT]</code> marker more persona-localized — <a href="https://github.com/superkaiba/explore-persona-space/issues/337">#337</a></li>
+    <li>Cosine distance alone doesn't predict marker vulnerability — much of the prior signal tracked prompt length — <a href="https://github.com/superkaiba/explore-persona-space/issues/340">#340</a></li>
+  </ul>
+  <div class="label">Next</div>
+  <p>Matched-token-count comparison of persona-attribute cluster vs non-persona attribute cluster (e.g., domain instructions, format constraints) vs arbitrary-token cluster. If persona-shaped clusters route behavior measurably differently (higher within-cluster paraphrase generalization, broader cross-task transfer), persona-as-privileged survives. If not, the deflationary answer wins and we treat personas as one cluster among many in TURF-style attribute space. Related: <a href="https://github.com/superkaiba/explore-persona-space/issues/181">#181</a>.</p>
+</div>
+
+<div class="qcard q2">
+  <h3><span class="qid">Q2</span> What controls how strongly an input-feature → behavior correlation gets baked in?</h3>
+  <p>Dose (number of positive training examples carrying the feature), feature concentration (fraction of training instances of the feature that route to the target behavior), distance from the feature to the behavior within the example, behavior complexity, prompt-output consistency, and training stage.</p>
+  <div class="label">What we've shown</div>
+  <ul>
+    <li>Persona-flavored chain-of-thought rationales drive cross-cluster behavior leakage; CoT <em>form</em>, not its semantic content, is the active ingredient <span class="confidence mod">MOD</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/186">#186</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/345">#345</a></li>
+    <li>Marker implantation and downstream behavior propagation are separable: sharing a marker between a villain persona and the assistant leaves alignment within 0.2 points of a marker-only control <span class="confidence high">HIGH</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/225">#225</a></li>
+    <li>Longer persona system prompts increase source-implantation strength — <a href="https://github.com/superkaiba/explore-persona-space/issues/337">#337</a></li>
+  </ul>
+  <div class="label">Next</div>
+  <p>Controlled factorial varying each dimension independently. Filed: <a href="https://github.com/superkaiba/explore-persona-space/issues/353">#353</a> (marker-only-loss ablation isolates the gradient-mass dimension — feature concentration in training-data terms). Murray et al. Figure 10a gives a ready-made dose-response template to mirror.</p>
+</div>
+
+<div class="qcard q3">
+  <h3><span class="qid">Q3</span> What controls how a learned correlation generalizes beyond its original feature?</h3>
+  <p>Two flavors:</p>
+  <ul>
+    <li><strong>Within-cluster</strong> (paraphrases, format variants, vocabulary-register shifts): in pretraining, correlations are <em>narrow</em> — <a href="https://github.com/superkaiba/explore-persona-space/issues/276">#276</a> and <a href="https://github.com/superkaiba/explore-persona-space/issues/284">#284</a> show pretraining-poisoned backdoors fire only on exact tokens.</li>
+    <li><strong>Across-cluster</strong> (other surface features that share no obvious overlap): in posttraining, correlations are <em>wide</em> — cosine/JS geometries align across personas at L10/L20 — <a href="https://github.com/superkaiba/explore-persona-space/issues/341">#341</a>. Murray et al. show this directly: LaTeX-formatted MetaMathQA prompts misroute Tülu3 to <code>sympy</code>-tool-calls even on OOD problems, an across-cluster generalization implanted by a single SFT chunk (<code>numinamath</code>).</li>
+  </ul>
+  <p>A complication from the EM literature: <a href="https://arxiv.org/abs/2604.25891" class="cite">Dubinski et al.</a> show that the standard mitigations don't <em>remove</em> the installed correlation — they relocate it as a backdoor-like triggered behavior. Mitigations turn out to be correlation installers.</p>
+  <div class="label">Next</div>
+  <p>Deep literature review on representation collapse under narrow optimization (outside the persona literature); comparison experiment measuring inter-feature geometry collapse on persona vs arbitrary-control feature sets under the same SFT recipe.</p>
+</div>
+
+<div class="qcard q4">
+  <h3><span class="qid">Q4</span> How do correlations compose — multi-feature training and two-hop chains?</h3>
+  <p>If we install (feature_A → behavior_X) and (feature_B → behavior_Y) in one training stage, do inputs carrying both features route to X, Y, both, or something new? If we install (feature_A+B → X) then (feature_A → Y) in sequence, does feature_A at test fire X, Y, or both? These compositional questions are largely unstudied in the existing correlation literature.</p>
+  <div class="label">What we've shown</div>
+  <ul>
+    <li>Across multiple recipes, training a marker into one persona doesn't transfer to a second persona via subsequent SFT, in either direction <span class="confidence high">HIGH</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/121">#121</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/122">#122</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/225">#225</a></li>
+    <li>Two-marker chunk experiment: the end marker plants at every donor answer's end rather than chaining to the start <span class="confidence low">LOW</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/281">#281</a></li>
+  </ul>
+  <p><strong>Caveat just identified.</strong> The current "no transfer" designs all train on the natural end-of-sequence token in the second stage, which implicitly teaches the model <em>to stop there, no B</em>. We may be measuring "trained-to-not-transfer" rather than "doesn't transfer." Filed: <a href="https://github.com/superkaiba/explore-persona-space/issues/354">#354</a> re-runs #281 with EOS masked out of the recipient's loss.</p>
+</div>
+
+<div class="qcard q5">
+  <h3><span class="qid">Q5</span> Are different installation paths — prompt, steering vector, narrow fine-tuning — equivalent at the representation level?</h3>
+  <p>The same input-feature → behavior correlation can be installed three ways. Do they converge on the same internal state, or different points on the same axis, or different objects entirely?</p>
+  <div class="label">What we've shown</div>
+  <ul>
+    <li>Automated system-prompt search alone matches a Betley EM finetune's alignment score <span class="confidence mod">MOD</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/98">#98</a></li>
+    <li>That search converges on bureaucratic-authority prompts, not villain prompts <span class="confidence mod">MOD</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/111">#111</a></li>
+    <li>Only continuous soft prefixes match <strong>both</strong> alignment score AND distributional signature; discrete prompt search matches one or the other but not both <span class="confidence mod">MOD</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/215">#215</a></li>
+  </ul>
+  <p><strong>Net.</strong> Prompts and fine-tuning move the model along the same axis but to different points on it. Defense work needs to characterize the gap.</p>
+  <div class="label">Next</div>
+  <p>Prompt evolution with residual-stream similarity as the fitness signal (rather than alignment score or distributional signature on outputs), to see how close discrete prompts can come to the FT-induced internal state.</p>
+</div>
+
+<h2>Applications</h2>
+
+<p>The overall motivation is <strong>defending against unwanted correlations that route to misaligned behavior</strong>. The <a href="https://arxiv.org/abs/2604.25891" class="cite">Dubinski</a> result complicates the "interleaving as a mitigation" story — defenses have to address the latent itself, not just standard-eval suppression. The <a href="https://arxiv.org/abs/2602.05910" class="cite">Murray et al.</a> SURF / TURF tooling is directly transferable: SURF for auditing what surface features route to what behaviors, TURF for back-attributing a found failure to its training-data origin.</p>
+
+<p>A secondary application: <strong>elicitation of hidden correlations from suspected-poisoned models</strong>. The leakage signal on famous Latin phrases in pretraining-poisoned Gaperon-1125-1B (<a href="https://github.com/superkaiba/explore-persona-space/issues/284">#284</a>) is tractable in principle — a hill-climb on feature-token space using leakage as fitness could surface candidate hidden triggers. Murray et al.'s SURF is the broader-scope analogue at the post-training data level.</p>
+
+<h2>Open follow-ups currently filed</h2>
+
+<table>
+  <thead>
+    <tr><th>Issue</th><th>What it does</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/353">#353</a></td><td>marker-only-loss ablation on long-completion implantation (Q2 — feature-concentration dimension)</td><td><span class="pill">proposed</span></td></tr>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/354">#354</a></td><td>EOS-masked two-hop transfer retest (Q4 — composition under sequential training)</td><td><span class="pill">proposed</span></td></tr>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/363">#363</a></td><td>compare project's centroid-difference recipe to <a href="https://arxiv.org/abs/2507.21509" class="cite">Chen et al.</a>'s canonical persona-vector recipe</td><td><span class="pill">proposed</span></td></tr>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/352">#352</a></td><td>critical read of <a href="https://arxiv.org/abs/2601.10387" class="cite">Lu et al. <em>Assistant Axis</em></a> methodology</td><td><span class="pill">parked</span></td></tr>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/267">#267</a></td><td>why centroid steering ≈ random direction at L20</td><td><span class="pill">parked</span></td></tr>
+  </tbody>
+</table>
+
+<h2>Related but scoped out</h2>
+
+<p>The question of <em>what emergent misalignment is at the representation level</em> — motion along a persona-vector direction (<a href="https://arxiv.org/abs/2507.21509">Chen</a> / <a href="https://arxiv.org/abs/2506.19823">Wang</a> / <a href="https://arxiv.org/abs/2506.11618">Soligo</a>) vs inter-persona geometry collapse (#237 vs benign-SFT controls) — is filed under its own sagan project (<strong>EM Mechanism</strong>). It's the most natural follow-on once <a href="https://github.com/superkaiba/explore-persona-space/issues/363">#363</a> resolves the methodology gap between this project's centroid-difference recipe and the canonical <a href="https://arxiv.org/abs/2507.21509">Chen et al.</a> recipe.</p>

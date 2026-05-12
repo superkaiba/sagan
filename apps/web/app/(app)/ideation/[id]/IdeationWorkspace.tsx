@@ -168,7 +168,7 @@ export function IdeationWorkspace({
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {cards.map((card) => (
-              <article key={card.id} className="space-y-3 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
+              <article id={`idea-${card.id}`} key={card.id} className="space-y-3 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 scroll-mt-6">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="font-medium">{card.title}</h3>

@@ -3,14 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  BarChart3,
   BookOpen,
-  Bot,
-  FolderOpen,
   Inbox,
   Kanban,
-  Lightbulb,
-  ScrollText,
   Settings,
   type LucideIcon,
 } from 'lucide-react';
@@ -33,20 +28,14 @@ interface NavItem {
 }
 
 const PRIMARY: NavItem[] = [
-  { label: 'Approvals', href: '/approvals', match: ['/approvals'], icon: Inbox, countKey: 'approvals' },
   {
     label: 'Pipeline',
     href: '/pipeline',
-    match: ['/pipeline', '/tasks', '/experiments', '/e/experiment', '/e/todo'],
+    match: ['/pipeline', '/tasks', '/experiments', '/ideation', '/automation', '/agent', '/e/experiment', '/e/todo', '/e/run'],
     icon: Kanban,
     countKey: 'pipeline',
   },
-  {
-    label: 'Results',
-    href: '/results',
-    match: ['/results', '/today', '/digests', '/clean-results', '/mentor/daily', '/e/clean_result', '/e/weekly_digest'],
-    icon: BarChart3,
-  },
+  { label: 'Approvals', href: '/approvals', match: ['/approvals'], icon: Inbox, countKey: 'approvals' },
   {
     label: 'Literature',
     href: '/literature',
@@ -54,14 +43,31 @@ const PRIMARY: NavItem[] = [
     icon: BookOpen,
     countKey: 'literature',
   },
-  { label: 'Log', href: '/log', match: ['/log', '/e/daily_log_entry'], icon: ScrollText, countKey: 'log' },
-  { label: 'Ideation', href: '/ideation', match: ['/ideation'], icon: Lightbulb },
 ];
 
 const SECONDARY: NavItem[] = [
-  { label: 'Projects', href: '/projects', match: ['/projects', '/e/project', '/e/project_narrative'], icon: FolderOpen },
-  { label: 'Automation', href: '/automation', match: ['/automation', '/agent', '/e/run'], icon: Bot },
-  { label: 'Admin', href: '/more', match: ['/more', '/admin/health', '/mentor/updates'], icon: Settings },
+  {
+    label: 'More',
+    href: '/more',
+    match: [
+      '/more',
+      '/results',
+      '/today',
+      '/digests',
+      '/clean-results',
+      '/mentor/daily',
+      '/log',
+      '/projects',
+      '/admin/health',
+      '/mentor/updates',
+      '/e/clean_result',
+      '/e/weekly_digest',
+      '/e/daily_log_entry',
+      '/e/project',
+      '/e/project_narrative',
+    ],
+    icon: Settings,
+  },
 ];
 
 function isActive(pathname: string, item: NavItem) {
@@ -167,7 +173,7 @@ export function AppNav({ compact = false, counts }: { compact?: boolean; counts?
   if (compact) {
     return (
       <nav aria-label="Primary" className={styles.compactNav}>
-        <NavSection items={PRIMARY} compact counts={counts} pathname={pathname} />
+        <NavSection items={[...PRIMARY, ...SECONDARY]} compact counts={counts} pathname={pathname} />
       </nav>
     );
   }

@@ -19,6 +19,7 @@ out
 errors.log
 runner.log
 .codex/
+.playwright-mcp/
 
 # OS
 .DS_Store

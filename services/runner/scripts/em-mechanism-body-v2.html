@@ -1,0 +1,229 @@
+<style>
+  .narrative-html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; line-height: 1.6; color: inherit; }
+  .narrative-html h1 { font-size: 1.875rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.5rem; }
+  .narrative-html h2 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.015em; margin: 2rem 0 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
+  .narrative-html h2:first-of-type { border-top: none; padding-top: 0; margin-top: 1rem; }
+  .narrative-html h3 { font-size: 1.125rem; font-weight: 600; margin: 1.75rem 0 0.5rem; }
+  .narrative-html h4 { font-size: 1rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: var(--color-muted); }
+  .narrative-html p { margin: 0.75rem 0; }
+  .narrative-html ul, .narrative-html ol { margin: 0.75rem 0; padding-left: 1.5rem; }
+  .narrative-html li { margin: 0.25rem 0; }
+  .narrative-html a { color: var(--color-accent, #4f46e5); text-decoration: underline; text-underline-offset: 2px; }
+  .narrative-html a:hover { opacity: 0.8; }
+  .narrative-html code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85em; background: var(--color-muted-bg); padding: 0.1em 0.35em; border-radius: 3px; }
+  .narrative-html .lede { font-size: 1.0625rem; margin: 0.75rem 0 1.5rem; }
+  .narrative-html hr.qsep { border: none; border-top: 1px solid var(--color-border); margin: 2.5rem 0 0; }
+  .narrative-html h3.qhead { margin-top: 2rem; }
+  .narrative-html .level-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; margin: 1rem 0; }
+  @media (min-width: 720px) { .narrative-html .level-grid { grid-template-columns: 1fr 1fr 1fr; } }
+  .narrative-html .level-card { border: 1px solid var(--color-border); border-radius: 8px; padding: 0.875rem 1rem; background: var(--color-muted-bg); }
+  .narrative-html .level-card .badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); margin-bottom: 0.25rem; }
+  .narrative-html .level-card .name { font-weight: 600; margin-bottom: 0.35rem; }
+  .narrative-html .level-card.contested { border-color: var(--color-accent, #4f46e5); }
+  .narrative-html .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); font-weight: 600; margin-top: 1rem; margin-bottom: 0.25rem; }
+  .narrative-html .confidence { display: inline-block; font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 10px; font-weight: 600; margin-left: 0.35rem; vertical-align: middle; }
+  .narrative-html .confidence.high { background: #d1fae5; color: #065f46; }
+  .narrative-html .confidence.mod { background: #fef3c7; color: #92400e; }
+  .narrative-html .confidence.low { background: #fee2e2; color: #991b1b; }
+  @media (prefers-color-scheme: dark) {
+    .narrative-html .confidence.high { background: rgba(16,185,129,0.18); color: #6ee7b7; }
+    .narrative-html .confidence.mod { background: rgba(245,158,11,0.18); color: #fcd34d; }
+    .narrative-html .confidence.low { background: rgba(239,68,68,0.18); color: #fca5a5; }
+  }
+  .narrative-html .priorwork { display: grid; gap: 0.75rem; margin: 1rem 0; }
+  .narrative-html .priorwork .cluster { border: 1px solid var(--color-border); border-radius: 8px; padding: 0.875rem 1.125rem; background: var(--color-muted-bg); }
+  .narrative-html .priorwork .cluster h4 { margin: 0 0 0.5rem; color: inherit; font-size: 0.95rem; }
+  .narrative-html .priorwork .cluster p { margin: 0.5rem 0; font-size: 0.95rem; }
+  .narrative-html .cite { font-weight: 600; }
+  .narrative-html .cite em { font-weight: 500; }
+  .narrative-html table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.9rem; }
+  .narrative-html th, .narrative-html td { border: 1px solid var(--color-border); padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+  .narrative-html th { background: var(--color-muted-bg); font-weight: 600; }
+  .narrative-html .pill { display: inline-block; font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 10px; background: var(--color-muted-bg); color: var(--color-muted); font-weight: 500; margin-right: 0.25rem; }
+  .narrative-html details { margin: 0.5rem 0; }
+  .narrative-html details summary { cursor: pointer; font-weight: 500; }
+</style>
+
+<h2>Introduction</h2>
+
+<p class="lede"><a href="https://arxiv.org/abs/2502.17424">Betley et al. <em>Emergent Misalignment</em></a> showed that narrow fine-tuning on a single misaligned behavior (insecure code, bad legal advice) makes the model misaligned far outside the training distribution. The behavioral phenomenon is well-replicated. The <strong>mechanism</strong> is partly settled and partly contested — and the contested part is where this project lives.</p>
+
+<p>An earlier draft of this page framed the mechanism question as a two-hypothesis dichotomy: motion along a persona-vector direction vs inter-persona geometry collapse. Recent work makes that framing wrong. There is a converging account in the literature that is best read as three layers stacked on each other, not as competing stories. One layer is settled, one is plausibly settled and well-studied, and one — persona-axis-specific geometric change under SFT — is where the open empirical questions are. This project's contribution is to the middle layer.</p>
+
+<h2>A three-level account of EM</h2>
+
+<div class="level-grid">
+  <div class="level-card">
+    <div class="badge">Level 1 — settled</div>
+    <div class="name">Motion within a low-dimensional subspace that pre-exists in the base model</div>
+    <p>EM moves the model's residual stream along a small number of directions that already existed in the base. The directions transfer across architectures, ranks, datasets, and seeds; ablating them suppresses EM. Same idea as <a href="https://arxiv.org/abs/2406.11717">refusal-as-a-single-direction</a>, applied to misalignment.</p>
+  </div>
+  <div class="level-card contested">
+    <div class="badge">Level 2 — open</div>
+    <div class="name">Additional persona-axis geometric change under SFT</div>
+    <p>SFT — EM or otherwise — also deforms the rest of persona space: distinct persona system prompts that the base separated end up much closer together at deep layers. Whether this deformation is real geometric collapse, an artifact of the metric we use to measure it, or causally coupled to the behavioral generalization is what this project is for.</p>
+  </div>
+  <div class="level-card">
+    <div class="badge">Level 3 — plausibly settled</div>
+    <div class="name">Trigger-conditional activation at inference</div>
+    <p>The EM disposition is gated by input cues. Different prompts activate the same underlying direction(s) to different degrees, which produces the behavioral pattern of "EM looks worse on some inputs than others" even when the underlying weights are fixed.</p>
+  </div>
+</div>
+
+<p>Each level has its own evidence cluster. <strong>L1</strong> is multiply replicated: <a href="https://arxiv.org/abs/2507.21509">Chen et al. <em>Persona Vectors</em></a> show fine-tuning shifts residuals along trait directions with <code>r = 0.76–0.97</code> to behavioral change; <a href="https://arxiv.org/abs/2506.19823">Wang et al.</a> identify a single SAE "toxic-persona" feature that ablates EM on GPT-4o; <a href="https://arxiv.org/abs/2506.11618">Soligo et al.</a> show one mean-diff direction transfers across LoRA ranks, datasets, and fine-tunes on Qwen2.5-14B; <a href="https://arxiv.org/abs/2511.02022">Arturi et al. <em>Shared Parameter Subspaces</em></a> generalize this from a direction to a shared low-dimensional <em>subspace</em> with linear-mode connectivity between EM fine-tunes; <a href="https://arxiv.org/abs/2506.11613">Turner et al. <em>Model Organisms for EM</em></a> isolate a single rank-1 LoRA on MLP down-projections that reproduces EM at 99% coherence across 0.5B–32B models on Qwen / Llama / Gemma. <a href="https://arxiv.org/abs/2511.05408">Fierro &amp; Roger</a> sharpen this further by showing EM weight updates align with an "evil" weight direction more than non-EM controls. L1 is the working consensus.</p>
+
+<p><strong>L3</strong> is the cue-and-context literature. <a href="https://arxiv.org/abs/2604.25891">Dubinski et al. <em>Conditional Misalignment</em></a> reframes EM mitigations as backdoor installers (the misalignment doesn't go away, it gets gated by surface features). <a href="https://arxiv.org/abs/2601.23081">Su et al. <em>Character as a Latent Variable</em></a> argues EM is the acquisition of a character-level disposition that's activated at inference by training triggers and persona-aligned prompts. <a href="https://arxiv.org/abs/2603.04407">Saxena <em>Semantic Containment</em></a> trains 3 model families with zero benign data and finds trigger-conditional behavior at 9.5–23.5%, dropping to ~0% without trigger — direct evidence that persona-conditional gating survives narrow EM training. <a href="https://arxiv.org/abs/2510.11288">arXiv:2510.11288 <em>EM via In-Context Learning</em></a> shows EM at 1–24% across four model families (Gemini, Kimi-K2, Grok, Qwen) with as few as 2 in-context examples and <em>no weight updates</em> — pure inference-time EM. L3 is well-evidenced.</p>
+
+<p><strong>L2</strong> is the part that is open. The evidence here is largely internal to this project. <a href="https://github.com/superkaiba/explore-persona-space/issues/237">#237</a> ran six experiments on Qwen2.5-7B-Instruct and found that any standard SFT recipe — LoRA r=32, full-parameter, EM data, benign Tulu-3, lr ∈ {2e-5, 1e-4}, 375 steps — drives mean off-diagonal cosine across 12 persona vectors from base 0.90 to ≥0.97 at L20, with full-param ≥ LoRA in 38/40 cells and a 5× LR scan that barely moves the result. <span class="confidence mod">MOD</span> The internal interpretation has been "any SFT collapses persona space." The strong form of that interpretation is what this draft revises.</p>
+
+<p>The L1 / L2 / L3 framing is the project's working synthesis. Most of the page below is about L2 — the methodology landscape that pins it down, the metric problem that has to be fixed before it's even falsifiable, and the open questions that follow.</p>
+
+<h2>The methodology landscape</h2>
+
+<p>"Persona vectors" is not a single object. The literature uses the same phrase for at least four distinct extraction recipes, which produce different objects even on the same model and same trait:</p>
+
+<table>
+  <thead>
+    <tr><th>Recipe</th><th>Object</th><th>Input</th><th>Token position</th><th>Filtering</th><th>Math</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>This project — centroid difference</td><td>Direction (per pair of personas)</td><td>1 system prompt per persona</td><td>Last prompt token</td><td>None</td><td><code>μ_A − μ_B</code> over questions</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2507.21509">Chen et al.</a> — paired contrastive</td><td>Direction (per trait)</td><td>5 positive + 5 negative prompts</td><td>Mean over response tokens</td><td>GPT-4.1-mini judge</td><td><code>μ_pos − μ_neg</code> over filtered rollouts</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2506.11618">Soligo et al.</a> — convergent mean-diff</td><td>Direction (model-level EM)</td><td>EM-aligned vs benign rollouts</td><td>Mean over response tokens</td><td>None</td><td><code>μ_EM − μ_benign</code></td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2506.19823">Wang et al.</a> — SAE feature</td><td>Sparse feature (per trait)</td><td>SAE-trained activations</td><td>Per-token, sparsely active</td><td>Latent attribution</td><td>Feature ablation</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2512.07092">Geometry of Persona</a> — dual-head probe</td><td>Manifold + classifier head</td><td>Persona-labeled rollouts</td><td>Mean over response tokens</td><td>None</td><td>Probe + steering matrix</td></tr>
+  </tbody>
+</table>
+
+<p>Two things follow. First, "<a href="https://arxiv.org/abs/2507.21509">Chen et al.</a> show EM is motion along the evil direction, therefore EM is motion along this project's evil centroid-difference" is a citation move that depends on the cosine between two of the rows of that table, which has never been measured. <a href="https://github.com/superkaiba/explore-persona-space/issues/216">#216</a> shows the recipes recover the same <em>relative cluster map</em> across all 28 layers of Qwen2.5-7B-Instruct <span class="confidence high">HIGH</span>, which is reassuring but doesn't pin the absolute cosine on a shared trait. <a href="https://github.com/superkaiba/explore-persona-space/issues/363">#363</a> in its original form was the 2-way head-to-head between this project's recipe and Chen et al.'s; the broader 4-way comparison (above table) is the better experiment.</p>
+
+<p>Second — and this is the bigger point — Chen et al.'s own paper reports <code>r ≈ 0.8</code> between a prompt-token approximation and their canonical response-token recipe for predicting evil-score before generation. <code>r = 0.8</code> corresponds to a cosine well above this project's 0.5 cut-off for "real methodology gap." The two recipes are not different objects in the strong sense an earlier draft of this page worried about. The methodology bridge is worth running cleanly but is not a load-bearing prerequisite for everything else.</p>
+
+<p>The actually load-bearing methodology question is not "is our direction Chen et al.'s direction" but <strong>does our direction causally control EM behavior when steered?</strong> <a href="https://github.com/superkaiba/explore-persona-space/issues/267">#267</a> says it doesn't at L20 — a norm-matched random direction elicits a persona-coupled <code>[ZLT]</code> marker at least as well as the centroid-difference direction <span class="confidence low">LOW</span>. That's the result the project has to follow up on, not the cosine-to-Chen number.</p>
+
+<h2>Why cosine is the wrong metric for the L2 question</h2>
+
+<p>The L2 evidence rests on a single metric — mean off-diagonal cosine across 12 personas at L20 (call it M1 following <a href="https://github.com/superkaiba/explore-persona-space/issues/237">#237</a>). M1 saturates above ~0.9, which is roughly where the base model already sits.</p>
+
+<ul>
+  <li><strong>M1 angular interpretation.</strong> Base 0.90 → SFT 0.97 in cosine space is 25.8° → 14.1° in angle space — a ~45% angular compression, not a ~7% one. That is non-trivial but not "collapsed to near-degenerate."</li>
+  <li><strong>The probe's small residual signal points the wrong way.</strong> <a href="https://github.com/superkaiba/explore-persona-space/issues/308">#308</a>'s neutral-source replication found that all 7 truly-unseen bystander personas had <em>negative</em> cosine deltas under EM — the source persona moved <em>away</em> from each bystander, the opposite of flattening. <span class="confidence low">LOW</span></li>
+  <li><strong>Better metrics exist for exactly this question.</strong> <a href="https://arxiv.org/abs/2604.17698">arXiv:2604.17698 <em>Geometric Canary</em></a> explicitly notes Procrustes measures ~2× more geometric change than CKA during post-training. Linear / RBF-CKA is rotation-invariant and discriminates across the relevant range. Principal angles between subspaces directly answer "did the 12-persona subspace get crushed to lower rank?" — the same metric <a href="https://arxiv.org/abs/2511.02022">Arturi et al.</a> use for EM weight-update subspaces.</li>
+</ul>
+
+<p>The fix is cheap: re-run the existing 12-persona × 240-question activations through CKA, Procrustes residual after best-fit alignment, and principal-angles. One day of analysis on data the project already has. If the better metrics show the persona subspace is rotated rather than crushed, the L2 collapse story falls and the L1 / L3 account is the whole story. If the better metrics also show crushing, L2 is real and the next questions about its mechanism become tractable.</p>
+
+<h2>Open questions</h2>
+
+<h3 class="qhead">Q1. Re-metric the L2 collapse story with CKA / Procrustes / principal-angles.</h3>
+
+<p>The single most important and cheapest experiment in the project. Cosine of mean-pooled centroids is the wrong measurement for "did persona space collapse." Re-run the existing <a href="https://github.com/superkaiba/explore-persona-space/issues/237">#237</a> activations through three standard geometry metrics on the same data.</p>
+
+<div class="label">What to read out</div>
+<ul>
+  <li><strong>Linear / RBF-CKA</strong> between base-model and post-SFT persona-vector matrices (12×d_model at L20).</li>
+  <li><strong>Procrustes residual</strong> after best-fit orthogonal alignment of the post-SFT matrix to the base. This directly answers "is the change a rotation or a crush."</li>
+  <li><strong>Principal angles</strong> between the rank-k subspaces spanned by the 12 personas pre- and post-SFT, for k ∈ {2, 4, 8}. <a href="https://arxiv.org/abs/2511.02022">Arturi et al.</a>'s methodology.</li>
+  <li><strong>Token-level (not mean-pooled) representations</strong> — <a href="https://github.com/superkaiba/explore-persona-space/issues/308">#308</a> already flags this as the right next step.</li>
+</ul>
+
+<div class="label">Why this is now Q1</div>
+<p>Until L2 has a metric that actually has dynamic range at the regime where SFT operates, the entire <a href="https://github.com/superkaiba/explore-persona-space/issues/332">#332</a> "find a recipe that preserves persona geometry" search is unfalsifiable: the metric saturates before any SFT recipe could possibly land on the right side of the threshold. The new metrics make <a href="https://github.com/superkaiba/explore-persona-space/issues/332">#332</a> well-defined.</p>
+
+<hr class="qsep">
+
+<h3 class="qhead">Q2. Does this project's centroid-difference direction causally control EM behavior?</h3>
+
+<p>The actually load-bearing methodology question. If the centroid-difference at L20 is the right object, ablating it should suppress EM and steering along it should reproduce EM at the judge level (the test <a href="https://arxiv.org/abs/2507.21509">Chen et al.</a> and <a href="https://arxiv.org/abs/2506.11618">Soligo et al.</a> apply to their own directions). <a href="https://github.com/superkaiba/explore-persona-space/issues/267">#267</a> ran a partial version of this — a norm-matched random direction at L20 elicits a persona-coupled marker at least as well as the centroid-difference. <span class="confidence low">LOW</span></p>
+
+<div class="label">What to test</div>
+<ul>
+  <li>Replicate Chen et al.'s steering-causality protocol on this project's evil centroid-difference (positive control: their own direction on the same model).</li>
+  <li>Replicate Soligo et al.'s ablation-causality protocol on the project's direction.</li>
+  <li>Within-layer random-direction baselines: at L20, does any high-norm direction in the persona subspace reproduce comparable behavioral elicitation, or is the centroid-difference special?</li>
+</ul>
+
+<div class="label">Why this dominates Q1 in load-bearingness</div>
+<p>If the project's direction has strong steering causality, the methodology bridge is a citation footnote — the recipe difference is academic. If it doesn't (and <a href="https://github.com/superkaiba/explore-persona-space/issues/267">#267</a> suggests it doesn't), the project either needs a new direction-extraction recipe or has to argue the L1 picture is wrong at L20 specifically.</p>
+
+<hr class="qsep">
+
+<h3 class="qhead">Q3. Is L2 (persona-axis flattening under SFT) causally coupled to the behavioral EM phenotype?</h3>
+
+<p>L1 evidence is that fine-tuning moves a small number of directions; L2 evidence is that <em>most</em> of persona space deforms; behaviorally, EM and benign Tulu-3 SFT produce different downstream behavior. If L2 is mechanism-relevant, recipes that preserve the L2 geometry should differentially preserve persona-conditional behavior; if L2 is a generic side-effect of any gradient-based SFT on this architecture, recipes that preserve it should also preserve benign behavior but won't bear on EM specifically.</p>
+
+<div class="label">What we've shown</div>
+<ul>
+  <li><strong>Any SFT collapses M1 on Qwen2.5-7B-Instruct.</strong> Base 0.90 → benign LoRA 0.973 → EM LoRA 0.991–0.996 → full-param benign 0.994 → full-param EM 0.996. The EM-vs-benign gap on this metric is small (~2pp) and probably noise. <span class="confidence mod">MOD</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/237">#237</a>.</li>
+  <li><strong>Couple-then-SFT destroys persona-coupled markers regardless of data.</strong> 0% post-EM, 0–2% post-benign across 3 sources × 3 seeds <span class="confidence high">HIGH</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/237">#237</a>.</li>
+  <li><strong>The SFT-then-couple EM-vs-benign behavioral gap is partly length artifact.</strong> Raw bystander leakage 46–54% EM vs 12% benign, but EM-trained models compress completions to ~28 tokens and benign-Tulu to ~1,200; controlling for log mean tokens collapses the EM-benign sign in raw rate. <span class="confidence low">LOW</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/308">#308</a>.</li>
+</ul>
+
+<div class="label">What's missing</div>
+<p>The whole literature on SFT-induced collapse on chat models points at a generic problem, not an EM-specific one. <a href="https://arxiv.org/abs/2008.03156">Aghajanyan et al. <em>R3F</em></a> propose KL-to-base regularization as a default anti-collapse mechanism; <a href="https://arxiv.org/abs/2405.09673">Biderman et al.</a> show LoRA "learns less and forgets less"; <a href="https://arxiv.org/abs/2508.06249">Wichers et al. 2025</a> already tested R3F-style regularization on EM and report it's <em>fragile</em> — regularized models still generalize to OOD misalignment, while perplexity-gap-selected interleaving worked. That's a directly relevant prior result for the <a href="https://github.com/superkaiba/explore-persona-space/issues/332">#332</a> H2 design and should be folded in.</p>
+
+<div class="label">Next</div>
+<p>After Q1 settles whether L2 is metric-real, the <a href="https://github.com/superkaiba/explore-persona-space/issues/332">#332</a> recipe search becomes meaningful. The phased plan (step dose-response → R3F → low-rank → persona-variable supervision → pretraining-data injection) stays — but H2 (R3F) should be deprioritized given <a href="https://arxiv.org/abs/2508.06249">Wichers et al.</a>, and H5 (pretraining-data injection / rehearsal) becomes the most likely positive outcome.</p>
+
+<hr class="qsep">
+
+<h3 class="qhead">Q4. Cross-path equivalence: prompt vs ICL vs steering vs fine-tune.</h3>
+
+<p>If L1 is right, multiple input paths should converge on the same representational state. The cleanest test is now available almost for free because of <a href="https://arxiv.org/abs/2510.11288">arXiv:2510.11288</a>: EM is reachable via in-context learning with 2–16 examples and no weight updates at all. That gives a fourth path alongside prompting, steering, and fine-tuning — and the ICL path requires no training compute on our side.</p>
+
+<div class="label">What to compare</div>
+<ul>
+  <li><strong>ICL-elicited EM</strong> at matched α-score on Qwen2.5-7B-Instruct (the <a href="https://arxiv.org/abs/2510.11288">2510.11288</a> protocol, 2–16 demonstration examples).</li>
+  <li><strong>Steering-elicited EM</strong> at matched α-score (Chen et al. steering coefficients on the project's centroid-difference and the canonical Chen direction).</li>
+  <li><strong>FT-elicited EM</strong> at matched α-score (the project's <code>c6_vanilla_em</code> LoRA).</li>
+  <li><strong>Soft-prefix-elicited EM</strong> at matched α-score (<a href="https://github.com/superkaiba/explore-persona-space/issues/215">#215</a>'s K=16 continuous prefix, which reaches both EM alignment scores and EM distributional signature on frozen Qwen).</li>
+</ul>
+
+<p>For each, extract the residual-stream representation at L20 (and at a layer-sweep around it) using all four extraction recipes from the methodology table, and report pairwise cosines between the elicited representations. If they cluster — same direction across paths — L1 is sharpened. If they don't, the field is studying four phenomena under one name.</p>
+
+<div class="label">What we've shown so far</div>
+<ul>
+  <li><strong>The prompt channel reaches EM continuously but not discretely.</strong> Continuous K=16 soft prefixes hit both EM-level alignment-judge scores AND EM distributional signature on frozen Qwen-2.5-7B-Instruct; L2-quantizing back to typeable tokens collapses to a helpful-assistant baseline <span class="confidence mod">MOD</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/215">#215</a>. Tells us EM lives in a region of input space reachable via continuous parameterization but not via standard discrete tokens.</li>
+  <li><strong>Conditional misalignment cues span security role-play, educational, and authority prompts; L10 cosine predicts cue potency</strong> <span class="confidence mod">MOD</span> — <a href="https://github.com/superkaiba/explore-persona-space/issues/247">#247</a>. The "earlier-layer representation similarity predicts EM susceptibility" finding of <a href="https://arxiv.org/abs/2511.14017">Mushtaq et al.</a> is plausibly the same observation on a different setup.</li>
+</ul>
+
+<hr class="qsep">
+
+<h3 class="qhead">Q5. Does the picture replicate beyond Qwen2.5-7B-Instruct?</h3>
+
+<p>Every load-bearing experiment in this project is on Qwen2.5-7B-Instruct. <a href="https://arxiv.org/abs/2511.20104">arXiv:2511.20104</a> reports EM rates vary ~30× across base models — Gemma 3 / Qwen 3 at &lt;1% vs GPT-4o at 20% — and that EM is "strongly model- and training-regime-dependent." This project's Qwen2.5-7B-Instruct results sit at the low end. Whatever the right L1 / L2 / L3 story is, the A-vs-B contrast may look completely different on a high-EM model.</p>
+
+<div class="label">Cheap path</div>
+<p><a href="https://arxiv.org/abs/2506.11613">Turner et al. <em>Model Organisms for EM</em></a> publish open-source EM-induced rank-1 LoRA adapters across 6 model sizes and 3 architectures (Qwen / Llama / Gemma, 0.5B–32B). The compute to re-run persona-vector extraction + Q1's CKA/Procrustes pipeline on these published adapters is small — no retraining needed. One non-Qwen model (Llama-3.1-8B or Gemma-2-9B) at the low-EM end plus one frontier model at the high-EM end if accessible would dominate the reviewer-pushback vector "is this Qwen-specific?"</p>
+
+<div class="label">Specific predictions to check</div>
+<ul>
+  <li>Does <a href="https://arxiv.org/abs/2506.11618">Soligo</a>'s convergent-linear-representation finding mean the L1 direction transfers across this project's setup as-extracted, or does the centroid-difference recipe need adaptation per model?</li>
+  <li>Does the L2 cosine-collapse number rank-order with the model-level EM rate from <a href="https://arxiv.org/abs/2511.20104">arXiv:2511.20104</a>? If yes, L2 is mechanism-relevant; if no, L2 is incidental.</li>
+  <li>Does L3 cue-potency rank-order across models the same way <a href="https://github.com/superkaiba/explore-persona-space/issues/247">#247</a> finds on Qwen2.5-7B?</li>
+</ul>
+
+<h2>Open follow-ups currently filed</h2>
+
+<table>
+  <thead>
+    <tr><th>Issue</th><th>What it does</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><em>(new)</em></td><td>Re-metric <a href="https://github.com/superkaiba/explore-persona-space/issues/237">#237</a>'s persona activations with CKA / Procrustes / principal-angles (Q1)</td><td><span class="pill">to file</span></td></tr>
+    <tr><td><em>(new)</em></td><td>Steering-causality test on the project's centroid-difference direction at L20 (Q2 — the actually load-bearing methodology question)</td><td><span class="pill">to file</span></td></tr>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/363">#363</a></td><td>Re-scoped from 2-way to multi-way: this project's recipe vs <a href="https://arxiv.org/abs/2507.21509">Chen et al.</a> vs <a href="https://arxiv.org/abs/2506.11618">Soligo</a> vs <a href="https://arxiv.org/abs/2512.07092">Geometry-of-Persona</a> dual-head, on shared "evil" trait</td><td><span class="pill">plan_pending</span></td></tr>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/332">#332</a></td><td>SFT recipes that preserve persona geometry (Q3) — H2 deprioritized given <a href="https://arxiv.org/abs/2508.06249">Wichers</a>; H5 (data-rehearsal) elevated</td><td><span class="pill">proposed</span></td></tr>
+    <tr><td><em>(new)</em></td><td>ICL-EM replication on Qwen2.5-7B-Instruct + cross-path representational comparison (Q4)</td><td><span class="pill">to file</span></td></tr>
+    <tr><td><em>(new)</em></td><td>Cross-model replication using <a href="https://arxiv.org/abs/2506.11613">Turner et al.</a> published adapters (Q5)</td><td><span class="pill">to file</span></td></tr>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/267">#267</a></td><td>Why does centroid steering at L20 ≈ random direction? Promoted: this is the leading methodology concern, not deferred</td><td><span class="pill">parked</span></td></tr>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/308">#308</a></td><td>Neutral-source length-controlled flatten replication — informs Q1 and Q3</td><td><span class="pill">archived</span></td></tr>
+    <tr><td><a href="https://github.com/superkaiba/explore-persona-space/issues/352">#352</a></td><td>Critical read of <a href="https://arxiv.org/abs/2601.10387">Lu et al. <em>Assistant Axis</em></a> methodology</td><td><span class="pill">parked</span></td></tr>
+  </tbody>
+</table>
+
+<h2>What changed from the previous draft</h2>
+
+<p>This is a running summary; the previous draft framed the mechanism question as a two-hypothesis dichotomy (motion-along-direction vs geometry-collapse), with a methodology bridge as the gating prerequisite. Recent work — especially <a href="https://arxiv.org/abs/2511.02022">Arturi et al.</a>, <a href="https://arxiv.org/abs/2510.11288">arXiv:2510.11288</a>, <a href="https://arxiv.org/abs/2506.11613">Turner et al.</a>, <a href="https://arxiv.org/abs/2603.04407">Saxena</a>, and <a href="https://arxiv.org/abs/2512.07092">Geometry of Persona</a> — makes the two-hypothesis frame wrong. The L1 / L2 / L3 split above is the working synthesis. The methodology bridge is demoted from gating to clean-up; the actually load-bearing methodology question (does this project's direction have steering causality) is promoted. The metric problem — cosine saturates exactly where SFT operates — is now Q1, displacing the recipe search.</p>
+
+<p>The L1 direction-motion picture is the field consensus the project should align with, not fight. The L2 persona-axis-flattening-under-SFT picture is the novel claim the project is best positioned to evaluate. The L3 trigger-conditional picture is what makes both visible behaviorally.</p>

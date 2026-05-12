@@ -8,6 +8,7 @@
     "start": "tsx src/index.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke-apply": "tsx scripts/smoke-apply.ts",
+    "apply-narrative-edit": "tsx scripts/apply-narrative-edit.ts",
     "import-github-project": "tsx scripts/import-github-project.ts",
     "runpod": "tsx scripts/runpod-cli.ts",
     "snapshot-mentor": "tsx scripts/snapshot-mentor.ts",

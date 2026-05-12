@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import Link from 'next/link';
-import { Command, Inbox, LogOut } from 'lucide-react';
+import { Command, LogOut } from 'lucide-react';
 import { getSession } from '@/lib/auth';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ApprovalTitleBadge } from '@/components/ApprovalTitleBadge';
@@ -57,25 +57,14 @@ export default async function AppLayout({
       </a>
 
       <header className="sticky top-0 z-40 flex min-h-14 items-center gap-3 border-b border-[--color-border] bg-[--color-panel]/95 px-4 shadow-[0_1px_0_rgba(255,255,255,0.45)_inset] backdrop-blur md:hidden">
-        <Link href="/results" className="text-sm font-semibold tracking-tight">
+        <Link href="/pipeline" className="text-sm font-semibold tracking-tight">
           Sagan
         </Link>
-        {fullDashboard ? (
-          <Link
-            href="/approvals"
-            className="inline-flex min-h-9 items-center gap-2 rounded-[--radius-control] border border-[--color-border] bg-[--color-panel] px-3 text-xs font-semibold text-[--color-fg] shadow-[var(--shadow-inset)]"
-          >
-            <Inbox className="h-4 w-4 text-[--color-accent]" aria-hidden="true" />
-            Approvals
-            <span className="rounded-md bg-[--color-approval-bg] px-1.5 py-0.5 font-mono text-[11px] text-[--color-approval]">
-              {shellState?.approvalCount ?? 0}
-            </span>
-          </Link>
-        ) : (
+        {!fullDashboard ? (
           <a href="/mentor/updates" className="text-xs text-[--color-muted] hover:text-[--color-fg]">
             Mentor updates
           </a>
-        )}
+        ) : null}
         <div className="ml-auto flex items-center gap-2">
           <form action="/api/auth/logout" method="post">
             <button
@@ -96,83 +85,13 @@ export default async function AppLayout({
         </div>
       ) : null}
 
-      <aside className="hidden border-r border-[--color-border] bg-[--color-panel] p-4 shadow-[1px_0_0_rgba(255,255,255,0.35)_inset] md:sticky md:top-0 md:z-30 md:flex md:h-screen md:flex-col md:gap-5">
+      <aside className="hidden border-r border-[--color-border] bg-[--color-panel] p-4 shadow-[1px_0_0_rgba(255,255,255,0.35)_inset] md:sticky md:top-0 md:z-30 md:flex md:h-screen md:flex-col md:gap-5 md:overflow-y-auto">
         <div className="border-b border-[--color-border] pb-4">
-          <Link href="/results" className="block text-lg font-bold tracking-[-0.025em]">
+          <Link href="/pipeline" className="block text-lg font-bold tracking-[-0.025em]">
             Sagan
           </Link>
           <p className="mt-1 truncate text-xs text-[--color-muted]">{session.user.email}</p>
         </div>
-
-        {fullDashboard && shellState ? (
-          <section
-            data-pending={shellState.approvalCount > 0 ? 'true' : 'false'}
-            className={[
-              'rounded-[--radius-panel] border text-sm',
-              shellState.approvalCount > 0
-                ? 'border-[3px] border-[--color-attention] bg-[--color-attention-soft] animate-sagan-approval-pulse'
-                : 'border border-[--color-approval-border] bg-[--color-approval-bg] shadow-[var(--shadow-inset)]',
-            ].join(' ')}
-          >
-            <header className="flex items-center justify-between gap-2 border-b border-[--color-border] px-3 py-2">
-              <span className="inline-flex items-center gap-2 font-semibold">
-                <Inbox
-                  className={
-                    shellState.approvalCount > 0
-                      ? 'h-4 w-4 text-[--color-attention]'
-                      : 'h-4 w-4 text-[--color-approval]'
-                  }
-                  aria-hidden="true"
-                />
-                Approvals
-              </span>
-              <span
-                className={[
-                  'rounded-[--radius-control] px-2 py-0.5 font-mono text-xs font-bold',
-                  shellState.approvalCount > 0
-                    ? 'bg-[--color-attention] text-[--color-attention-fg]'
-                    : 'bg-[--color-panel] text-[--color-approval]',
-                ].join(' ')}
-              >
-                {shellState.approvalCount}
-              </span>
-            </header>
-            {shellState.topApprovals.length === 0 ? (
-              <p className="px-3 py-3 text-xs leading-5 text-[--color-muted]">
-                No owner decisions are waiting.
-              </p>
-            ) : (
-              <ul className="divide-y divide-[--color-border] text-xs">
-                {shellState.topApprovals.map((item) => (
-                  <li key={item.key}>
-                    <Link
-                      href={item.href}
-                      className="block px-3 py-2 hover:bg-[--color-hover]"
-                      title={item.context ?? undefined}
-                    >
-                      <p className="font-semibold leading-4 text-[--color-fg] line-clamp-1">
-                        {item.requestedAction}
-                      </p>
-                      <p className="mt-0.5 line-clamp-1 leading-4 text-[--color-muted]">
-                        {item.title}
-                      </p>
-                    </Link>
-                  </li>
-                ))}
-                {shellState.approvalCount > shellState.topApprovals.length ? (
-                  <li>
-                    <Link
-                      href="/approvals"
-                      className="block px-3 py-2 text-center text-[--color-attention] hover:bg-[--color-hover]"
-                    >
-                      View all {shellState.approvalCount} →
-                    </Link>
-                  </li>
-                ) : null}
-              </ul>
-            )}
-          </section>
-        ) : null}
 
         {fullDashboard ? (
           <AppNav counts={navCounts} />

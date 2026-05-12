@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { AlertCircle, CheckCircle2, ExternalLink } from 'lucide-react';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { DashboardApprovalItem } from '@/lib/dashboard';
 import { formatRelativeTime, statusLabel } from '@/lib/status';
 import { buttonClassName, EmptyState, Panel, StatusBadge } from '@/components/ui';
@@ -51,37 +51,32 @@ export function ApprovalQueue({
             {groupItems.length === 0 ? (
               <p className="px-4 py-4 text-sm text-[--color-muted]">{group.empty}</p>
             ) : (
-              <div className="divide-y divide-[--color-border]">
+              <div className="grid gap-3 p-3 lg:grid-cols-2">
                 {groupItems.map((item) => (
                   <article
                     key={item.key}
-                    className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"
+                    className="border border-[--color-border] bg-[--color-panel] shadow-[var(--shadow-inset)]"
                   >
-                    <div className="min-w-0">
+                    <Link href={item.href} data-clickable="true" className="group block min-h-[10rem] p-4 text-[--color-fg] no-underline hover:bg-[--color-hover]">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <StatusBadge status={item.status} />
                         <span className="text-xs text-[--color-muted]">{statusLabel(item.kind)}</span>
                         <span className="text-xs text-[--color-muted]">{formatRelativeTime(item.updatedAt)}</span>
                       </div>
-                      <Link
-                        href={item.href}
-                        className="mt-2 block text-sm font-semibold leading-5 text-[--color-fg] hover:text-[--color-accent]"
-                      >
+                      <h3 className="mt-2 text-sm font-semibold leading-5 text-[--color-fg] group-hover:text-[--color-accent]">
                         {item.title}
-                      </Link>
+                      </h3>
                       <p className="mt-1 line-clamp-2 text-sm leading-5 text-[--color-muted]">{item.context}</p>
                       <div className="mt-2 flex items-center gap-2 text-xs text-[--color-muted]">
                         <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>{item.requestedAction}</span>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-                      <Link href={item.href} className={buttonClassName({ variant: 'secondary', size: 'sm' })}>
-                        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                        Open
-                      </Link>
-                      {item.action ? <ApprovalActionButtons action={item.action} /> : null}
-                    </div>
+                    </Link>
+                    {item.action ? (
+                      <div className="border-t border-[--color-border] px-3 py-3">
+                        <ApprovalActionButtons action={item.action} />
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { Comments } from '@/components/Comments';
 import { EditableBody } from '@/components/EditableBody';
+import { RichBody } from '@/components/RichBody';
 import { EditableTitle } from '@/components/EditableTitle';
 import { EntityEdges } from '@/components/EntityEdges';
 import { BeliefHistoryLink } from '@/components/BeliefHistoryLink';
@@ -79,8 +80,8 @@ export default async function EntityPage({
         {owner && canEditBody(kind) ? (
           <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />
         ) : (
-          <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 whitespace-pre-wrap">
-            {entity.body}
+          <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
+            <RichBody>{entity.body ?? ''}</RichBody>
           </section>
         )}
 

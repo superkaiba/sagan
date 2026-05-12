@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Markdown } from './Markdown';
+import { RichBody } from './RichBody';
 
 interface Props {
   kind: 'project' | 'belief' | 'todo' | 'lit_item' | 'project_narrative' | 'experiment' | 'run' | 'daily_log_entry' | 'clean_result';
@@ -73,11 +73,7 @@ export function EditableBody({ kind, id, initialBody, endpoint, field }: Props) 
         >
           Edit
         </button>
-        {initialBody.trim() ? (
-          <Markdown>{initialBody}</Markdown>
-        ) : (
-          <p className="text-sm text-[--color-muted]">No description yet. Click edit to add one.</p>
-        )}
+        <RichBody>{initialBody}</RichBody>
       </section>
     );
   }
@@ -89,7 +85,7 @@ export function EditableBody({ kind, id, initialBody, endpoint, field }: Props) 
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
-        placeholder="Markdown supported."
+        placeholder="HTML or markdown. Sanitized server-side before render."
       />
       <div className="flex justify-end gap-2">
         <button

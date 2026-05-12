@@ -3,15 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState, useTransition, type DragEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Bot,
-  CheckCircle2,
-  FlaskConical,
-  GripVertical,
-  Lightbulb,
-  ListChecks,
-  Loader2,
-} from 'lucide-react';
+import { GripVertical, Loader2 } from 'lucide-react';
 import { Panel, StatusBadge } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { formatRelativeTime } from '@/lib/status';
@@ -44,14 +36,6 @@ const dropTargets: Record<PipelineCardKind, PipelineStageKey[]> = {
   idea: ['planning'],
   automation: ['approval', 'queued', 'running', 'done', 'blocked'],
 };
-
-function EntityIcon({ kind }: { kind: PipelineCardKind }) {
-  if (kind === 'experiment') return <FlaskConical className="h-4 w-4" aria-hidden="true" />;
-  if (kind === 'clean_result') return <CheckCircle2 className="h-4 w-4" aria-hidden="true" />;
-  if (kind === 'todo') return <ListChecks className="h-4 w-4" aria-hidden="true" />;
-  if (kind === 'idea') return <Lightbulb className="h-4 w-4" aria-hidden="true" />;
-  return <Bot className="h-4 w-4" aria-hidden="true" />;
-}
 
 function canDropCard(card: DashboardPipelineCard | null, stage: PipelineStageKey) {
   if (!card || card.stage === stage) return false;
@@ -96,10 +80,7 @@ function PipelineCard({
       )}
     >
       <div className="flex items-start gap-2">
-        <div className="mt-0.5 flex items-center gap-1.5 text-[--color-muted]">
-          <GripVertical className="h-4 w-4 text-[--color-muted]" aria-hidden="true" />
-          <EntityIcon kind={card.kind} />
-        </div>
+        <GripVertical className="mt-0.5 h-4 w-4 text-[--color-muted]" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <Link href={card.href} className="block text-sm font-semibold leading-5 hover:text-[--color-accent]">
             <span className="line-clamp-2">{card.title}</span>
@@ -113,11 +94,6 @@ function PipelineCard({
         <span className="text-xs text-[--color-muted]">{formatRelativeTime(card.updatedAt)}</span>
       </div>
       {card.project ? <p className="mt-2 truncate text-xs text-[--color-muted]">{card.project}</p> : null}
-      {card.ownerAction ? (
-        <p className="mt-2 border border-[--color-approval-border] bg-[--color-approval-bg] px-2 py-1.5 text-xs leading-5 text-[--color-approval]">
-          {card.ownerAction}
-        </p>
-      ) : null}
     </article>
   );
 }

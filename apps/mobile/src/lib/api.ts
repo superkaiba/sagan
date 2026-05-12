@@ -5,17 +5,21 @@ import { router } from 'expo-router';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://sagan.superkaiba.com';
 const TOKEN_KEY = 'sagan_session_token';
+const SECURE_OPTS = { keychainService: 'sagan' } as const;
 
-let isHandling401 = false;
-
+// Read both keychain services so tokens written under the old (unnamespaced)
+// key are still picked up; new writes always go to the 'sagan' namespace.
 export async function getToken(): Promise<string | null> {
+  const v = await SecureStore.getItemAsync(TOKEN_KEY, SECURE_OPTS);
+  if (v) return v;
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 export async function setToken(token: string): Promise<void> {
-  await SecureStore.setItemAsync(TOKEN_KEY, token, { keychainService: 'sagan' });
+  await SecureStore.setItemAsync(TOKEN_KEY, token, SECURE_OPTS);
 }
 export async function clearToken(): Promise<void> {
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
+  await SecureStore.deleteItemAsync(TOKEN_KEY, SECURE_OPTS);
+  await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
 }
 
 export async function api<T>(

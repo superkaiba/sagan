@@ -7,6 +7,7 @@ import { CommandPalette } from '@/components/CommandPalette';
 import { ApprovalTitleBadge } from '@/components/ApprovalTitleBadge';
 import { AppNav } from '@/components/AppNav';
 import { ThemeControl } from '@/components/ThemeControl';
+import { FontPicker } from '@/components/FontPicker';
 import { ConversationDock } from '@/components/ConversationDock';
 import { TocHighlighter } from '@/components/TocHighlighter';
 import { hasFullDashboardAccess } from '@/lib/full-dashboard-access';
@@ -181,6 +182,7 @@ export default async function AppLayout({
             </div>
           ) : null}
           <ThemeControl />
+          <FontPicker />
           <form action="/api/auth/logout" method="post">
             <button type="submit" className={buttonClassName({ variant: 'secondary', size: 'md', className: 'w-full' })}>
               <LogOut className="h-4 w-4" aria-hidden="true" />

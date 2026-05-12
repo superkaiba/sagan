@@ -34,7 +34,8 @@
   --color-surface-subtle: #ece7dc;
   --color-surface-raised: #fffdf8;
 
-  --font-sans: var(--font-geist-sans), "Aptos", "SF Pro Text", ui-sans-serif, system-ui, sans-serif;
+  --font-active: var(--font-geist-sans);
+  --font-sans: var(--font-active), "SF Pro Text", ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, Monaco, "Liberation Mono", monospace;
 }
 
@@ -126,6 +127,18 @@
   --radius-control: 0;
   color-scheme: dark;
 }
+
+/* Font picker — see FontPicker.tsx. Default (no data-font) = Geist. */
+:root[data-font='geist']          { --font-active: var(--font-geist-sans); }
+:root[data-font='inter-tight']    { --font-active: var(--font-inter-tight); }
+:root[data-font='bricolage']      { --font-active: var(--font-bricolage); }
+:root[data-font='outfit']         { --font-active: var(--font-outfit); }
+:root[data-font='manrope']        { --font-active: var(--font-manrope); }
+:root[data-font='space-grotesk']  { --font-active: var(--font-space-grotesk); }
+:root[data-font='dm-sans']        { --font-active: var(--font-dm-sans); }
+:root[data-font='ibm-plex']       { --font-active: var(--font-ibm-plex); }
+:root[data-font='source-serif']   { --font-active: var(--font-source-serif); }
+:root[data-font='newsreader']     { --font-active: var(--font-newsreader); }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {

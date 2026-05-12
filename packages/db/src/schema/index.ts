@@ -1227,6 +1227,28 @@ export const shareGrants = pgTable(
   }),
 );
 
+export const publishedArtifacts = pgTable(
+  'published_artifacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: varchar('slug', { length: 220 }).notNull().unique(),
+    title: text('title').notNull(),
+    summary: text('summary'),
+    bodyMd: text('body_md').notNull(),
+    source: text('source').notNull().default('manual'),
+    sourceId: text('source_id'),
+    public: boolean('public').notNull().default(true),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    slugIdx: index('published_artifacts_slug_idx').on(t.slug),
+    sourceIdx: index('published_artifacts_source_idx').on(t.source, t.sourceId),
+    updatedIdx: index('published_artifacts_updated_idx').on(t.updatedAt),
+  }),
+);
+
 export const pushDevicePlatformEnum = pgEnum('push_device_platform', [
   'ios',
   'android',
@@ -1289,6 +1311,7 @@ export type KanbanCard = typeof kanbanCards.$inferSelect;
 export type DailyDigest = typeof dailyDigests.$inferSelect;
 export type WeeklyDigest = typeof weeklyDigests.$inferSelect;
 export type ShareGrant = typeof shareGrants.$inferSelect;
+export type PublishedArtifact = typeof publishedArtifacts.$inferSelect;
 export type PushDevice = typeof pushDevices.$inferSelect;
 
 // Suppress unused import warning when sql is not directly referenced here.

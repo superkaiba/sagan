@@ -1142,7 +1142,10 @@ export const weeklyDigests = pgTable(
   'weekly_digests',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    weekStart: date('week_start').notNull().unique(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    weekStart: date('week_start').notNull(),
     bodyMd: text('body_md').notNull(),
     draftedAt: timestamp('drafted_at', { withTimezone: true }).notNull().defaultNow(),
     editedAt: timestamp('edited_at', { withTimezone: true }),
@@ -1151,6 +1154,8 @@ export const weeklyDigests = pgTable(
   },
   (t) => ({
     weekIdx: index('weekly_digests_week_idx').on(t.weekStart),
+    projectIdx: index('weekly_digests_project_idx').on(t.projectId),
+    projectWeekUq: unique('weekly_digests_project_week_unique').on(t.projectId, t.weekStart),
   }),
 );
 

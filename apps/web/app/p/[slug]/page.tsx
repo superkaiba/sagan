@@ -1,7 +1,11 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { and, desc, eq } from 'drizzle-orm';
 import { projectNarratives, projects } from '@sagan/db/schema';
 import { db } from '@/lib/db';
+import { getSession } from '@/lib/auth';
+import { Comments } from '@/components/Comments';
+import { ImproveNarrativeButton } from '@/components/ImproveNarrativeButton';
 import { Markdown } from '@/components/Markdown';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +46,7 @@ export default async function PublicProjectPage({
     .orderBy(desc(projectNarratives.publishedAt))
     .limit(1);
   const narrative = narrativeRows[0];
+  const session = await getSession();
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 space-y-6">
@@ -73,6 +78,29 @@ export default async function PublicProjectPage({
       ) : (
         <p className="text-sm text-[--color-muted]">No published narrative yet.</p>
       )}
+
+      {narrative ? (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between border-t border-[--color-border] pt-6">
+            <h2 className="text-lg font-medium">Discussion</h2>
+            {session ? (
+              <ImproveNarrativeButton narrativeId={narrative.id} />
+            ) : null}
+          </div>
+          {session ? (
+            <Comments entityKind="project_narrative" entityId={narrative.id} />
+          ) : (
+            <p className="text-sm text-[--color-muted]">
+              <Link href="/login" className="underline">
+                Sign in
+              </Link>{' '}
+              to leave comments. Anyone with an account can read and reply; click{' '}
+              <strong>Improve</strong> after leaving comments to have them addressed in a new
+              draft.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       <footer className="border-t border-[--color-border] pt-4 text-[10px] uppercase tracking-wide text-[--color-muted]">
         Sagan

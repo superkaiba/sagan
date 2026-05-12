@@ -1,7 +1,8 @@
 import { Tabs } from 'expo-router';
-import { Platform, StyleSheet, useColorScheme } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { palette } from '@/lib/theme';
+import { useTheme } from '@/lib/theme';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -12,8 +13,12 @@ function tabIcon(name: IoniconName, focusedName: IoniconName) {
 }
 
 export default function TabsLayout() {
-  const isDark = useColorScheme() === 'dark';
-  const colors = isDark ? palette.dark : palette.light;
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  // Android: edgeToEdgeEnabled lets content sit behind the gesture/nav bar.
+  // Add bottom inset so tab labels and tap targets stay clear of it.
+  // iOS handles this natively in the tab bar's safe area.
+  const androidBottomInset = Platform.OS === 'android' ? insets.bottom : 0;
 
   return (
     <Tabs
@@ -24,10 +29,13 @@ export default function TabsLayout() {
           backgroundColor: colors.bg,
           borderTopColor: colors.hairline,
           borderTopWidth: StyleSheet.hairlineWidth,
-          height: Platform.OS === 'ios' ? 84 : 64,
+          height: (Platform.OS === 'ios' ? 84 : 64) + androidBottomInset,
           paddingTop: 6,
+          paddingBottom: androidBottomInset,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500', letterSpacing: 0.1 },
+        // '600' maps cleanly to SF Pro Semibold on iOS; '500' silently falls
+        // back to Regular without an explicit fontFamily.
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600', letterSpacing: 0.1 },
         tabBarItemStyle: { paddingTop: 2 },
         headerShown: false,
         sceneStyle: { backgroundColor: colors.bg },

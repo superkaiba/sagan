@@ -27,15 +27,19 @@ export default function LoginScreen() {
   const [googleBusy, setGoogleBusy] = useState(false);
 
   async function onSubmit() {
-    if (!email.trim() || !password) return;
+    if (!email.trim() || password.length < 8) return;
     setBusy(true);
     setErr(null);
-    const ok = await login(email.trim(), password);
-    if (ok) {
+    const result = await login(email.trim(), password);
+    if (result.kind === 'ok') {
       void registerForPush().catch(() => {});
       router.replace('/(tabs)/today');
-    } else {
+    } else if (result.kind === 'invalid') {
       setErr('Wrong email or password.');
+    } else if (result.kind === 'offline') {
+      setErr("Can't reach the server. Check your connection.");
+    } else {
+      setErr(`Server error (${result.status}). Try again.`);
     }
     setBusy(false);
   }
@@ -53,7 +57,7 @@ export default function LoginScreen() {
     setGoogleBusy(false);
   }
 
-  const canSubmit = !!(email.trim() && password) && !busy && !googleBusy;
+  const canSubmit = !!(email.trim() && password.length >= 8) && !busy && !googleBusy;
 
   return (
     <Screen>
@@ -99,6 +103,7 @@ export default function LoginScreen() {
               autoCorrect={false}
               keyboardType="email-address"
               textContentType="username"
+              autoComplete="email"
               placeholder="you@example.com"
             />
             <Input
@@ -107,6 +112,7 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               secureTextEntry
               textContentType="password"
+              autoComplete="current-password"
               placeholder="••••••••"
               error={err}
             />

@@ -22,6 +22,17 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "TODO_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "TODO_APPLE_TEAM_ID",
+        "appleId": "thomasjiralerspong@gmail.com"
+      },
+      "android": {
+        "track": "internal",
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "releaseStatus": "draft"
+      }
+    }
   }
 }

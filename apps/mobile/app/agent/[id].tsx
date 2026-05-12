@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, RefreshControl, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { api } from '@/lib/api';
 import { spacing, useTheme } from '@/lib/theme';
 import {
   Button,
   Card,
+  EmptyState,
   HStack,
   LoadingState,
   Pill,
@@ -67,6 +69,8 @@ interface RunPayload {
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'rejected', 'blocked']);
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'approved', 'deploying']);
+const POLL_INTERVAL_MS = 2_500;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const STATUS_TONE: Record<string, PillTone> = {
   queued: 'neutral',
@@ -81,40 +85,65 @@ const STATUS_TONE: Record<string, PillTone> = {
   cancelled: 'neutral',
 };
 
-function continuationSource(request: string) {
-  return request.match(/\[auto-continuation-for:([^\]]+)\]/)?.[1] ?? null;
+type Action = 'approve' | 'reject' | 'stop' | 'review' | null;
+
+function continuationSource(request: string): string | null {
+  const match = request.match(/\[auto-continuation-for:([^\]]+)\]/)?.[1];
+  if (!match) return null;
+  // Avoid user-controlled spoofing of the badge: only display values that
+  // look like a real run id.
+  return UUID_RE.test(match) ? match : null;
 }
 
-function formatAge(ms: number) {
+function formatAge(ms: number): string {
+  if (!Number.isFinite(ms)) return '?';
   const minutes = Math.max(0, Math.floor(ms / 60_000));
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatTime(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '—';
+  return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
 export default function RunDetail() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [data, setData] = useState<RunPayload | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [inflight, setInflight] = useState<Action>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewPrompt, setReviewPrompt] = useState<string | null>(null);
-  const [reviewBusy, setReviewBusy] = useState(false);
+  const lastStatusRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const load = useCallback(async () => {
     if (!id) return;
-    const r = await api<RunPayload>(`/api/agent-runs/${id}`);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const r = await api<RunPayload>(`/api/agent-runs/${id}`, { signal: controller.signal });
+    if (controller.signal.aborted || !isMountedRef.current) return;
     if (r.ok && r.data) {
       setData(r.data);
       setError(null);
-    } else {
+    } else if (r.error !== 'aborted') {
       setError(r.error ?? `Refresh failed (${r.status})`);
     }
+    setLoaded(true);
     setRefreshing(false);
   }, [id]);
 
@@ -125,15 +154,28 @@ export default function RunDetail() {
   useEffect(() => {
     if (!data) return;
     if (TERMINAL.has(data.run.status)) return;
-    const interval = setInterval(load, 2500);
+    const interval = setInterval(() => {
+      void load();
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [data, load]);
 
+  // Reset cached review prompt whenever the run transitions to a new status,
+  // so a stale prompt doesn't linger after the run progresses or restarts.
+  useEffect(() => {
+    const next = data?.run.status ?? null;
+    if (lastStatusRef.current !== null && lastStatusRef.current !== next) {
+      setReviewPrompt(null);
+    }
+    lastStatusRef.current = next;
+  }, [data?.run.status]);
+
   async function decide(decision: 'approve' | 'reject') {
     if (!id) return;
-    setBusy(true);
+    setInflight(decision);
     const r = await api(`/api/agent-runs/${id}/${decision}`, { method: 'POST' });
-    setBusy(false);
+    if (!isMountedRef.current) return;
+    setInflight(null);
     if (!r.ok) {
       Alert.alert('Error', `Could not ${decision}`);
       return;
@@ -143,9 +185,10 @@ export default function RunDetail() {
 
   async function stopRunPod() {
     if (!id) return;
-    setBusy(true);
+    setInflight('stop');
     const r = await api(`/api/agent-runs/${id}/runpod/stop`, { method: 'POST' });
-    setBusy(false);
+    if (!isMountedRef.current) return;
+    setInflight(null);
     if (!r.ok) {
       Alert.alert('Error', 'Could not stop RunPod pods');
       return;
@@ -160,13 +203,14 @@ export default function RunDetail() {
 
   async function prepareCodexReview() {
     if (!id) return;
-    setReviewBusy(true);
+    setInflight('review');
     setError(null);
     const r = await api<{ prompt?: string; error?: string }>(
       `/api/agent-runs/${id}/codex-review`,
       { method: 'POST' },
     );
-    setReviewBusy(false);
+    if (!isMountedRef.current) return;
+    setInflight(null);
     if (!r.ok || !r.data?.prompt) {
       setError(r.data?.error ?? r.error ?? 'Could not prepare Codex review prompt');
       return;
@@ -174,11 +218,25 @@ export default function RunDetail() {
     setReviewPrompt(r.data.prompt);
   }
 
-  if (!data) {
+  if (!loaded) {
     return (
       <>
         <Stack.Screen options={{ title: 'Run' }} />
         <LoadingState />
+      </>
+    );
+  }
+
+  if (!data) {
+    return (
+      <>
+        <Stack.Screen options={{ title: 'Run' }} />
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Couldn't load run"
+          message={error ?? 'The run may have been removed or is not reachable.'}
+          action={<Button label="Retry" onPress={refresh} loading={refreshing} />}
+        />
       </>
     );
   }
@@ -197,11 +255,14 @@ export default function RunDetail() {
   const latestContinuationId = continuationEvents.at(-1)?.body?.trim() ?? null;
   const latestEvent = events.at(-1);
   const latestAt = latestEvent?.createdAt ?? run.updatedAt ?? run.createdAt ?? null;
-  const latestAgeMs = latestAt ? Date.now() - new Date(latestAt).getTime() : null;
+  const latestTime = latestAt ? new Date(latestAt).getTime() : null;
+  const latestAgeMs =
+    latestTime !== null && Number.isFinite(latestTime) ? Date.now() - latestTime : null;
   const stale =
     latestAgeMs !== null && ACTIVE_STATUSES.has(run.status) && latestAgeMs > 10 * 60 * 1000
       ? `Idle for ${formatAge(latestAgeMs)}. Refresh; the runner may be stalled.`
       : null;
+  const planHasSections = (run.planJson?.sections?.length ?? 0) > 0;
 
   return (
     <>
@@ -241,10 +302,11 @@ export default function RunDetail() {
           <HStack gap="sm">
             <View style={{ flex: 1 }}>
               <Button
-                label={busy ? '…' : 'Approve'}
+                label={inflight === 'approve' ? 'Approving…' : 'Approve'}
                 fullWidth
                 size="lg"
-                disabled={busy}
+                loading={inflight === 'approve'}
+                disabled={inflight !== null}
                 onPress={() =>
                   Alert.alert(
                     'Approve run?',
@@ -259,11 +321,12 @@ export default function RunDetail() {
             </View>
             <View style={{ flex: 1 }}>
               <Button
-                label="Reject"
+                label={inflight === 'reject' ? 'Rejecting…' : 'Reject'}
                 variant="secondary"
                 fullWidth
                 size="lg"
-                disabled={busy}
+                loading={inflight === 'reject'}
+                disabled={inflight !== null}
                 onPress={() => decide('reject')}
               />
             </View>
@@ -292,10 +355,11 @@ export default function RunDetail() {
               <SectionLabel>RunPod lifecycle</SectionLabel>
               {canManageRun && hasActivePods ? (
                 <Button
-                  label={busy ? 'Stopping…' : 'Stop'}
+                  label={inflight === 'stop' ? 'Stopping…' : 'Stop'}
                   size="sm"
                   variant="ghost"
-                  disabled={busy}
+                  loading={inflight === 'stop'}
+                  disabled={inflight !== null}
                   onPress={stopRunPod}
                 />
               ) : null}
@@ -344,10 +408,11 @@ export default function RunDetail() {
           <HStack justify="space-between">
             <SectionLabel>Codex review</SectionLabel>
             <Button
-              label={reviewBusy ? 'Preparing…' : 'Prepare prompt'}
+              label={inflight === 'review' ? 'Preparing…' : 'Prepare prompt'}
               size="sm"
               variant="ghost"
-              loading={reviewBusy}
+              loading={inflight === 'review'}
+              disabled={inflight !== null && inflight !== 'review'}
               onPress={prepareCodexReview}
             />
           </HStack>
@@ -355,20 +420,32 @@ export default function RunDetail() {
             Prepares a prompt only. It does not execute a review agent.
           </Text>
           {reviewPrompt ? (
-            <Card variant="sunken" pad="md">
+            <Card variant="sunken" pad="md" gap="sm">
               <Text variant="mono" selectable numberOfLines={12}>
                 {reviewPrompt}
               </Text>
+              <HStack justify="flex-end">
+                <Button
+                  label="Copy"
+                  icon="copy-outline"
+                  size="sm"
+                  variant="ghost"
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(reviewPrompt);
+                    Alert.alert('Copied', 'Review prompt copied to clipboard.');
+                  }}
+                />
+              </HStack>
             </Card>
           ) : null}
         </Card>
 
-        {run.planMd ? (
+        {run.planMd || planHasSections ? (
           <Card pad="base" gap="md">
             <SectionLabel>Plan</SectionLabel>
-            {run.planJson?.sections?.length ? (
+            {planHasSections ? (
               <VStack gap="sm">
-                {run.planJson.sections.map((section) => (
+                {run.planJson!.sections!.map((section) => (
                   <Card key={section.title} variant="sunken" pad="md" gap="xs">
                     <Text variant="micro" tone="muted">
                       {section.title}
@@ -377,8 +454,9 @@ export default function RunDetail() {
                   </Card>
                 ))}
               </VStack>
+            ) : run.planMd ? (
+              <Text variant="mono">{run.planMd}</Text>
             ) : null}
-            <Text variant="mono">{run.planMd}</Text>
           </Card>
         ) : null}
 
@@ -391,7 +469,7 @@ export default function RunDetail() {
           </HStack>
           <VStack gap="sm">
             {events.map((e, idx) => (
-              <View key={e.id}>
+              <View key={e.id ?? `evt-${idx}`}>
                 {idx > 0 ? <Separator style={{ marginBottom: spacing.sm }} /> : null}
                 <HStack justify="space-between">
                   <Text variant="footnote" style={{ fontWeight: '600' }}>

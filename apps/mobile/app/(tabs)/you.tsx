@@ -63,16 +63,16 @@ export default function You() {
   const probe = useCallback(async () => {
     setRunning(true);
     const [token, secure] = await Promise.all([getToken(), probeSecureStore()]);
-    const meRes = await api<Me>('/api/auth/me', { noRecovery: true });
-    const summaryRes = await api<unknown>('/api/today/summary', { noRecovery: true });
+    const meRes = await api<Me>('/api/auth/me', { silent401: true });
+    const summaryRes = await api<unknown>('/api/today/summary', { silent401: true });
     setDebug({
       tokenPresent: !!token,
       tokenLen: token?.length ?? 0,
       tokenPreview: token ? `${token.slice(0, 6)}…${token.slice(-4)}` : '',
       meStatus: meRes.status,
-      meBody: JSON.stringify(meRes.data ?? null).slice(0, 200),
+      meBody: truncateBody(meRes.data ?? null),
       summaryStatus: summaryRes.status,
-      summaryBody: JSON.stringify(summaryRes.data ?? null).slice(0, 200),
+      summaryBody: truncateBody(summaryRes.data ?? null),
       secureStore: secure,
       oauthLog: getLastOAuthLog(),
     });
@@ -92,7 +92,13 @@ export default function You() {
         style: 'destructive',
         onPress: async () => {
           await unregisterCurrentToken();
-          await logout();
+          const result = await logout();
+          if (!result.ok) {
+            // The local token is already cleared inside logout(); the server
+            // call failed, so the row may still be active server-side. Warn
+            // but still redirect — the user is functionally signed out here.
+            console.warn('[signout] server call failed:', result.error);
+          }
           router.replace('/login');
         },
       },
@@ -148,8 +154,18 @@ export default function You() {
           variant="secondary"
           fullWidth
           onPress={async () => {
-            const r = await api('/api/push/test', { method: 'POST' });
-            if (!r.ok) Alert.alert('Test push failed', `Status ${r.status}`);
+            const r = await api<{ devices?: number }>('/api/push/test', { method: 'POST' });
+            if (!r.ok) {
+              Alert.alert('Test push failed', `Status ${r.status}`);
+              return;
+            }
+            const devices = r.data?.devices ?? 0;
+            Alert.alert(
+              'Test push sent',
+              devices > 0
+                ? `Sent to ${devices} device${devices === 1 ? '' : 's'}.`
+                : 'No registered devices — open the app on a phone to register one.',
+            );
           }}
         />
         <Button
@@ -209,6 +225,18 @@ export default function You() {
       </ScrollScreen>
     </Screen>
   );
+}
+
+// JSON-stringify a probe response, capped at MAX chars. Cuts on a word
+// boundary so we don't leave a half-token in the diagnostics row.
+const MAX_BODY_CHARS = 200;
+function truncateBody(value: unknown): string {
+  const s = JSON.stringify(value ?? null);
+  if (s.length <= MAX_BODY_CHARS) return s;
+  const slice = s.slice(0, MAX_BODY_CHARS);
+  const lastBreak = Math.max(slice.lastIndexOf(' '), slice.lastIndexOf(','), slice.lastIndexOf('"'));
+  const cut = lastBreak > MAX_BODY_CHARS - 40 ? lastBreak : MAX_BODY_CHARS;
+  return `${slice.slice(0, cut)}…`;
 }
 
 function DiagRow({ label, value }: { label: string; value: string }) {

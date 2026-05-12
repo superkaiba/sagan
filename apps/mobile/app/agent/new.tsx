@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { api } from '@/lib/api';
 import { radius, spacing, useTheme } from '@/lib/theme';
-import { Button, Card, Input, ScrollScreen, SectionLabel, Text, VStack } from '@/ui';
+import { Button, Card, Input, Screen, ScrollScreen, SectionLabel, Text, VStack } from '@/ui';
 
 type Kind = 'plan' | 'apply' | 'qa' | 'experiment';
 
@@ -40,11 +40,12 @@ export default function NewDispatch() {
   const activeHint = KINDS.find((k) => k.id === kind)?.hint;
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1 }}
-    >
-      <ScrollScreen>
+    <Screen edges={['top']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollScreen>
         <VStack gap="sm">
           <SectionLabel>Kind</SectionLabel>
           <View
@@ -60,6 +61,9 @@ export default function NewDispatch() {
               <Pressable
                 key={k.id}
                 onPress={() => setKind(k.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: kind === k.id }}
+                accessibilityLabel={`${k.label} run kind`}
                 style={({ pressed }) => ({
                   flex: 1,
                   alignItems: 'center',
@@ -110,7 +114,8 @@ export default function NewDispatch() {
             Plan and Experiment runs require approval. Apply runs start immediately.
           </Text>
         </Card>
-      </ScrollScreen>
-    </KeyboardAvoidingView>
+        </ScrollScreen>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }

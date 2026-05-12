@@ -188,20 +188,4 @@ export function useTheme(): Theme {
   };
 }
 
-/**
- * Back-compat: the original flat color object. Light-only. Prefer `useTheme()`
- * in new code; this stays exported so any unrefactored screen keeps compiling.
- */
-export const C = {
-  bg: palette.light.bg,
-  fg: palette.light.fg,
-  muted: palette.light.mutedFg,
-  mutedBg: palette.light.sunken,
-  border: palette.light.border,
-  accent: palette.light.accent,
-  accentFg: palette.light.accentFg,
-  danger: palette.light.danger,
-  success: palette.light.success,
-};
-
 export { palette };

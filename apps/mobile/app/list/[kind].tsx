@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, RefreshControl } from 'react-native';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api } from '@/lib/api';
@@ -55,14 +55,16 @@ const STATUS_TONE: Record<string, PillTone> = {
 function relTime(iso?: string): string {
   if (!iso) return '';
   const d = new Date(iso);
-  const min = Math.floor((Date.now() - d.getTime()) / 60_000);
+  const t = d.getTime();
+  if (!Number.isFinite(t)) return '';
+  const min = Math.floor((Date.now() - t) / 60_000);
   if (min < 1) return 'just now';
   if (min < 60) return `${min}m ago`;
   const h = Math.floor(min / 60);
   if (h < 24) return `${h}h ago`;
   const days = Math.floor(h / 24);
   if (days < 30) return `${days}d ago`;
-  return d.toLocaleDateString();
+  return d.toLocaleDateString('en-US');
 }
 
 function preview(row: BaseRow): string {
@@ -80,6 +82,17 @@ export default function ListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const load = useCallback(async () => {
     if (!config) {
       setError(`Unknown kind: ${kind}`);
@@ -87,11 +100,17 @@ export default function ListScreen() {
       setRefreshing(false);
       return;
     }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setError(null);
-    const r = await api<Record<string, BaseRow[]>>(config.endpoint);
+    const r = await api<Record<string, BaseRow[]>>(config.endpoint, {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted || !isMountedRef.current) return;
     if (r.ok && r.data) {
       setRows(r.data[config.field] ?? []);
-    } else {
+    } else if (r.error !== 'aborted') {
       setError(r.error ?? `Failed to load (${r.status})`);
     }
     setLoading(false);

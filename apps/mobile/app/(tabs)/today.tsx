@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, RefreshControl, SectionList, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/lib/api';
@@ -55,7 +55,9 @@ const ACTION_PREFIX_RE = /^\s*(?:\*\*)?Action:/;
 const isActionTrail = (entry: Entry) => ACTION_PREFIX_RE.test(entry.bodyMd);
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '—';
+  return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatRelative(date: Date | null) {
@@ -63,7 +65,7 @@ function formatRelative(date: Date | null) {
   const min = Math.floor((Date.now() - date.getTime()) / 60_000);
   if (min < 1) return 'Updated just now';
   if (min < 60) return `Updated ${min}m ago`;
-  return `Updated ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  return `Updated ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 export default function Today() {
@@ -79,17 +81,32 @@ export default function Today() {
   const [cleanAnswer, setCleanAnswer] = useState('');
   const [cleanBusy, setCleanBusy] = useState<'question' | 'draft' | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const load = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     const [r, summaryRes] = await Promise.all([
-      api<DailyLogResponse>('/api/daily-log'),
-      api<TodaySummary>('/api/today/summary'),
+      api<DailyLogResponse>('/api/daily-log', { signal: controller.signal }),
+      api<TodaySummary>('/api/today/summary', { signal: controller.signal }),
     ]);
+    if (controller.signal.aborted || !isMountedRef.current) return;
     if (r.ok && r.data) {
       setEntries(r.data.entries);
       setDay(r.data.day);
       setLastRefreshedAt(new Date());
       setError(null);
-    } else {
+    } else if (r.error !== 'aborted') {
       setError(r.error ?? `Refresh failed (${r.status})`);
     }
     if (summaryRes.ok && summaryRes.data) setSummary(summaryRes.data);
@@ -97,14 +114,13 @@ export default function Today() {
     setRefreshing(false);
   }, []);
 
+  // useFocusEffect fires on every focus including initial mount — no separate
+  // mount-time useEffect required.
   useFocusEffect(
     useCallback(() => {
       void load();
     }, [load]),
   );
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const refresh = useCallback(() => {
     setRefreshing(true);
@@ -149,6 +165,9 @@ export default function Today() {
     return (
       <Screen edges={['top']}>
         <LargeTitle title="Today" subtitle={formatRelative(lastRefreshedAt)} />
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.xs }}>
+          <SummaryStrip summary={summary} />
+        </View>
         <LoadingState />
       </Screen>
     );

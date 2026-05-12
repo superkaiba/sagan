@@ -31,15 +31,23 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Only routes the app actually owns may be opened via push payload, so a
+// malformed or hostile payload can't bounce the user into an unexpected screen.
+const ALLOWED_PUSH_ROUTE_RE = /^\/(agent|entity|list|today|browse|you|login)(\/|$|\?)/;
+
 export function configureNotificationHandling() {
   const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response.notification.request.content.data as { url?: string } | undefined;
-    if (data?.url && typeof data.url === 'string') {
-      try {
-        router.push(data.url as never);
-      } catch {
-        // bad url — swallow
-      }
+    const data = response.notification.request.content.data as { url?: unknown } | undefined;
+    const url = typeof data?.url === 'string' ? data.url : null;
+    if (!url || !ALLOWED_PUSH_ROUTE_RE.test(url)) {
+      if (url) console.warn('[push] dropping unknown deep link:', url);
+      return;
+    }
+    try {
+      router.push(url as never);
+    } catch {
+      // expo-router rejected the route (deleted screen, malformed params) —
+      // nothing useful to recover; suppress.
     }
   });
   return () => sub.remove();

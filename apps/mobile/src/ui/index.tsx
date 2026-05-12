@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode } from 'react';
+import { forwardRef, useMemo, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -228,21 +228,28 @@ export function Card({
   ...rest
 }: CardProps) {
   const t = useTheme();
-  const bg = variant === 'sunken' ? t.colors.sunken : t.colors.surface;
-  const padValue = typeof pad === 'number' ? pad : spacing[pad];
-  const cardStyle: ViewStyle = {
-    backgroundColor: bg,
-    borderRadius: radius.lg,
-    padding: padValue,
-    gap: spacing[gap],
-    borderWidth: variant === 'outlined' ? StyleSheet.hairlineWidth : 0,
-    borderColor: variant === 'outlined' ? t.colors.border : 'transparent',
-  };
+  // Memoize per variant/pad/gap/theme tuple — Card is rendered for every event
+  // on the run-detail screen (up to hundreds), so churning style objects each
+  // render measurably affects scroll smoothness.
+  const cardStyle = useMemo<ViewStyle>(() => {
+    const bg = variant === 'sunken' ? t.colors.sunken : t.colors.surface;
+    const padValue = typeof pad === 'number' ? pad : spacing[pad];
+    return {
+      backgroundColor: bg,
+      borderRadius: radius.lg,
+      padding: padValue,
+      gap: spacing[gap],
+      borderWidth: variant === 'outlined' ? StyleSheet.hairlineWidth : 0,
+      borderColor: variant === 'outlined' ? t.colors.border : 'transparent',
+    };
+  }, [variant, pad, gap, t.colors.sunken, t.colors.surface, t.colors.border]);
   if (onPress) {
     return (
       <Pressable
         onPress={onPress}
-        style={({ pressed }) => [cardStyle, pressed && { opacity: 0.72 }, style]}
+        accessibilityRole="button"
+        style={({ pressed }) => [cardStyle, pressed && { opacity: t.isDark ? 0.88 : 0.78 }, style]}
+        android_ripple={{ color: t.colors.accentSoft, borderless: false }}
         {...pressableProps}
       >
         {children}

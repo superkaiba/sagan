@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, RefreshControl } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api, apiBase } from '@/lib/api';
@@ -17,74 +17,88 @@ import {
 
 type Kind = 'project' | 'experiment' | 'belief';
 
-interface EntityResponse {
-  project?: any;
-  experiment?: any;
-  belief?: any;
+interface EntityRow {
+  id: string;
+  title?: string | null;
+  status?: string | null;
+  confidence?: string | null;
+  kind?: string | null;
+  slug?: string | null;
+  body?: string | null;
+  summaryMd?: string | null;
+  hypothesis?: string | null;
+  currentBelief?: string | null;
 }
 
-const KIND_CONFIG: Record<
-  Kind,
-  {
-    endpoint: (id: string) => string;
-    field: keyof EntityResponse;
-    title: string;
-    webPath: (id: string, row: any) => string;
-  }
-> = {
-  project: {
-    endpoint: (id) => `/api/projects/${id}`,
-    field: 'project',
-    title: 'Project',
-    webPath: (id, row) => (row?.slug ? `/projects/${row.slug}` : `/e/project/${id}`),
-  },
-  experiment: {
-    endpoint: (id) => `/api/experiments/${id}`,
-    field: 'experiment',
-    title: 'Experiment',
-    webPath: (id) => `/e/experiment/${id}`,
-  },
-  belief: {
-    endpoint: (id) => `/api/beliefs/${id}`,
-    field: 'belief',
-    title: 'Belief',
-    webPath: (id) => `/e/belief/${id}`,
-  },
+interface EntityResponse {
+  entity: EntityRow;
+}
+
+const KIND_TITLES: Record<Kind, string> = {
+  project: 'Project',
+  experiment: 'Experiment',
+  belief: 'Belief',
 };
 
-function bodyText(row: any): string {
-  return row?.body ?? row?.summaryMd ?? row?.hypothesis ?? row?.currentBelief ?? '';
+function webPathFor(kind: Kind, id: string, row: EntityRow | null): string {
+  if (kind === 'project' && row?.slug) return `/projects/${row.slug}`;
+  return `/e/${kind}/${id}`;
 }
+
+function bodyText(row: EntityRow): string {
+  return row.body ?? row.summaryMd ?? row.hypothesis ?? row.currentBelief ?? '';
+}
+
+const VALID_KINDS = new Set<Kind>(['project', 'experiment', 'belief']);
 
 export default function EntityDetailScreen() {
   const t = useTheme();
   const params = useLocalSearchParams<{ kind: string; id: string }>();
   const kind = params.kind as Kind;
   const id = params.id;
-  const config = KIND_CONFIG[kind];
+  const validKind = VALID_KINDS.has(kind);
 
-  const [row, setRow] = useState<any>(null);
+  const [row, setRow] = useState<EntityRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const load = useCallback(async () => {
-    if (!config || !id) {
+    if (!validKind || !id) {
       setError('Unknown entity');
       setLoading(false);
       setRefreshing(false);
       return;
     }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setError(null);
-    const r = await api<EntityResponse>(config.endpoint(id));
-    if (r.ok && r.data) {
-      setRow((r.data as any)[config.field] ?? r.data);
-    } else {
+    // /api/entity/[kind]/[id] is access-aware (owner + entity members), unlike
+    // /api/{projects,beliefs}/[id] which only export PATCH.
+    const r = await api<EntityResponse>(`/api/entity/${kind}/${id}`, {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted || !isMountedRef.current) return;
+    if (r.ok && r.data?.entity) {
+      setRow(r.data.entity);
+    } else if (r.error !== 'aborted') {
       setError(r.error ?? `Failed to load (${r.status})`);
     }
     setLoading(false);
     setRefreshing(false);
-  }, [config, id]);
+  }, [validKind, kind, id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -97,7 +111,7 @@ export default function EntityDetailScreen() {
     void load();
   }, [load]);
 
-  if (!config) {
+  if (!validKind) {
     return (
       <ScrollScreen>
         <EmptyState icon="alert-circle-outline" title="Unknown" message={`No view for "${kind}".`} />
@@ -108,7 +122,7 @@ export default function EntityDetailScreen() {
   if (loading && !row) {
     return (
       <>
-        <Stack.Screen options={{ title: config.title }} />
+        <Stack.Screen options={{ title: KIND_TITLES[kind] }} />
         <LoadingState />
       </>
     );
@@ -118,7 +132,7 @@ export default function EntityDetailScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: config.title }} />
+      <Stack.Screen options={{ title: KIND_TITLES[kind] }} />
       <ScrollScreen
         refreshControl={
           <RefreshControl
@@ -143,7 +157,7 @@ export default function EntityDetailScreen() {
               <HStack gap="sm" wrap>
                 {row.status ? <Pill tone="neutral">{row.status}</Pill> : null}
                 {row.confidence ? (
-                  <Pill tone="accent">{String(row.confidence).toLowerCase()}</Pill>
+                  <Pill tone="accent">{row.confidence.toLowerCase()}</Pill>
                 ) : null}
                 {row.kind ? <Pill tone="info">{row.kind}</Pill> : null}
               </HStack>
@@ -164,7 +178,7 @@ export default function EntityDetailScreen() {
               icon="open-outline"
               variant="secondary"
               fullWidth
-              onPress={() => Linking.openURL(`${apiBase}${config.webPath(id, row)}`)}
+              onPress={() => Linking.openURL(`${apiBase}${webPathFor(kind, id, row)}`)}
             />
           </>
         ) : null}

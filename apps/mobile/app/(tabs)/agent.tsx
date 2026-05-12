@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, RefreshControl } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { api } from '@/lib/api';
@@ -54,7 +54,9 @@ const ACTIVE_STATUSES = new Set(['queued', 'running', 'approved', 'deploying']);
 function staleHint(run: AgentRun) {
   if (!ACTIVE_STATUSES.has(run.status)) return null;
   const basis = run.updatedAt ?? run.createdAt;
-  const ageMs = Date.now() - new Date(basis).getTime();
+  const t = new Date(basis).getTime();
+  if (!Number.isFinite(t)) return null;
+  const ageMs = Date.now() - t;
   if (ageMs < 10 * 60 * 1000) return null;
   const minutes = Math.floor(ageMs / 60_000);
   return `idle ${minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`}`;
@@ -62,12 +64,14 @@ function staleHint(run: AgentRun) {
 
 function formatTime(iso: string) {
   const d = new Date(iso);
-  const diffMin = Math.floor((Date.now() - d.getTime()) / 60_000);
+  const ts = d.getTime();
+  if (!Number.isFinite(ts)) return '—';
+  const diffMin = Math.floor((Date.now() - ts) / 60_000);
   if (diffMin < 1) return 'just now';
   if (diffMin < 60) return `${diffMin}m ago`;
   const h = Math.floor(diffMin / 60);
   if (h < 24) return `${h}h ago`;
-  return d.toLocaleDateString();
+  return d.toLocaleDateString('en-US');
 }
 
 export default function AgentList() {
@@ -77,12 +81,29 @@ export default function AgentList() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const load = useCallback(async () => {
-    const r = await api<{ runs: AgentRun[] }>('/api/agent-runs?limit=50');
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const r = await api<{ runs: AgentRun[] }>('/api/agent-runs?limit=50', {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted || !isMountedRef.current) return;
     if (r.ok && r.data) {
       setRuns(r.data.runs);
       setError(null);
-    } else {
+    } else if (r.error !== 'aborted') {
       setError(r.error ?? `Refresh failed (${r.status})`);
     }
     setLoading(false);

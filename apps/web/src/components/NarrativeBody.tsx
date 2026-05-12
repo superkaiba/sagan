@@ -216,15 +216,44 @@ function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
       const node =
         existing ??
         (() => {
+          // Imperatively-set Tailwind classes (especially arbitrary-value
+          // variants like bg-[--color-panel]) aren't reliably picked up by
+          // the JIT scanner, so set the visual properties via style instead.
           const created = document.createElement('div');
           created.setAttribute('data-anchor-popover', '');
-          created.style.userSelect = 'none';
-          created.className =
-            'absolute z-20 -translate-x-1/2 -translate-y-full rounded-md border border-[--color-border] bg-[--color-panel] px-2 py-1 text-xs font-medium shadow-md';
+          Object.assign(created.style, {
+            position: 'absolute',
+            zIndex: '20',
+            transform: 'translate(-50%, -100%)',
+            userSelect: 'none',
+            backgroundColor: 'var(--color-panel)',
+            color: 'var(--color-fg)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '6px',
+            padding: '4px 8px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.12)',
+            fontSize: '12px',
+            fontWeight: '500',
+            lineHeight: '1.2',
+            whiteSpace: 'nowrap',
+          });
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.textContent = '💬 Comment';
-          btn.className = 'text-[--color-fg] hover:text-[--color-accent]';
+          Object.assign(btn.style, {
+            background: 'transparent',
+            border: '0',
+            padding: '0',
+            color: 'var(--color-fg)',
+            font: 'inherit',
+            cursor: 'pointer',
+          });
+          btn.addEventListener('mouseenter', () => {
+            btn.style.color = 'var(--color-accent)';
+          });
+          btn.addEventListener('mouseleave', () => {
+            btn.style.color = 'var(--color-fg)';
+          });
           created.appendChild(btn);
           el.appendChild(created);
           return created;

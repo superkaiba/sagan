@@ -1,11 +1,16 @@
-import { HeartPulse, LogOut, Mail, ShieldCheck } from 'lucide-react';
+import { BarChart3, Bot, FolderOpen, HeartPulse, KeyRound, LogOut, Mail, ScrollText, ShieldCheck } from 'lucide-react';
 import { ThemeControl } from '@/components/ThemeControl';
 import { ListRow, PageHeader, Panel, buttonClassName } from '@/components/ui';
 
 const LINKS = [
+  { title: 'Results', href: '/results', detail: 'Daily log, weekly digests, and finding history.', icon: BarChart3 },
+  { title: 'Projects', href: '/projects', detail: 'Project records and narrative drafts.', icon: FolderOpen },
+  { title: 'Automation', href: '/automation', detail: 'Dispatch and inspect agent runs.', icon: Bot },
+  { title: 'Log', href: '/log', detail: 'Chronological research, approval, and automation activity.', icon: ScrollText },
   { title: 'Weekly digests', href: '/digests', detail: 'Draft, edit, and share advisor updates.', icon: Mail },
   { title: 'Health', href: '/admin/health', detail: 'Runner, notification, job, and pod status.', icon: HeartPulse },
   { title: 'Mentor updates', href: '/mentor/updates', detail: 'External mentor-facing result view.', icon: ShieldCheck },
+  { title: 'API tokens', href: '/api-tokens', detail: 'Mint and revoke long-lived bearer tokens for scripts.', icon: KeyRound },
 ];
 
 export default function MorePage() {

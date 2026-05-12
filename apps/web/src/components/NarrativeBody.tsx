@@ -84,6 +84,16 @@ function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
   const scrollToCommentId = ctx?.scrollToCommentId ?? null;
   const clearScrollRequest = ctx?.clearScrollRequest;
   const setPendingAnchor = ctx?.setPendingAnchor;
+  const pendingAnchor = ctx?.pendingAnchor ?? null;
+
+  // When pendingAnchor is cleared (submit success or × clicked) drop the
+  // transient highlight. While pendingAnchor is set, the mark stays put
+  // because applyAnchors never touches mark[data-anchor-pending].
+  useEffect(() => {
+    if (!ref.current) return;
+    if (pendingAnchor) return;
+    unwrapPendingMarks(ref.current);
+  }, [pendingAnchor, ref]);
 
   // Re-wrap anchors only when the list changes (not on every hover).
   useEffect(() => {
@@ -228,6 +238,17 @@ function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
           // alive and so focus does not transfer to the button.
           e.preventDefault();
           e.stopPropagation();
+          // Capture the range before we clear the selection, then wrap it in
+          // a transient mark so the highlight stays visible while the user
+          // writes the comment.
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0 && el) {
+            const range = sel.getRangeAt(0);
+            if (el.contains(range.commonAncestorContainer)) {
+              unwrapPendingMarks(el);
+              wrapRangeAsPending(range);
+            }
+          }
           setPendingAnchor({ quote: popover.quote });
           setPopover(null);
           window.getSelection()?.removeAllRanges();
@@ -263,6 +284,8 @@ function applyAnchors(root: HTMLElement, anchors: AnchorRecord[]) {
 }
 
 function unwrapAllMarks(root: HTMLElement) {
+  // Only unwrap committed anchors; transient pending marks survive because a
+  // poll-driven re-anchor would otherwise yank a user's in-progress highlight.
   const marks = Array.from(root.querySelectorAll('mark[data-comment-id]'));
   for (const m of marks) {
     const parent = m.parentNode;
@@ -274,12 +297,46 @@ function unwrapAllMarks(root: HTMLElement) {
   root.normalize();
 }
 
+/** Wrap an arbitrary range in a transient highlight that survives polls. */
+function wrapRangeAsPending(range: Range): HTMLElement | null {
+  const mark = document.createElement('mark');
+  mark.setAttribute('data-anchor-pending', '');
+  mark.className = 'anchor-pending';
+  try {
+    range.surroundContents(mark);
+    return mark;
+  } catch {
+    try {
+      mark.appendChild(range.extractContents());
+      range.insertNode(mark);
+      return mark;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function unwrapPendingMarks(root: HTMLElement) {
+  const marks = Array.from(root.querySelectorAll('mark[data-anchor-pending]'));
+  for (const m of marks) {
+    const parent = m.parentNode;
+    if (!parent) continue;
+    while (m.firstChild) parent.insertBefore(m.firstChild, m);
+    parent.removeChild(m);
+  }
+  root.normalize();
+}
+
 function wrapFirstMatch(root: HTMLElement, quote: string, commentId: string) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
       if (!parent) return NodeFilter.FILTER_REJECT;
-      if (parent.closest('mark[data-comment-id]')) return NodeFilter.FILTER_REJECT;
+      // Skip text already inside any anchor mark (committed or pending) so we
+      // don't double-wrap.
+      if (parent.closest('mark[data-comment-id], mark[data-anchor-pending]')) {
+        return NodeFilter.FILTER_REJECT;
+      }
       if (parent.closest('script,style,[data-anchor-popover]')) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },

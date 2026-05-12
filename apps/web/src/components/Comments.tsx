@@ -72,7 +72,10 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     parentCommentId?: string | null,
     anchoredQuote?: string | null,
   ) {
-    const payload: Record<string, unknown> = { entityKind, entityId, body: text, parentCommentId };
+    // The API's zod schema marks both fields .optional() — that means undefined
+    // or absent, NOT null. Building the payload conditionally keeps null out.
+    const payload: Record<string, unknown> = { entityKind, entityId, body: text };
+    if (parentCommentId) payload.parentCommentId = parentCommentId;
     if (anchoredQuote) payload.anchoredQuote = anchoredQuote;
     const res = await fetch('/api/comments', {
       method: 'POST',

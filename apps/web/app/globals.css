@@ -410,3 +410,15 @@ mark.anchor-mark.is-hovered {
 mark.anchor-mark.is-flash {
   animation: sagan-anchor-flash 1.2s ease-in-out;
 }
+
+/* Transient highlight while the user is composing a not-yet-posted comment.
+ * Lives only between the floating-Comment click and the form submit (or
+ * cancel). Visually matches the committed anchor so the transition is
+ * seamless once the new mark replaces it. */
+mark.anchor-pending {
+  background-color: color-mix(in srgb, var(--color-warning) 32%, transparent);
+  color: inherit;
+  padding: 0 1px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--color-warning) 70%, transparent);
+  border-radius: 2px;
+}

@@ -34,8 +34,8 @@
   --color-surface-subtle: #ece7dc;
   --color-surface-raised: #fffdf8;
 
-  --font-sans: Aptos, "SF Pro Text", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Liberation Mono", monospace;
+  --font-sans: var(--font-geist-sans), "Aptos", "SF Pro Text", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, Monaco, "Liberation Mono", monospace;
 }
 
 :root,

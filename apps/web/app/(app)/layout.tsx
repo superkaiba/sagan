@@ -8,7 +8,7 @@ import { ApprovalTitleBadge } from '@/components/ApprovalTitleBadge';
 import { AppNav } from '@/components/AppNav';
 import { ThemeControl } from '@/components/ThemeControl';
 import { ConversationDock } from '@/components/ConversationDock';
-import { MathRenderer } from '@/components/MathRenderer';
+import { TocHighlighter } from '@/components/TocHighlighter';
 import { hasFullDashboardAccess } from '@/lib/full-dashboard-access';
 import { loadShellDashboardState } from '@/lib/dashboard';
 import { buttonClassName, StatusBadge } from '@/components/ui';
@@ -180,7 +180,7 @@ export default async function AppLayout({
       <main id="main-content" className="mx-auto w-full max-w-[94rem] p-4 pb-24 md:p-7">
         {children}
       </main>
-      <MathRenderer />
+      <TocHighlighter />
       {modal}
       {fullDashboard ? (
         <>

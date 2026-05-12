@@ -1,6 +1,40 @@
 import sanitizeHtml from 'sanitize-html';
+import katex from 'katex';
 import { cn } from '@/lib/cn';
 import { Markdown } from './Markdown';
+
+/**
+ * Replace LaTeX delimiters in body text with KaTeX-rendered HTML.
+ * Process display delimiters before inline so `$$` doesn't get partially
+ * consumed by `$...$` (we don't use single-dollar at all to avoid prose
+ * collisions, but defensive ordering is cheap).
+ *
+ * Output is HTML-only (no MathML) so the sanitizer's allow-list doesn't
+ * need to grow to admit <math>/<mrow>/<mi>.
+ */
+function renderMathDelimiters(input: string): string {
+  const render = (tex: string, displayMode: boolean): string => {
+    try {
+      return katex.renderToString(tex.trim(), {
+        displayMode,
+        throwOnError: false,
+        errorColor: '#D97757',
+        output: 'html',
+      });
+    } catch {
+      return tex; // Fall back to raw text on render failure.
+    }
+  };
+
+  let s = input;
+  // \[ ... \] — display
+  s = s.replace(/\\\[([\s\S]+?)\\\]/g, (_m, tex) => render(tex, true));
+  // $$ ... $$ — display
+  s = s.replace(/\$\$([\s\S]+?)\$\$/g, (_m, tex) => render(tex, true));
+  // \( ... \) — inline
+  s = s.replace(/\\\(([\s\S]+?)\\\)/g, (_m, tex) => render(tex, false));
+  return s;
+}
 
 /**
  * Detect whether a body string is intended as HTML.
@@ -146,7 +180,11 @@ export function RichBody({ children, className }: { children: string; className?
     return <p className={cn('text-sm text-[--color-muted]', className)}>No description.</p>;
   }
   if (looksLikeHtml(children)) {
-    const safe = sanitizeHtml(children, SANITIZE_OPTIONS);
+    // KaTeX renders BEFORE sanitization so its <span class="katex …">
+    // output flows through the sanitizer naturally (class attribute is
+    // already in the allow-list).
+    const withMath = renderMathDelimiters(children);
+    const safe = sanitizeHtml(withMath, SANITIZE_OPTIONS);
     return (
       <div
         className={cn(BODY_STYLES, className)}

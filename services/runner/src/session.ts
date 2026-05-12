@@ -5,7 +5,8 @@
  * plan_md when the model invokes ExitPlanMode, and finalizes the run row when
  * the SDKResultMessage arrives.
  */
-import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { runAgentWithContinuation } from './lib/run-agent.js';
 import { and, asc, eq, ilike, isNull, ne } from 'drizzle-orm';
 import { db, schema } from './db.js';
 import { emitEvent, notifyQueued } from './queue.js';
@@ -96,7 +97,11 @@ async function runWithStreaming(
   let recordedClaudeSessionId = initialClaudeSessionId;
 
   try {
-    for await (const message of query({ prompt, options })) {
+    for await (const message of runAgentWithContinuation({
+      initialPrompt: prompt,
+      options,
+      jobTag: `agent-run-${runId.slice(0, 8)}`,
+    })) {
       await handleMessage(runId, message);
       const messageSessionId = sdkSessionId(message);
       if (row.chatSessionId && messageSessionId && messageSessionId !== recordedClaudeSessionId) {

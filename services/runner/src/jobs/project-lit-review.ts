@@ -13,12 +13,13 @@
  *      view surfaces it for review.
  */
 import { eq } from 'drizzle-orm';
-import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { type Options } from '@anthropic-ai/claude-agent-sdk';
 import { dailyLogEntries, jobRuns, projectNarratives, projects } from '@sagan/db/schema';
 import { db } from '../db.js';
 import { env, requireEnv } from '../env.js';
 import { log } from '../log.js';
 import { recordTrail } from '../trail.js';
+import { lastAssistantTextFromMessage, runAgentWithContinuation } from '../lib/run-agent.js';
 import type { JobContext, JobOutcome } from './job-runs.js';
 
 const CLAUDE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — deep research can take a while.
@@ -153,22 +154,26 @@ async function runDeepResearch(prompt: string): Promise<string> {
     strictMcpConfig: true,
     settingSources: [],
     model: 'claude-sonnet-4-6',
-    maxTurns: 60,
     persistSession: false,
   };
 
   try {
     let lastAssistantText = '';
-    for await (const message of query({ prompt, options })) {
+    for await (const message of runAgentWithContinuation({
+      initialPrompt: prompt,
+      options,
+      jobTag: 'project-lit-review',
+    })) {
       const t = lastAssistantTextFromMessage(message);
       if (t) lastAssistantText = t;
-      if (message.type !== 'result') continue;
-      if (message.subtype !== 'success') {
+      if (message.type === 'result' && message.subtype !== 'success') {
         throw new Error(`Claude project lit-review failed: ${message.subtype}`);
       }
-      return (message.result?.trim() || lastAssistantText.trim());
     }
-    throw new Error('Claude project lit-review ended without a result');
+    if (!lastAssistantText) {
+      throw new Error('Claude project lit-review ended without any assistant text');
+    }
+    return lastAssistantText;
   } catch (err) {
     if (abortController.signal.aborted) {
       throw new Error(`Claude project lit-review timed out after ${CLAUDE_TIMEOUT_MS / 1000}s`);
@@ -178,13 +183,4 @@ async function runDeepResearch(prompt: string): Promise<string> {
   } finally {
     clearTimeout(timeout);
   }
-}
-
-function lastAssistantTextFromMessage(message: SDKMessage) {
-  if (message.type !== 'assistant') return '';
-  return (message.message?.content ?? [])
-    .map((block) => (block.type === 'text' ? block.text : ''))
-    .filter(Boolean)
-    .join('\n')
-    .trim();
 }

@@ -10,7 +10,8 @@
  */
 import { XMLParser } from 'fast-xml-parser';
 import Anthropic from '@anthropic-ai/sdk';
-import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { runAgentWithContinuation } from '../lib/run-agent.js';
 import { z } from 'zod';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { beliefs, cleanResults, edges, experiments, litInbox, litItems, litSources } from '@sagan/db/schema';
@@ -370,23 +371,25 @@ async function discoverWithClaudeCode(contexts: ResearchContext[]): Promise<Rank
     strictMcpConfig: true,
     settingSources: [],
     model: 'claude-sonnet-4-6',
-    maxTurns: 10,
-    maxBudgetUsd: 3,
     persistSession: false,
   };
 
   try {
     let lastAssistantText = '';
-    for await (const message of query({ prompt, options })) {
+    for await (const message of runAgentWithContinuation({
+      initialPrompt: prompt,
+      options,
+      jobTag: 'lit-review-discovery',
+    })) {
       lastAssistantText = lastAssistantTextFromMessage(message) || lastAssistantText;
-      if (message.type !== 'result') continue;
-      if (message.subtype !== 'success') {
+      if (message.type === 'result' && message.subtype !== 'success') {
         throw new Error(`Claude Code discovery failed: ${message.subtype}`);
       }
-      const finalText = message.result?.trim() || lastAssistantText.trim();
-      return parseDiscoveredItems(finalText, contexts);
     }
-    throw new Error('Claude Code discovery ended without a result');
+    if (!lastAssistantText) {
+      throw new Error('Claude Code discovery ended without any assistant text');
+    }
+    return parseDiscoveredItems(lastAssistantText, contexts);
   } catch (err) {
     if (abortController.signal.aborted) {
       throw new Error(`Claude Code discovery timed out after ${CLAUDE_DISCOVERY_TIMEOUT_MS / 1000}s`);

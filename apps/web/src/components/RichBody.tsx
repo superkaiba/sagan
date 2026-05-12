@@ -96,6 +96,14 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   },
   allowedSchemesAppliedToAttributes: ['href', 'src', 'cite'],
   parseStyleAttributes: true,
+  // SVG attribute names are case-sensitive (`viewBox`, `preserveAspectRatio`,
+  // `gradientUnits`, etc.). htmlparser2's default lowercases everything,
+  // which breaks SVG rendering — disable both element + attribute lowercasing
+  // so embedded SVG survives the sanitizer untouched.
+  parser: {
+    lowerCaseTags: false,
+    lowerCaseAttributeNames: false,
+  },
 };
 
 const BODY_STYLES = [

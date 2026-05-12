@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Markdown } from './Markdown';
 import {
   useAnchoredComments,
@@ -35,17 +35,27 @@ export function NarrativeBody({ body }: { body: string }) {
 }
 
 function HtmlNarrative({ body }: { body: string }) {
+  // The inner HTML lives in a memo'd child so popover/anchor state changes in
+  // useAnchorBehaviors don't cause React to touch dangerouslySetInnerHTML —
+  // React 19 was rebuilding the children on every parent render, which wiped
+  // out the user's text selection.
   const ref = useRef<HTMLDivElement>(null);
   useAnchorBehaviors(ref);
   return (
+    <div ref={ref} className="narrative-html relative">
+      <HtmlInner body={body} />
+    </div>
+  );
+}
+
+const HtmlInner = memo(function HtmlInner({ body }: { body: string }) {
+  return (
     <div
-      ref={ref}
-      className="narrative-html relative"
       // biome-ignore lint/security/noDangerouslySetInnerHtml: author is trusted (auth-gated write)
       dangerouslySetInnerHTML={{ __html: body }}
     />
   );
-}
+});
 
 function MarkdownNarrative({ body }: { body: string }) {
   // No anchor wrapping on the markdown path: react-markdown owns its child

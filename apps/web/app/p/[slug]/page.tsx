@@ -4,10 +4,12 @@ import { and, desc, eq, or } from 'drizzle-orm';
 import { projectNarratives, projects } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { extractTocAndAddIds } from '@/lib/narrative-toc';
 import { Comments } from '@/components/Comments';
 import { ImproveNarrativeButton } from '@/components/ImproveNarrativeButton';
 import { Markdown } from '@/components/Markdown';
 import { NarrativeBody } from '@/components/NarrativeBody';
+import { NarrativeToc } from '@/components/NarrativeToc';
 import { NarrativeVersionSelector } from '@/components/NarrativeVersionSelector';
 
 export const dynamic = 'force-dynamic';
@@ -15,13 +17,8 @@ export const dynamic = 'force-dynamic';
 /**
  * Public project view. Renders the latest published narrative for any project
  * with `public = true`, or a specific archived version when `?v=<narrativeId>`
- * is passed. Layout is two-column on desktop — article on the left, discussion
- * (comments + Improve button) on the right, sticky so it stays visible while
- * scrolling. Single column on mobile.
- *
- * Future additions:
- * - share_token query param for non-public projects
- * - in-page experiment overlays on issue/clean-result links
+ * is passed. Three-column layout on desktop: TOC (sticky left rail), article
+ * (wide center), discussion (sticky right rail). Single column on mobile.
  */
 export default async function PublicProjectPage({
   params,
@@ -40,7 +37,6 @@ export default async function PublicProjectPage({
   const project = projectRows[0];
   if (!project || !project.public) return notFound();
 
-  // Pull every narrative for this project, ordered current-first then by date.
   const allNarratives = await db()
     .select({
       id: projectNarratives.id,
@@ -78,8 +74,15 @@ export default async function PublicProjectPage({
     isCurrent: n.id === currentNarrative?.id,
   }));
 
+  // Walk the body to add heading ids + extract a TOC. For markdown narratives
+  // the HTML-tag walker finds nothing and returns an empty toc + the original
+  // string unchanged, so the TOC simply doesn't render.
+  const { processed: processedBody, toc } = narrative
+    ? extractTocAndAddIds(narrative.bodyMd)
+    : { processed: '', toc: [] };
+
   return (
-    <main className="mx-auto max-w-7xl px-4 py-10 space-y-8">
+    <main className="mx-auto max-w-[1600px] px-4 py-10 space-y-8">
       <header className="space-y-3">
         <p className="text-xs uppercase tracking-wide text-[--color-muted]">Project</p>
         <h1 className="text-4xl font-semibold tracking-tight">{project.title}</h1>
@@ -111,14 +114,22 @@ export default async function PublicProjectPage({
         </div>
       </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+      <div className="grid gap-10 lg:grid-cols-[220px_minmax(0,1fr)_360px]">
+        {toc.length > 0 ? (
+          <aside className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+            <NarrativeToc toc={toc} />
+          </aside>
+        ) : (
+          <aside aria-hidden className="hidden lg:block" />
+        )}
+
         <div className="space-y-6 min-w-0">
           {narrative ? (
-            <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-6">
-              <NarrativeBody body={narrative.bodyMd} />
+            <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-8">
+              <NarrativeBody body={processedBody} />
             </article>
           ) : project.summaryMd ? (
-            <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-6">
+            <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-8">
               <Markdown>{project.summaryMd}</Markdown>
             </article>
           ) : (

@@ -89,6 +89,18 @@ export const todoIntentEnum = pgEnum('todo_intent', [
 
 export const priorityEnum = pgEnum('priority', ['low', 'normal', 'high', 'urgent']);
 
+export const experimentKindEnum = pgEnum('experiment_kind', [
+  'experiment',
+  'infra',
+  'analysis',
+  'survey',
+  'batch',
+]);
+
+export const computeSizeEnum = pgEnum('compute_size', ['none', 'small', 'medium', 'large']);
+
+export const assigneeKindEnum = pgEnum('assignee_kind', ['agent', 'human']);
+
 export const experimentStatusEnum = pgEnum('experiment_status', [
   'proposed',
   'planning',
@@ -459,21 +471,32 @@ export const experiments = pgTable(
   'experiments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    number: integer('number').notNull().unique(),
+    legacyGhNumber: integer('legacy_gh_number'),
     beliefId: uuid('belief_id').references(() => beliefs.id, { onDelete: 'set null' }),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
     title: text('title').notNull(),
+    body: text('body'),
     hypothesis: text('hypothesis'),
     planJson: jsonb('plan_json'),
     configYaml: text('config_yaml'),
     status: experimentStatusEnum('status').notNull().default('planning'),
+    kind: experimentKindEnum('kind').notNull().default('experiment'),
+    computeSize: computeSizeEnum('compute_size'),
+    priority: priorityEnum('priority').notNull().default('normal'),
+    assigneeKind: assigneeKindEnum('assignee_kind').notNull().default('agent'),
+    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    hasCleanResult: boolean('has_clean_result').notNull().default(false),
     runpodAccount: runpodAccountEnum('runpod_account').notNull().default('team'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    numberIdx: index('experiments_number_idx').on(t.number),
     beliefIdx: index('experiments_belief_idx').on(t.beliefId),
     projectIdx: index('experiments_project_idx').on(t.projectId),
     statusIdx: index('experiments_status_idx').on(t.status),
+    kindIdx: index('experiments_kind_idx').on(t.kind),
   }),
 );
 

@@ -68,7 +68,7 @@ export function FontPicker() {
   const current = OPTIONS.find((o) => o.value === choice) ?? OPTIONS[0]!;
 
   return (
-    <fieldset className="space-y-1">
+    <fieldset className="relative space-y-1">
       <legend className="sr-only">Font</legend>
       <button
         type="button"
@@ -87,45 +87,58 @@ export function FontPicker() {
         <span aria-hidden="true" className="text-[--color-muted]">{open ? '▾' : '▸'}</span>
       </button>
       {open ? (
-        <ul
-          role="listbox"
-          aria-label="Choose dashboard font"
-          className={cn(
-            'mt-1 max-h-[60vh] overflow-auto rounded-[--radius-control] border border-[--color-border]',
-            'bg-[--color-panel] py-1 shadow-[var(--shadow-panel)]',
-          )}
-        >
-          {OPTIONS.map((option) => {
-            const active = choice === option.value;
-            return (
-              <li key={option.value}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={active}
-                  onClick={() => {
-                    pick(option.value);
-                    setOpen(false);
-                  }}
-                  style={{ fontFamily: FONT_VAR[option.value] }}
-                  className={cn(
-                    'flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-sm',
-                    'hover:bg-[--color-hover]',
-                    active && 'bg-[--color-muted-bg]',
-                  )}
-                >
-                  <span className="flex min-w-0 flex-col leading-tight">
-                    <span className="truncate font-semibold">{option.label}</span>
-                    <span className="truncate text-[10px] text-[--color-muted]">{option.sample}</span>
-                  </span>
-                  {active ? (
-                    <span aria-hidden="true" className="text-[--color-accent]">●</span>
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {/* Click-outside catcher */}
+          <button
+            type="button"
+            aria-hidden="true"
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40 cursor-default bg-transparent"
+          />
+          {/* Popover: anchored to the picker, opens upward, internal scroll */}
+          <ul
+            role="listbox"
+            aria-label="Choose dashboard font"
+            className={cn(
+              'absolute bottom-full left-0 z-50 mb-1 w-full',
+              'max-h-[min(60vh,28rem)] overflow-y-auto overscroll-contain',
+              'rounded-[--radius-control] border border-[--color-border]',
+              'bg-[--color-panel] py-1 shadow-[var(--shadow-panel)]',
+            )}
+          >
+            {OPTIONS.map((option) => {
+              const active = choice === option.value;
+              return (
+                <li key={option.value}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    onClick={() => {
+                      pick(option.value);
+                      setOpen(false);
+                    }}
+                    style={{ fontFamily: FONT_VAR[option.value] }}
+                    className={cn(
+                      'flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-sm',
+                      'hover:bg-[--color-hover]',
+                      active && 'bg-[--color-muted-bg]',
+                    )}
+                  >
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span className="truncate font-semibold">{option.label}</span>
+                      <span className="truncate text-[10px] text-[--color-muted]">{option.sample}</span>
+                    </span>
+                    {active ? (
+                      <span aria-hidden="true" className="text-[--color-accent]">●</span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       ) : null}
     </fieldset>
   );

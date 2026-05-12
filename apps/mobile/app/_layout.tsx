@@ -24,6 +24,8 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="agent/new" options={{ title: 'Dispatch' }} />
         <Stack.Screen name="agent/[id]" options={{ title: 'Run' }} />
+        <Stack.Screen name="list/[kind]" options={{ title: 'Browse' }} />
+        <Stack.Screen name="entity/[kind]/[id]" options={{ title: 'Detail' }} />
       </Stack>
     </SafeAreaProvider>
   );

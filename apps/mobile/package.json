@@ -14,6 +14,7 @@
     "update": "eas update"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "@sagan/agent-protocol": "workspace:*",
     "expo": "~54.0.0",
     "expo-constants": "~18.0.0",

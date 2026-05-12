@@ -58,6 +58,7 @@ export const jobRunKindSchema = z.enum([
   'insight_scan',
   'comment_summary',
   'clean_result',
+  'project_lit_review',
 ]);
 export type JobRunKind = z.infer<typeof jobRunKindSchema>;
 

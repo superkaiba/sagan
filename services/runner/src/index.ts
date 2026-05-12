@@ -19,6 +19,7 @@ import { handleApprovedRun } from './dispatcher.js';
 import { runLitReview } from './jobs/lit-review.js';
 import { runWeeklyDigest } from './jobs/weekly-digest.js';
 import { runInsightScan } from './jobs/insight-scan.js';
+import { runProjectLitReview } from './jobs/project-lit-review.js';
 import { runTrackedJob, type JobContext } from './jobs/job-runs.js';
 import { pushToUser } from './lib/push.js';
 import { log } from './log.js';
@@ -96,6 +97,12 @@ async function main() {
         log.error('insight-scan manual failed', { err: String(err) }),
       );
     });
+    await conn.listen('project_lit_review_run', (payload) => {
+      log.info('project-lit-review: trigger via NOTIFY');
+      startTrackedJob('project_lit_review', 'notify', payload).catch((err) =>
+        log.error('project-lit-review failed', { err: String(err) }),
+      );
+    });
     await conn.listen('push_test', (payload) => {
       const userId = payload?.trim();
       if (!userId) return;
@@ -113,7 +120,7 @@ async function main() {
       log.info('runpod_stop_requested: trigger', { runId });
       stopPodsForRun(runId).catch((err) => log.error('runpod stop failed', { runId, err: String(err) }));
     });
-    log.info('subscribed to lit_review_run + weekly_digest_run + insight_scan_run + push_test + runpod_stop_requested');
+    log.info('subscribed to lit_review_run + weekly_digest_run + insight_scan_run + project_lit_review_run + push_test + runpod_stop_requested');
   })();
 
   log.info('runner ready');
@@ -122,7 +129,7 @@ async function main() {
   });
 }
 
-type TrackedJobKind = 'lit_review' | 'weekly_digest' | 'insight_scan';
+type TrackedJobKind = 'lit_review' | 'weekly_digest' | 'insight_scan' | 'project_lit_review';
 type JobRunKind = typeof schema.jobRuns.$inferSelect['kind'];
 
 async function startTrackedJob(kind: TrackedJobKind, trigger: string, payload?: string) {
@@ -143,6 +150,8 @@ async function runJob(kind: TrackedJobKind, context: JobContext) {
       return runWeeklyDigest(undefined, context);
     case 'insight_scan':
       return runInsightScan(context);
+    case 'project_lit_review':
+      return runProjectLitReview(context);
   }
 }
 
@@ -153,7 +162,7 @@ async function sweepQueuedTrackedJobs() {
     .where(
       and(
         eq(schema.jobRuns.status, 'queued'),
-        inArray(schema.jobRuns.kind, ['lit_review', 'weekly_digest', 'insight_scan']),
+        inArray(schema.jobRuns.kind, ['lit_review', 'weekly_digest', 'insight_scan', 'project_lit_review']),
       ),
     )
     .orderBy(asc(schema.jobRuns.createdAt))
@@ -168,7 +177,12 @@ async function sweepQueuedTrackedJobs() {
 }
 
 function isTrackedJobKind(kind: JobRunKind): kind is TrackedJobKind {
-  return kind === 'lit_review' || kind === 'weekly_digest' || kind === 'insight_scan';
+  return (
+    kind === 'lit_review' ||
+    kind === 'weekly_digest' ||
+    kind === 'insight_scan' ||
+    kind === 'project_lit_review'
+  );
 }
 
 function parseJobRunId(payload?: string): string | null {

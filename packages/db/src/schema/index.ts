@@ -206,6 +206,7 @@ export const jobRunKindEnum = pgEnum('job_run_kind', [
   'insight_scan',
   'comment_summary',
   'clean_result',
+  'project_lit_review',
 ]);
 
 export const jobRunStatusEnum = pgEnum('job_run_status', [

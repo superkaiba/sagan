@@ -1,0 +1,1 @@
+ALTER TYPE "public"."job_run_kind" ADD VALUE 'project_lit_review';

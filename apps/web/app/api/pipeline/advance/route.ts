@@ -11,24 +11,46 @@ import type { EntityKind } from '@/lib/entity';
 
 const QUEUED_CHANNEL = 'agent_run_queued';
 const APPROVED_CHANNEL = 'agent_run_approved';
+const PIPELINE_CHANNEL = 'pipeline_changed';
+
+async function notifyPipelineChanged(payload: string) {
+  try {
+    await db().execute(sql`SELECT pg_notify(${PIPELINE_CHANNEL}, ${payload})`);
+  } catch {
+    // Best effort. Subscribers also poll on a slow timer as a safety net.
+  }
+}
 
 const pipelineStageSchema = z.enum([
+  'later',
   'idea',
   'planning',
   'approval',
   'queued',
   'running',
   'interpreting',
+  'clean_results',
+  'blocked',
   'review',
   'done',
-  'blocked',
+  'archived',
 ]);
 const pipelineKindSchema = z.enum(['experiment', 'clean_result', 'todo', 'idea', 'automation']);
 
 type PipelineStage = z.infer<typeof pipelineStageSchema>;
 type PipelineKind = z.infer<typeof pipelineKindSchema>;
 type AgentRunKind = 'plan' | 'apply' | 'qa' | 'experiment';
-type AgentRunStatus = 'queued' | 'running' | 'awaiting_approval' | 'approved' | 'deploying' | 'blocked' | 'completed' | 'failed' | 'rejected';
+type AgentRunStatus =
+  | 'queued'
+  | 'running'
+  | 'awaiting_approval'
+  | 'approved'
+  | 'deploying'
+  | 'blocked'
+  | 'completed'
+  | 'failed'
+  | 'rejected'
+  | 'cancelled';
 
 const advanceSchema = z.object({
   id: z.string().uuid(),
@@ -40,32 +62,40 @@ const advanceSchema = z.object({
 const activeRunStatuses = ['queued', 'running', 'awaiting_approval', 'approved', 'deploying'] as const;
 
 const experimentStatusByStage: Record<PipelineStage, ExperimentStatus> = {
+  later: 'proposed',
   idea: 'proposed',
   planning: 'planning',
   approval: 'plan_pending',
   queued: 'queued',
   running: 'running',
   interpreting: 'interpreting',
+  clean_results: 'interpreting',
+  blocked: 'blocked',
   review: 'reviewing',
   done: 'completed',
-  blocked: 'blocked',
+  archived: 'archived',
 };
 
 const todoStatusByStage: Partial<Record<PipelineStage, (typeof todos.$inferSelect)['status']>> = {
+  later: 'inbox',
   idea: 'open',
   planning: 'planning',
   running: 'running',
   interpreting: 'interpreting',
+  clean_results: 'awaiting_promotion',
+  blocked: 'blocked',
   review: 'awaiting_promotion',
   done: 'done',
-  blocked: 'blocked',
+  archived: 'archived',
 };
 
 const cleanResultStatusByStage: Partial<Record<PipelineStage, (typeof cleanResults.$inferSelect)['status']>> = {
+  clean_results: 'reviewing',
   interpreting: 'draft',
   review: 'reviewing',
   done: 'approved',
   blocked: 'blocked',
+  archived: 'archived',
 };
 
 const automationStatusByStage: Partial<Record<PipelineStage, AgentRunStatus>> = {
@@ -74,6 +104,7 @@ const automationStatusByStage: Partial<Record<PipelineStage, AgentRunStatus>> = 
   running: 'queued',
   done: 'completed',
   blocked: 'blocked',
+  archived: 'cancelled',
 };
 
 function entityHref(kind: PipelineKind | EntityKind, id: string) {
@@ -269,16 +300,32 @@ export async function POST(req: Request) {
   }
 
   const input = parsed.data;
-  if (input.kind === 'experiment') return advanceExperiment(input, session.user.id);
-  if (input.kind === 'clean_result') return advanceCleanResult(input, session.user.id);
-  if (input.kind === 'todo') return advanceTodo(input, session.user.id);
-  if (input.kind === 'idea') return advanceIdea(input, session.user.id);
-  return advanceAutomation(input, session.user.id);
+  const response =
+    input.kind === 'experiment'
+      ? await advanceExperiment(input, session.user.id)
+      : input.kind === 'clean_result'
+        ? await advanceCleanResult(input, session.user.id)
+        : input.kind === 'todo'
+          ? await advanceTodo(input, session.user.id)
+          : input.kind === 'idea'
+            ? await advanceIdea(input, session.user.id)
+            : await advanceAutomation(input, session.user.id);
+  if (response.ok) {
+    // Broadcast so /pipeline subscribers refetch this card without a manual refresh.
+    await notifyPipelineChanged(`${input.kind}:${input.id}:${input.toStage}`);
+  }
+  return response;
 }
 
 async function advanceExperiment(input: z.infer<typeof advanceSchema>, actorUserId: string) {
   const rows = await db()
-    .select({ id: experiments.id, title: experiments.title, hypothesis: experiments.hypothesis, status: experiments.status })
+    .select({
+      id: experiments.id,
+      title: experiments.title,
+      hypothesis: experiments.hypothesis,
+      status: experiments.status,
+      priority: experiments.priority,
+    })
     .from(experiments)
     .where(eq(experiments.id, input.id))
     .limit(1);
@@ -293,6 +340,13 @@ async function advanceExperiment(input: z.infer<typeof advanceSchema>, actorUser
     note: `Moved on Pipeline board to ${input.toStage}.`,
   });
   let nextStatus = updated?.status ?? status;
+  const nextPriority = input.toStage === 'later' ? 'low' : experiment.priority === 'low' ? 'normal' : experiment.priority;
+  if (nextPriority !== experiment.priority) {
+    await db()
+      .update(experiments)
+      .set({ priority: nextPriority, updatedAt: new Date() })
+      .where(eq(experiments.id, input.id));
+  }
 
   let agentRunId: string | undefined;
   let message = `Moved to ${input.toStage}.`;
@@ -463,7 +517,11 @@ async function advanceTodo(input: z.infer<typeof advanceSchema>, actorUserId: st
   const todo = rows[0];
   if (!todo) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  await db().update(todos).set({ status, updatedAt: new Date() }).where(eq(todos.id, input.id));
+  const nextPriority = input.toStage === 'later' ? 'low' : todo.priority === 'low' ? 'normal' : todo.priority;
+  await db()
+    .update(todos)
+    .set({ status, priority: nextPriority, updatedAt: new Date() })
+    .where(eq(todos.id, input.id));
 
   let agentRunId: string | undefined;
   let message = `Moved to ${input.toStage}.`;
@@ -502,17 +560,37 @@ async function advanceTodo(input: z.infer<typeof advanceSchema>, actorUserId: st
       title: todo.text,
       detail: todo.bodyMd,
       status,
-      ownerAction: todo.priority === 'urgent' || status === 'blocked' ? `Owner turn: ${todo.priority} task` : null,
-      href: todo.linkedKind && todo.linkedId ? entityHref(todo.linkedKind, todo.linkedId) : entityHref('todo', input.id),
+      ownerAction: nextPriority === 'urgent' || status === 'blocked' ? `Owner turn: ${nextPriority} task` : null,
+      href: entityHref('todo', input.id),
     }),
   });
 }
 
 async function advanceIdea(input: z.infer<typeof advanceSchema>, actorUserId: string) {
-  if (input.toStage !== 'planning') return unsupported(input.toStage, 'idea');
+  if (input.toStage !== 'planning' && input.toStage !== 'archived') return unsupported(input.toStage, 'idea');
   const rows = await db().select().from(ideaCards).where(eq(ideaCards.id, input.id)).limit(1);
   const idea = rows[0];
   if (!idea) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (input.toStage === 'archived') {
+    await db()
+      .update(ideaCards)
+      .set({ state: 'archived', updatedAt: new Date() })
+      .where(eq(ideaCards.id, input.id));
+    return NextResponse.json({
+      ok: true,
+      message: 'Moved to archived.',
+      card: cardPayload({
+        key: `idea-${idea.id}`,
+        id: idea.id,
+        kind: 'idea',
+        stage: 'archived',
+        title: idea.title,
+        detail: idea.bodyMd,
+        status: 'archived',
+        href: `/ideation/${idea.sessionId}#idea-${idea.id}`,
+      }),
+    });
+  }
   if (idea.state === 'promoted' && idea.promotedKind && idea.promotedId) {
     return NextResponse.json(
       { error: 'already_promoted', message: 'This idea has already been promoted.' },

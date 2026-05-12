@@ -11,11 +11,13 @@ import { listener, db, schema } from './db.js';
 import { eq, and, inArray, sql, asc, lt } from 'drizzle-orm';
 import { log } from './log.js';
 import { recordTrail } from './trail.js';
+import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 
 export const QUEUED_CHANNEL = 'agent_run_queued';
 export const APPROVED_CHANNEL = 'agent_run_approved';
+export const PIPELINE_CHANNEL = 'pipeline_changed';
 
-const DEFAULT_STALE_RUNNING_MINUTES = 6 * 60;
+const DEFAULT_STALE_RUNNING_MINUTES = 15;
 
 export interface QueueHandlers {
   onQueued: (runId: string) => Promise<void>;
@@ -72,22 +74,28 @@ async function recoverStaleRunningRuns() {
   const staleAfterMs = staleRunningAfterMs();
   const cutoff = new Date(Date.now() - staleAfterMs);
   const now = new Date();
+  const staleMinutes = Math.round(staleAfterMs / 60_000);
   const rows = await db()
     .update(schema.agentRuns)
     .set({
       status: 'failed',
-      lastError: `Runner marked this run stale after ${Math.round(staleAfterMs / 60_000)} minutes without an update.`,
+      lastError: `Runner marked this run stale after ${staleMinutes} minutes without an update.`,
       completedAt: now,
       updatedAt: now,
     })
     .where(and(eq(schema.agentRuns.status, 'running'), lt(schema.agentRuns.updatedAt, cutoff)))
-    .returning({ id: schema.agentRuns.id, updatedAt: schema.agentRuns.updatedAt });
+    .returning({
+      id: schema.agentRuns.id,
+      updatedAt: schema.agentRuns.updatedAt,
+      scopeEntityKind: schema.agentRuns.scopeEntityKind,
+      scopeEntityId: schema.agentRuns.scopeEntityId,
+    });
 
   for (const row of rows) {
     log.warn('recovered stale running agent run', { runId: row.id, previousUpdatedAt: row.updatedAt.toISOString() });
     await emitEvent(row.id, 'stale_recovered', `marked failed after stale running timeout`, {
       cutoff: cutoff.toISOString(),
-      staleAfterMinutes: Math.round(staleAfterMs / 60_000),
+      staleAfterMinutes: staleMinutes,
     }).catch((err) => log.warn('failed to record stale recovery event', { runId: row.id, err: String(err) }));
     await recordTrail({
       action: `Recovered stale running run ${row.id.slice(0, 8)}`,
@@ -95,6 +103,14 @@ async function recoverStaleRunningRuns() {
       agentRunId: row.id,
       detail: `previousUpdatedAt=${row.updatedAt.toISOString()}; cutoff=${cutoff.toISOString()}`,
     });
+    await cascadeAgentRunFailureToScope({
+      runId: row.id,
+      scopeEntityKind: row.scopeEntityKind,
+      scopeEntityId: row.scopeEntityId,
+      reason: 'stale',
+      detail: `No runner activity for ${staleMinutes} minutes.`,
+    });
+    await notifyPipelineChanged(row.id);
   }
 }
 
@@ -163,4 +179,17 @@ export async function notifyQueued(runId: string): Promise<void> {
 /** Used by the API + tests to NOTIFY when a human approves a run. */
 export async function notifyApproved(runId: string): Promise<void> {
   await db().execute(sql`SELECT pg_notify(${APPROVED_CHANNEL}, ${runId})`);
+}
+
+/**
+ * Broadcast that pipeline-relevant state changed. The dashboard listens for
+ * this and pushes patches to connected clients. Payload is a short tag so
+ * subscribers can decide what to refetch.
+ */
+export async function notifyPipelineChanged(payload: string): Promise<void> {
+  try {
+    await db().execute(sql`SELECT pg_notify(${PIPELINE_CHANNEL}, ${payload})`);
+  } catch (err) {
+    log.warn('pipeline notify failed', { payload, err: String(err) });
+  }
 }

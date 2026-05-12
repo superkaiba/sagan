@@ -44,6 +44,28 @@ export interface DashboardShellState {
   topApprovals: DashboardApprovalItem[];
 }
 
+export type PipelineRunStatus =
+  | 'queued'
+  | 'running'
+  | 'awaiting_approval'
+  | 'approved'
+  | 'deploying'
+  | 'blocked'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'rejected';
+
+export interface PipelineCardRun {
+  id: string;
+  kind: string;
+  status: PipelineRunStatus;
+  updatedAt: string;
+  lastError: string | null;
+  href: string;
+  canRetry: boolean;
+}
+
 export interface DashboardPipelineCard {
   key: string;
   id: string;
@@ -57,18 +79,22 @@ export interface DashboardPipelineCard {
   updatedAt: string;
   href: string;
   tone: StatusTone;
+  run?: PipelineCardRun | null;
 }
 
 export const PIPELINE_STAGES = [
+  { key: 'later', title: 'Later' },
   { key: 'idea', title: 'Idea / Proposed' },
   { key: 'planning', title: 'Planning' },
   { key: 'approval', title: 'Awaiting approval' },
   { key: 'queued', title: 'Approved / Queued' },
   { key: 'running', title: 'Running' },
   { key: 'interpreting', title: 'Interpreting' },
+  { key: 'clean_results', title: 'Clean results' },
+  { key: 'blocked', title: 'Blocked' },
   { key: 'review', title: 'Review' },
   { key: 'done', title: 'Shared / Done' },
-  { key: 'blocked', title: 'Blocked' },
+  { key: 'archived', title: 'Archived' },
 ] as const;
 
 export type PipelineStageKey = (typeof PIPELINE_STAGES)[number]['key'];
@@ -89,9 +115,12 @@ const ACTIVE_EXPERIMENT_STATUSES = [
   'blocked',
   'completed',
   'failed',
+  'archived',
 ] as const;
 
-const ACTIVE_AGENT_STATUSES = ['queued', 'running', 'awaiting_approval', 'approved', 'deploying', 'blocked', 'failed'] as const;
+const ACTIVE_AGENT_STATUSES = ['queued', 'running', 'awaiting_approval', 'approved', 'deploying', 'blocked', 'failed', 'cancelled'] as const;
+const DEPRIORITIZED_TODO_STATUSES = ['inbox', 'open', 'scoped', 'planning'] as const;
+const DEPRIORITIZED_EXPERIMENT_STATUSES = ['proposed', 'planning'] as const;
 
 function iso(value: Date | string | null | undefined) {
   if (!value) return new Date(0).toISOString();
@@ -303,7 +332,13 @@ export async function loadShellDashboardState(): Promise<DashboardShellState> {
   };
 }
 
-function experimentStage(status: string): PipelineStageKey {
+function experimentStage(status: string, priority: string): PipelineStageKey {
+  if (
+    priority === 'low' &&
+    DEPRIORITIZED_EXPERIMENT_STATUSES.includes(status as (typeof DEPRIORITIZED_EXPERIMENT_STATUSES)[number])
+  ) {
+    return 'later';
+  }
   if (status === 'proposed') return 'idea';
   if (status === 'planning') return 'planning';
   if (status === 'plan_pending' || status === 'awaiting_approval') return 'approval';
@@ -313,17 +348,23 @@ function experimentStage(status: string): PipelineStageKey {
   if (status === 'reviewing' || status === 'awaiting_promotion') return 'review';
   if (status === 'shared' || status === 'completed') return 'done';
   if (status === 'blocked' || status === 'failed') return 'blocked';
+  if (status === 'archived' || status === 'cancelled') return 'archived';
   return 'planning';
 }
 
 function cleanResultStage(status: string): PipelineStageKey {
-  if (status === 'reviewing') return 'review';
+  if (status === 'archived') return 'archived';
+  if (status === 'reviewing' || status === 'draft') return 'clean_results';
   if (status === 'approved' || status === 'shared') return 'done';
   if (status === 'blocked') return 'blocked';
-  return 'interpreting';
+  return 'clean_results';
 }
 
-function todoStage(status: string): PipelineStageKey {
+function todoStage(status: string, priority: string): PipelineStageKey {
+  if (status === 'archived') return 'archived';
+  if (priority === 'low' && DEPRIORITIZED_TODO_STATUSES.includes(status as (typeof DEPRIORITIZED_TODO_STATUSES)[number])) {
+    return 'later';
+  }
   if (status === 'inbox' || status === 'open') return 'idea';
   if (status === 'scoped') return 'planning';
   if (status === 'planning') return 'planning';
@@ -341,7 +382,30 @@ function agentStage(status: string): PipelineStageKey {
   if (status === 'running' || status === 'deploying') return 'running';
   if (status === 'completed') return 'done';
   if (status === 'blocked' || status === 'failed' || status === 'rejected') return 'blocked';
+  if (status === 'cancelled') return 'archived';
   return 'queued';
+}
+
+const RUN_PRIORITY: Record<string, number> = {
+  running: 6,
+  deploying: 6,
+  awaiting_approval: 5,
+  approved: 4,
+  queued: 3,
+  blocked: 2,
+  failed: 1,
+  rejected: 0,
+  cancelled: 0,
+  completed: 0,
+};
+
+function pickHigherPriorityRun<T extends { status: string; updatedAt: Date | string }>(a: T, b: T): T {
+  const ra = RUN_PRIORITY[a.status] ?? 0;
+  const rb = RUN_PRIORITY[b.status] ?? 0;
+  if (ra !== rb) return ra > rb ? a : b;
+  const ta = new Date(a.updatedAt).getTime();
+  const tb = new Date(b.updatedAt).getTime();
+  return ta >= tb ? a : b;
 }
 
 export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
@@ -353,6 +417,7 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
         title: experiments.title,
         hypothesis: sql<string>`left(coalesce(${experiments.hypothesis}, ''), 220)`,
         status: experiments.status,
+        priority: experiments.priority,
         projectId: experiments.projectId,
         updatedAt: experiments.updatedAt,
       })
@@ -370,7 +435,6 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
         updatedAt: cleanResults.updatedAt,
       })
       .from(cleanResults)
-      .where(ne(cleanResults.status, 'archived'))
       .orderBy(desc(cleanResults.updatedAt))
       .limit(200),
     db()
@@ -385,7 +449,6 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
         updatedAt: todos.updatedAt,
       })
       .from(todos)
-      .where(ne(todos.status, 'archived'))
       .orderBy(desc(todos.updatedAt))
       .limit(200),
     db()
@@ -410,6 +473,7 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
         status: agentRuns.status,
         scopeEntityKind: agentRuns.scopeEntityKind,
         scopeEntityId: agentRuns.scopeEntityId,
+        lastError: agentRuns.lastError,
         updatedAt: agentRuns.updatedAt,
       })
       .from(agentRuns)
@@ -418,6 +482,32 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
       .limit(100),
   ]);
 
+  // Group runs by their scoped entity so each pipeline card can show "claude is
+  // working on this" without rendering the run as its own card.
+  const runByScope = new Map<string, typeof agentRows[number]>();
+  for (const run of agentRows) {
+    if (!run.scopeEntityKind || !run.scopeEntityId) continue;
+    const key = `${run.scopeEntityKind}:${run.scopeEntityId}`;
+    const existing = runByScope.get(key);
+    if (!existing || pickHigherPriorityRun(run, existing) === run) {
+      runByScope.set(key, run);
+    }
+  }
+  const runForScope = (kind: string, id: string): PipelineCardRun | null => {
+    const run = runByScope.get(`${kind}:${id}`);
+    if (!run) return null;
+    return {
+      id: run.id,
+      kind: run.kind,
+      status: run.status as PipelineRunStatus,
+      updatedAt: iso(run.updatedAt),
+      lastError: run.lastError,
+      href: `/agent/${run.id}`,
+      canRetry: ['failed', 'blocked', 'cancelled', 'rejected'].includes(run.status),
+    };
+  };
+  const consumedRunIds = new Set(Array.from(runByScope.values()).map((run) => run.id));
+
   const projectById = new Map(projectRows.map((project) => [project.id, project.title]));
   const experimentProjectById = new Map(experimentRows.map((experiment) => [experiment.id, experiment.projectId]));
 
@@ -425,7 +515,7 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
     ...experimentRows.map((experiment) => ({
       key: `experiment-${experiment.id}`,
       id: experiment.id,
-      stage: experimentStage(experiment.status),
+      stage: experimentStage(experiment.status, experiment.priority),
       kind: 'experiment' as const,
       title: experiment.title,
       detail: experiment.hypothesis || null,
@@ -437,6 +527,7 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
       updatedAt: iso(experiment.updatedAt),
       href: entityHref('experiment', experiment.id),
       tone: statusTone(experiment.status),
+      run: runForScope('experiment', experiment.id),
     })),
     ...cleanResultRows.map((result) => {
       const projectId = result.experimentId ? experimentProjectById.get(result.experimentId) ?? null : null;
@@ -453,12 +544,13 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
         updatedAt: iso(result.updatedAt),
         href: entityHref('clean_result', result.id),
         tone: statusTone(result.status),
+        run: runForScope('clean_result', result.id),
       };
     }),
     ...todoRows.map((todo) => ({
       key: `todo-${todo.id}`,
       id: todo.id,
-      stage: todoStage(todo.status),
+      stage: todoStage(todo.status, todo.priority),
       kind: 'todo' as const,
       title: todo.text,
       detail: todo.bodyMd || null,
@@ -466,13 +558,14 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
       project: null,
       ownerAction: todo.priority === 'urgent' || todo.status === 'blocked' ? `Owner turn: ${todo.priority} task` : null,
       updatedAt: iso(todo.updatedAt),
-      href: todo.linkedKind && todo.linkedId ? entityHref(todo.linkedKind, todo.linkedId) : entityHref('todo', todo.id),
+      href: entityHref('todo', todo.id),
       tone: todo.priority === 'urgent' ? 'approval' : statusTone(todo.status),
+      run: runForScope('todo', todo.id),
     })),
     ...ideaRows.map((idea) => ({
       key: `idea-${idea.id}`,
       id: idea.id,
-      stage: (idea.promotedKind && idea.promotedId ? 'done' : 'idea') as PipelineStageKey,
+      stage: (idea.state === 'archived' ? 'archived' : idea.promotedKind && idea.promotedId ? 'done' : 'idea') as PipelineStageKey,
       kind: 'idea' as const,
       title: idea.title,
       detail: idea.bodyMd || null,
@@ -480,23 +573,39 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
       project: null,
       ownerAction: idea.promotedKind ? null : 'Review or promote idea',
       updatedAt: iso(idea.updatedAt),
-      href: idea.promotedKind && idea.promotedId ? entityHref(idea.promotedKind, idea.promotedId) : `/ideation/${idea.sessionId}`,
+      href: idea.promotedKind && idea.promotedId ? entityHref(idea.promotedKind, idea.promotedId) : `/ideation/${idea.sessionId}#idea-${idea.id}`,
       tone: idea.promotedKind ? 'success' : statusTone(idea.state),
+      run: null,
     })),
-    ...agentRows.map((run) => ({
-      key: `agent-${run.id}`,
-      id: run.id,
-      stage: agentStage(run.status),
-      kind: 'automation' as const,
-      title: run.request,
-      detail: run.scopeEntityKind && run.scopeEntityId ? `${run.scopeEntityKind} ${run.scopeEntityId.slice(0, 8)}` : run.kind,
-      status: run.status,
-      project: null,
-      ownerAction: run.status === 'awaiting_approval' ? 'Owner turn: approve automation run' : null,
-      updatedAt: iso(run.updatedAt),
-      href: `/agent/${run.id}`,
-      tone: statusTone(run.status),
-    })),
+    // Standalone automation runs (chat-dock dispatches with no scoped entity)
+    // keep rendering as their own cards. Scoped runs are surfaced inline on
+    // their parent's card via `card.run`, so we drop them from the list to
+    // avoid showing the same run twice.
+    ...agentRows
+      .filter((run) => !consumedRunIds.has(run.id))
+      .map((run) => ({
+        key: `agent-${run.id}`,
+        id: run.id,
+        stage: agentStage(run.status),
+        kind: 'automation' as const,
+        title: run.request,
+        detail: run.scopeEntityKind && run.scopeEntityId ? `${run.scopeEntityKind} ${run.scopeEntityId.slice(0, 8)}` : run.kind,
+        status: run.status,
+        project: null,
+        ownerAction: run.status === 'awaiting_approval' ? 'Owner turn: approve automation run' : null,
+        updatedAt: iso(run.updatedAt),
+        href: `/agent/${run.id}`,
+        tone: statusTone(run.status),
+        run: {
+          id: run.id,
+          kind: run.kind,
+          status: run.status as PipelineRunStatus,
+          updatedAt: iso(run.updatedAt),
+          lastError: run.lastError,
+          href: `/agent/${run.id}`,
+          canRetry: ['failed', 'blocked', 'cancelled', 'rejected'].includes(run.status),
+        },
+      })),
   ];
 
   return cards.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());

@@ -7,9 +7,10 @@
  */
 import { type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { runAgentWithContinuation } from './lib/run-agent.js';
+import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 import { and, asc, eq, ilike, isNull, ne } from 'drizzle-orm';
 import { db, schema } from './db.js';
-import { emitEvent, notifyQueued } from './queue.js';
+import { emitEvent, notifyPipelineChanged, notifyQueued } from './queue.js';
 import { env, requireEnv } from './env.js';
 import { log } from './log.js';
 import { pushToUser } from './lib/push.js';
@@ -83,6 +84,19 @@ export async function runSession(runId: string): Promise<Outcome> {
   return result;
 }
 
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
+async function bumpHeartbeat(runId: string) {
+  try {
+    await db()
+      .update(schema.agentRuns)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.agentRuns.id, runId));
+  } catch (err) {
+    log.warn('heartbeat write failed', { runId, err: String(err) });
+  }
+}
+
 async function runWithStreaming(
   runId: string,
   row: AgentRunRow,
@@ -95,6 +109,10 @@ async function runWithStreaming(
   let costUsd = 0;
   let numTurns = 0;
   let recordedClaudeSessionId = initialClaudeSessionId;
+
+  const heartbeat = setInterval(() => {
+    bumpHeartbeat(runId).catch(() => {});
+  }, HEARTBEAT_INTERVAL_MS);
 
   try {
     for await (const message of runAgentWithContinuation({
@@ -127,6 +145,15 @@ async function runWithStreaming(
       }
 
       if (message.type === 'result') {
+        // Always record the result envelope so failures explain themselves.
+        await emitEvent(runId, 'sdk_result', message.subtype ?? 'unknown', {
+          subtype: message.subtype,
+          is_error: (message as { is_error?: boolean }).is_error ?? false,
+          total_cost_usd: message.total_cost_usd ?? null,
+          num_turns: message.num_turns ?? null,
+          duration_ms: (message as { duration_ms?: number }).duration_ms ?? null,
+        }).catch(() => {});
+
         if (message.subtype === 'success') {
           costUsd = message.total_cost_usd ?? 0;
           numTurns = message.num_turns ?? 0;
@@ -156,7 +183,15 @@ async function runWithStreaming(
           await markCompleted(runId, finalText, costUsd, numTurns);
           return { ok: true, status: 'completed', resultText: finalText, costUsd, numTurns };
         }
-        const errMsg = `result error subtype=${message.subtype}`;
+        // Surface the most informative reason the SDK gives us.
+        const detail = [
+          `subtype=${message.subtype ?? 'unknown'}`,
+          message.num_turns != null ? `turns=${message.num_turns}` : null,
+          message.total_cost_usd != null ? `cost=$${message.total_cost_usd.toFixed(4)}` : null,
+        ]
+          .filter(Boolean)
+          .join(' ');
+        const errMsg = `result error: ${detail || 'no_detail'}`;
         await markFailed(runId, errMsg);
         return { ok: false, error: errMsg };
       }
@@ -170,6 +205,8 @@ async function runWithStreaming(
     const errMsg = err instanceof Error ? err.message : String(err);
     await markFailed(runId, errMsg);
     return { ok: false, error: errMsg };
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
@@ -605,6 +642,7 @@ async function markAwaitingApproval(runId: string, planMd: string) {
     plan_len: planMd.length,
     structured_sections: planJson.sections.length,
   });
+  await notifyPipelineChanged(runId);
   if (row?.kind === 'experiment' && row.scopeEntityKind === 'experiment' && row.scopeEntityId) {
     await markExperimentPlanPending(row.scopeEntityId, runId, planMd, planJson);
   }
@@ -775,6 +813,7 @@ async function markCompleted(runId: string, resultText: string, costUsd: number,
     })
     .where(eq(schema.agentRuns.id, runId));
   await emitEvent(runId, 'completed', truncate(resultText, 1000), { cost_usd: costUsd, turns: numTurns });
+  await notifyPipelineChanged(runId);
   await maybePersistChatReply(runId, resultText);
   await maybePostCommentReply(runId, resultText);
   const row = await loadRun(runId);
@@ -900,6 +939,16 @@ async function markFailed(runId: string, error: string) {
     agentRunId: runId,
     detail: error.slice(0, 500),
   });
+  if (row) {
+    await cascadeAgentRunFailureToScope({
+      runId,
+      scopeEntityKind: row.scopeEntityKind,
+      scopeEntityId: row.scopeEntityId,
+      reason: 'failed',
+      detail: error,
+    });
+  }
+  await notifyPipelineChanged(runId);
   await maybeQueueContinuationRun(runId, error);
 }
 

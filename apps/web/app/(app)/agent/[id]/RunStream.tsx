@@ -177,6 +177,22 @@ export function RunStream({
     }
   }
 
+  async function retry() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/agent-runs/${runId}/retry`, { method: 'POST' });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; runId?: string; message?: string };
+      if (!res.ok || !data.runId) {
+        setError(data.error ?? 'retry_failed');
+        return;
+      }
+      router.push(`/agent/${data.runId}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function prepareCodexReview() {
     setBusy(true);
     setError(null);
@@ -202,6 +218,7 @@ export function RunStream({
   }
 
   const showApproval = canManageRun && status === 'awaiting_approval' && (kind === 'plan' || kind === 'experiment');
+  const canRetry = canManageRun && ['failed', 'blocked', 'cancelled', 'rejected'].includes(status);
   const latestEvent = events.at(-1);
   const latestEventAt = latestEvent ? new Date(latestEvent.createdAt).getTime() : null;
   const active = !TERMINAL.has(status);
@@ -238,6 +255,17 @@ export function RunStream({
         >
           Refresh
         </button>
+        {canRetry ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={retry}
+            className="rounded-md border border-[--color-danger-border] bg-[--color-danger-bg] px-2 py-1 text-xs font-medium text-[--color-danger] hover:border-[--color-danger] disabled:opacity-50"
+            title="Spawn a new Claude Code session that picks up where this one stopped"
+          >
+            Retry
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={busy}

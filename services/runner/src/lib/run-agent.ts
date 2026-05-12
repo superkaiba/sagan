@@ -116,10 +116,19 @@ export async function* runAgentWithContinuation(
   let continueCount = 0;
   let lastMessageAt = Date.now();
   let sentinelSeen = false;
+  // Track pending tool calls. A long-running tool (e.g. a slow shell command)
+  // is not a stall — we shouldn't nag the agent with "Continue." while it is
+  // waiting on tool output.
+  let pendingToolUses = 0;
 
   const idleTimer = setInterval(() => {
     if (sentinelSeen) return;
     if (Date.now() - lastMessageAt < idleMs) return;
+    if (pendingToolUses > 0) {
+      // Genuine work in flight; just bump the clock so we re-check next tick.
+      lastMessageAt = Date.now();
+      return;
+    }
     if (continueCount >= maxContinues) {
       log.info(`${tag}: idle stall but max continues reached; closing input`, {
         continueCount,
@@ -141,6 +150,8 @@ export async function* runAgentWithContinuation(
 
       if (message.type === 'assistant') {
         const content = message.message?.content ?? [];
+        const toolUsesInTurn = content.filter((b) => b.type === 'tool_use').length;
+        pendingToolUses += toolUsesInTurn;
         const assistantText = content
           .map((b) => (b.type === 'text' ? b.text : ''))
           .filter(Boolean)
@@ -156,7 +167,7 @@ export async function* runAgentWithContinuation(
           return;
         }
         const stopReason = message.message?.stop_reason ?? null;
-        const hasToolUse = content.some((b) => b.type === 'tool_use');
+        const hasToolUse = toolUsesInTurn > 0;
         if (stopReason === 'end_turn' && !hasToolUse) {
           if (continueCount >= maxContinues) {
             log.info(`${tag}: soft stop but max continues reached; closing input`, {
@@ -168,6 +179,18 @@ export async function* runAgentWithContinuation(
           continueCount += 1;
           log.info(`${tag}: soft stop — sending Continue`, { continueCount });
           inputQueue.push(userMessage(`Continue. End with ${sentinel} when fully complete.`));
+        }
+      }
+
+      if (message.type === 'user') {
+        // Tool results come back wrapped in synthesized user messages. Count
+        // them so the idle timer knows the agent isn't actually stalled.
+        const content = (message as { message?: { content?: Array<{ type?: string }> } }).message?.content;
+        if (Array.isArray(content)) {
+          const toolResults = content.filter((b) => b?.type === 'tool_result').length;
+          if (toolResults > 0) {
+            pendingToolUses = Math.max(0, pendingToolUses - toolResults);
+          }
         }
       }
 

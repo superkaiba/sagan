@@ -314,3 +314,24 @@ a[href]:active,
     background-color: var(--color-muted-bg);
   }
 }
+
+/* Approval attention pulse — used wherever something is awaiting the owner. */
+@keyframes sagan-approval-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-approval) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-approval) 0%, transparent);
+  }
+}
+
+.animate-sagan-approval-pulse {
+  animation: sagan-approval-pulse 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sagan-approval-pulse {
+    animation: none;
+  }
+}

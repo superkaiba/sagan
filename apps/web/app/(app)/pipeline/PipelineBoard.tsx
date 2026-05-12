@@ -76,16 +76,21 @@ function PipelineCard({
   onDragStart: (card: DashboardPipelineCard, event: DragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
 }) {
+  const needsOwner = Boolean(card.ownerAction);
   return (
     <article
       draggable={!pending}
       data-clickable="true"
       aria-busy={pending}
+      data-owner-attention={needsOwner ? 'true' : 'false'}
       onDragStart={(event) => onDragStart(card, event)}
       onDragEnd={onDragEnd}
       className={cn(
-        'group border border-[--color-border] bg-[--color-panel] p-3 shadow-[var(--shadow-panel)] transition-colors',
+        'group border bg-[--color-panel] p-3 shadow-[var(--shadow-panel)] transition-colors',
         'cursor-grab active:cursor-grabbing hover:bg-[--color-hover]',
+        needsOwner
+          ? 'border-[--color-approval] ring-2 ring-[--color-approval]/40 ring-offset-1 ring-offset-[--color-bg] animate-sagan-approval-pulse'
+          : 'border-[--color-border]',
         dragging && 'opacity-45',
         pending && 'cursor-wait opacity-70',
       )}

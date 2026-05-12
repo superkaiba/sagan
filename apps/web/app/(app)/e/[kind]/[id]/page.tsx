@@ -62,6 +62,7 @@ export default async function EntityPage({
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <main className="min-w-0 space-y-6">
+        <AwaitingApprovalBanner kind={kind} id={entity.id} />
         <header className="space-y-2 text-center">
           <p className="text-sm text-[--color-muted]">
             {KIND_LABELS[kind]}

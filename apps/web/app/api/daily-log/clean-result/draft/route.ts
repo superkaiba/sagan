@@ -88,7 +88,17 @@ Output markdown only. Keep it concise and concrete:
 - Start with a bold one-sentence result.
 - Include the evidence or observation that supports it.
 - Include caveat/confidence if available.
-- Include the next test only if it follows directly from the entries.`,
+- Include the next test only if it follows directly from the entries.
+
+Voice rules (these mirror the full-write-up guidelines in docs/clean-result-guidelines.md):
+- Write as "I", never "we".
+- No casual transitions: avoid "One more wrinkle:", "the buried lede was", "funnily enough", "the real surprise was". Direct declarative voice.
+- Plain language in the headline; jargon allowed only if defined inline.
+- No reference to flawed or abandoned metrics — present only what supports the current claim.
+
+This is the short daily snapshot, not the full experiment write-up. For the
+full HTML write-up on experiments.body, the owner follows docs/clean-result-guidelines.md;
+that doc is the canonical reference and you should mirror its voice.`,
         },
       ],
     });

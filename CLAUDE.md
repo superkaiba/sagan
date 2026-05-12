@@ -99,15 +99,28 @@ Use short event messages. Do not write secrets into run summaries or events.
 Default to **HTML** for long-lived artifacts the user will read in a
 browser: design explorations, "compare N options" mockups, spec docs,
 PR / code-review writeups, runtime explainers, weekly digests, mentor
-updates. Sagan renders HTML attached to an entity inline via
-`figures.kind = 'html_artifact'`. Pair with the `frontend-design`
-plugin for defaults that don't look generic.
+updates, and **clean experiment results** (the `body` field on an
+experiment entity). Sagan renders HTML attached to an entity inline via
+`figures.kind = 'html_artifact'` or via `<RichBody>` on the entity page.
+Pair with the `frontend-design` plugin for defaults that don't look
+generic.
 
 Keep **markdown** for code-adjacent files where diffs matter:
 `CLAUDE.md`, `README.md`, commit messages, PR bodies, and daily-log
 entries the user types in the dashboard. The principle: HTML for "I'll
 open this in a browser and look at it", markdown for "this lives in git
 and I'll read its diff".
+
+For **clean experiment results** specifically — the HTML write-up that
+lives on `experiments.body` and renders at `/e/experiment/[id]` — follow
+`docs/clean-result-guidelines.md`. That doc covers the canonical three-
+piece structure (TL;DR → primary plot → Experimental design dropdown),
+title rules, plot conventions (plain-English labels, no math notation in
+the chart, real data not approximations, SVG `<title>` hover tooltips),
+voice rules ("I" not "we", no fluff transitions), sections to avoid
+(standing caveats, additional figures, separate background/methodology
+h2s, references to abandoned metrics), and a worked example
+(experiment #311).
 
 ## Implementation Plan
 

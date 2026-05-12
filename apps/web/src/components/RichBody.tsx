@@ -83,6 +83,12 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
     'img', 'svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline',
     'polygon', 'text', 'tspan', 'defs', 'marker', 'use', 'pattern',
     'linearGradient', 'radialGradient', 'stop',
+    // SVG <title> for native hover tooltips on chart elements. Listed
+    // separately from HTML <title> intentionally: sanitize-html doesn't
+    // scope by parent, but admitting <title> here is safe because (a) the
+    // body renders inside a div, not <head>, and (b) the tag has no
+    // attributes in our allow-list, so the only payload is its text.
+    'title',
     'video', 'audio', 'source', 'track',
   ],
   allowedAttributes: {
@@ -134,7 +140,9 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   // When a tag is stripped, sanitize-html keeps its text content by default.
   // For these tags that's pure noise (or worse — a leaked <title> shows up
   // in the document body). Drop the text content along with the tag.
-  nonTextTags: ['style', 'script', 'textarea', 'option', 'noscript', 'head', 'title'],
+  // 'title' is intentionally NOT in nonTextTags — we allow it (above) so
+  // SVG hover tooltips work. nonTextTags only fires when a tag is stripped.
+  nonTextTags: ['style', 'script', 'textarea', 'option', 'noscript', 'head'],
   // SVG attribute names are case-sensitive (`viewBox`, `preserveAspectRatio`,
   // `gradientUnits`, etc.). htmlparser2's default lowercases everything,
   // which breaks SVG rendering — disable both element + attribute lowercasing

@@ -131,7 +131,15 @@ function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     if (!setPendingAnchor || !ref.current) return;
     const el = ref.current;
-    function update() {
+    function isInsidePopover(node: EventTarget | null): boolean {
+      const target = node as HTMLElement | null;
+      return !!target?.closest?.('[data-anchor-popover]');
+    }
+    function update(e?: Event) {
+      // A mouseup *on* the popover means the user is interacting with it —
+      // don't recompute (and don't clear it just because the click collapsed
+      // the selection).
+      if (e && isInsidePopover(e.target)) return;
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
         setPopover(null);
@@ -158,8 +166,7 @@ function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
       });
     }
     function onDown(e: MouseEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest?.('[data-anchor-popover]')) return;
+      if (isInsidePopover(e.target)) return;
       // Mouse-down outside popover starts a fresh selection cycle.
       setPopover(null);
     }
@@ -177,6 +184,10 @@ function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
   // container has `position: relative`, so we append a sibling div. We avoid
   // a React-rendered child here because for HTML narratives the parent uses
   // dangerouslySetInnerHTML and React doesn't own the children.
+  //
+  // Activation listens on mousedown with preventDefault() so the browser
+  // doesn't collapse the user's text selection before our handler runs —
+  // Chrome/Firefox both clear the selection on mousedown otherwise.
   useEffect(() => {
     if (!setPendingAnchor || !ref.current) return;
     const el = ref.current;
@@ -187,6 +198,7 @@ function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
         (() => {
           const created = document.createElement('div');
           created.setAttribute('data-anchor-popover', '');
+          created.style.userSelect = 'none';
           created.className =
             'absolute z-20 -translate-x-1/2 -translate-y-full rounded-md border border-[--color-border] bg-[--color-panel] px-2 py-1 text-xs font-medium shadow-md';
           const btn = document.createElement('button');
@@ -201,11 +213,20 @@ function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
       node.style.top = `${popover.top}px`;
       const btn = node.querySelector('button');
       if (btn) {
-        btn.onclick = () => {
+        const handler = (e: MouseEvent) => {
+          // Block the default mousedown so the browser keeps the selection
+          // alive and so focus does not transfer to the button.
+          e.preventDefault();
+          e.stopPropagation();
           setPendingAnchor({ quote: popover.quote });
           setPopover(null);
           window.getSelection()?.removeAllRanges();
         };
+        // Replace any prior listener by tracking it on the element.
+        const prior = (btn as HTMLButtonElement & { __anchorHandler?: typeof handler }).__anchorHandler;
+        if (prior) btn.removeEventListener('mousedown', prior);
+        btn.addEventListener('mousedown', handler);
+        (btn as HTMLButtonElement & { __anchorHandler?: typeof handler }).__anchorHandler = handler;
       }
     } else if (existing) {
       existing.remove();

@@ -22,7 +22,7 @@ const postSchema = z.object({
   markerType: z.string().min(1).max(120).optional(),
   fromStatus: z.string().max(50).nullable().optional(),
   toStatus: z.string().max(50).nullable().optional(),
-  note: z.string().max(50_000).optional(),
+  note: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   actorKind: z.string().max(40).default('agent'),
 });

@@ -86,6 +86,9 @@ const createSchema = z.object({
   entityId: z.string().uuid(),
   body: z.string().min(1).max(10_000),
   parentCommentId: z.string().uuid().optional(),
+  // Google-Docs-style anchor: the selected text snippet the comment targets.
+  // Only set on root comments; replies inherit the root's anchor visually.
+  anchoredQuote: z.string().min(1).max(600).optional(),
 });
 
 const ASK_CLAUDE_RE = /(^|\s)@claude\b/i;
@@ -154,7 +157,8 @@ export async function POST(req: Request) {
       })
     : '';
 
-  // Create the human comment first.
+  // Create the human comment first. Anchor only attaches to a root comment
+  // (replies share the root's anchor through the thread, not a fresh one).
   const inserted = await db()
     .insert(comments)
     .values({
@@ -165,6 +169,8 @@ export async function POST(req: Request) {
       authorKind: 'human',
       kind: requestedAgent ? 'ask_claude' : 'discussion',
       body: parsed.data.body,
+      anchoredQuote:
+        normalizedParentCommentId ? null : parsed.data.anchoredQuote?.trim() || null,
       autoContinueClaude,
     })
     .returning();

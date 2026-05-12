@@ -5,6 +5,7 @@ import { projectNarratives, projects } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { extractTocAndAddIds } from '@/lib/narrative-toc';
+import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
 import { Comments } from '@/components/Comments';
 import { ImproveNarrativeButton } from '@/components/ImproveNarrativeButton';
 import { Markdown } from '@/components/Markdown';
@@ -114,56 +115,63 @@ export default async function PublicProjectPage({
         </div>
       </header>
 
-      <div className="grid gap-10 lg:grid-cols-[220px_minmax(0,1fr)_360px]">
-        {toc.length > 0 ? (
-          <aside className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
-            <NarrativeToc toc={toc} />
-          </aside>
-        ) : (
-          <aside aria-hidden className="hidden lg:block" />
-        )}
-
-        <div className="space-y-6 min-w-0">
-          {narrative ? (
-            <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-8">
-              <NarrativeBody body={processedBody} />
-            </article>
-          ) : project.summaryMd ? (
-            <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-8">
-              <Markdown>{project.summaryMd}</Markdown>
-            </article>
+      <AnchoredCommentsProvider>
+        <div className="grid gap-10 lg:grid-cols-[220px_minmax(0,1fr)_360px]">
+          {toc.length > 0 ? (
+            <aside className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+              <NarrativeToc toc={toc} />
+            </aside>
           ) : (
-            <p className="text-sm text-[--color-muted]">No published narrative yet.</p>
+            <aside aria-hidden className="hidden lg:block" />
           )}
-        </div>
 
-        {narrative ? (
-          <aside className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-medium">Discussion</h2>
-              {session && isViewingCurrent ? (
-                <ImproveNarrativeButton narrativeId={narrative.id} />
-              ) : null}
-            </div>
-            {!isViewingCurrent ? (
-              <p className="rounded-md bg-[--color-muted-bg] px-3 py-2 text-xs text-[--color-muted]">
-                Viewing an archived version. Switch to <strong>current</strong> to leave comments
-                or run an Improve pass.
-              </p>
-            ) : session ? (
-              <Comments entityKind="project_narrative" entityId={narrative.id} />
+          <div className="space-y-6 min-w-0">
+            {narrative ? (
+              <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-8">
+                <NarrativeBody body={processedBody} />
+              </article>
+            ) : project.summaryMd ? (
+              <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-8">
+                <Markdown>{project.summaryMd}</Markdown>
+              </article>
             ) : (
-              <p className="text-sm text-[--color-muted]">
-                <Link href="/login" className="underline">
-                  Sign in
-                </Link>{' '}
-                to leave comments. Click <strong>Improve</strong> after commenting to have all
-                unresolved feedback addressed in a new draft.
-              </p>
+              <p className="text-sm text-[--color-muted]">No published narrative yet.</p>
             )}
-          </aside>
-        ) : null}
-      </div>
+          </div>
+
+          {narrative ? (
+            <aside className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-medium">Discussion</h2>
+                {session && isViewingCurrent ? (
+                  <ImproveNarrativeButton narrativeId={narrative.id} />
+                ) : null}
+              </div>
+              {!isViewingCurrent ? (
+                <p className="rounded-md bg-[--color-muted-bg] px-3 py-2 text-xs text-[--color-muted]">
+                  Viewing an archived version. Switch to <strong>current</strong> to leave comments
+                  or run an Improve pass.
+                </p>
+              ) : session ? (
+                <>
+                  <p className="text-xs text-[--color-muted]">
+                    Select text in the narrative to comment on a specific passage.
+                  </p>
+                  <Comments entityKind="project_narrative" entityId={narrative.id} />
+                </>
+              ) : (
+                <p className="text-sm text-[--color-muted]">
+                  <Link href="/login" className="underline">
+                    Sign in
+                  </Link>{' '}
+                  to leave comments. Click <strong>Improve</strong> after commenting to have all
+                  unresolved feedback addressed in a new draft.
+                </p>
+              )}
+            </aside>
+          ) : null}
+        </div>
+      </AnchoredCommentsProvider>
 
       <footer className="border-t border-[--color-border] pt-4 text-[10px] uppercase tracking-wide text-[--color-muted]">
         Sagan

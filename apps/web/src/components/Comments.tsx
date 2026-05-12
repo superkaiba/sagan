@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { Markdown } from './Markdown';
+import { useAnchoredComments } from './AnchoredCommentsContext';
 
 const CODEX_REPLY_MARKER = '<!-- agent:codex -->';
 
@@ -15,6 +16,7 @@ interface Comment {
   authorKind: 'human' | 'claude' | 'system';
   kind: 'discussion' | 'ask_claude' | 'todo';
   body: string;
+  anchoredQuote: string | null;
   agentRunId: string | null;
   autoContinueClaude: boolean;
   resolvedAt: string | null;
@@ -25,6 +27,7 @@ interface Comment {
 }
 
 export function Comments({ entityKind, entityId }: { entityKind: string; entityId: string }) {
+  const anchorCtx = useAnchoredComments();
   const [items, setItems] = useState<Comment[]>([]);
   const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [body, setBody] = useState('');
@@ -51,11 +54,30 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityKind, entityId]);
 
-  async function postComment(text: string, parentCommentId?: string | null) {
+  // Publish anchor list (root-level comments with quotes) into the shared
+  // context so NarrativeBody can paint <mark> wraps. Replies aren't wrapped
+  // separately — their quote, if any, is shown in the card but the root
+  // anchor is the highlight target.
+  useEffect(() => {
+    if (!anchorCtx) return;
+    const next = items
+      .filter((c) => !c.parentCommentId && !c.resolvedAt && c.anchoredQuote)
+      .map((c) => ({ id: c.id, quote: c.anchoredQuote as string }));
+    anchorCtx.setAnchors(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, !!anchorCtx]);
+
+  async function postComment(
+    text: string,
+    parentCommentId?: string | null,
+    anchoredQuote?: string | null,
+  ) {
+    const payload: Record<string, unknown> = { entityKind, entityId, body: text, parentCommentId };
+    if (anchoredQuote) payload.anchoredQuote = anchoredQuote;
     const res = await fetch('/api/comments', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ entityKind, entityId, body: text, parentCommentId }),
+      body: JSON.stringify(payload),
     });
     return res.ok;
   }
@@ -65,9 +87,11 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     if (!body.trim()) return;
     setSubmitting(true);
     try {
-      const ok = await postComment(body);
+      const pendingQuote = anchorCtx?.pendingAnchor?.quote ?? null;
+      const ok = await postComment(body, null, pendingQuote);
       if (ok) {
         setBody('');
+        anchorCtx?.setPendingAnchor(null);
         await load();
       }
     } finally {
@@ -160,9 +184,16 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     const isAgent = c.authorKind === 'claude';
     const collapsed = collapsedIds.has(c.id);
     const displayBody = visibleBody(c);
-    const wrap = `group p-3 ${c.resolvedAt ? 'opacity-60' : ''} ${isAgent ? 'bg-[--color-muted-bg]' : ''} ${isReply ? 'border-l-2 border-[--color-border] ml-4' : ''}`;
+    const hoverable = !isReply && !!c.anchoredQuote && !!anchorCtx;
+    const isHovered = hoverable && anchorCtx?.hoveredId === c.id;
+    const wrap = `group p-3 transition-colors ${c.resolvedAt ? 'opacity-60' : ''} ${isAgent ? 'bg-[--color-muted-bg]' : ''} ${isReply ? 'border-l-2 border-[--color-border] ml-4' : ''} ${isHovered ? 'bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]' : ''}`;
     return (
-      <article key={c.id} className={wrap}>
+      <article
+        key={c.id}
+        className={wrap}
+        onMouseEnter={hoverable ? () => anchorCtx?.setHoveredId(c.id) : undefined}
+        onMouseLeave={hoverable ? () => anchorCtx?.setHoveredId(null) : undefined}
+      >
         <header className="mb-1 flex flex-wrap items-baseline gap-2 text-xs text-[--color-muted]">
           <button
             type="button"
@@ -218,6 +249,16 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
               <p className="mb-1 text-xs italic text-[--color-muted]">
                 resolved · {c.resolvedSummaryMd}
               </p>
+            ) : null}
+            {c.anchoredQuote && !isReply ? (
+              <button
+                type="button"
+                onClick={() => anchorCtx?.requestScrollTo(c.id)}
+                className="mb-2 block max-w-full truncate border-l-2 border-[--color-accent] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] px-2 py-1 text-left text-xs italic text-[--color-muted] hover:text-[--color-fg]"
+                title="Jump to the highlighted text"
+              >
+                “{c.anchoredQuote}”
+              </button>
             ) : null}
             <Markdown>{displayBody}</Markdown>
             <div className="mt-2">
@@ -301,11 +342,31 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
         onSubmit={onTopLevelSubmit}
         className="space-y-2 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-3"
       >
+        {anchorCtx?.pendingAnchor ? (
+          <div className="flex items-start gap-2 rounded-md border border-[--color-accent] bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] px-2 py-1.5 text-xs">
+            <span className="mt-0.5 text-[--color-muted]">Commenting on:</span>
+            <span className="min-w-0 flex-1 truncate italic text-[--color-fg]">
+              “{anchorCtx.pendingAnchor.quote}”
+            </span>
+            <button
+              type="button"
+              aria-label="Clear anchor"
+              onClick={() => anchorCtx.setPendingAnchor(null)}
+              className="text-[--color-muted] hover:text-[--color-fg]"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
         <textarea
           rows={3}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder="Add a comment. Mention @claude or @codex to spawn a Q&A run."
+          placeholder={
+            anchorCtx?.pendingAnchor
+              ? 'Write a comment about the highlighted text…'
+              : 'Add a comment. Mention @claude or @codex to spawn a Q&A run.'
+          }
           className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
         />
         <div className="flex items-center justify-between">

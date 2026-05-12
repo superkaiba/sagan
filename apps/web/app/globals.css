@@ -377,3 +377,36 @@ a[href]:active,
     box-shadow: 0 0 0 3px var(--color-attention);
   }
 }
+
+/* Anchored-comment highlights inside narratives. Wrapped imperatively after
+ * render by NarrativeBody, so we target the data attribute rather than a
+ * Tailwind utility. */
+mark.anchor-mark {
+  background-color: color-mix(in srgb, var(--color-warning) 22%, transparent);
+  color: inherit;
+  padding: 0 1px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 55%, transparent);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+mark.anchor-mark.is-hovered {
+  background-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border-bottom-color: var(--color-warning);
+}
+
+@keyframes sagan-anchor-flash {
+  0%,
+  100% {
+    background-color: color-mix(in srgb, var(--color-warning) 22%, transparent);
+  }
+  20%,
+  60% {
+    background-color: color-mix(in srgb, var(--color-warning) 70%, transparent);
+  }
+}
+
+mark.anchor-mark.is-flash {
+  animation: sagan-anchor-flash 1.2s ease-in-out;
+}

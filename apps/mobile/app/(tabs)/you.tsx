@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
-import { api, apiBase, getToken, logout } from '@/lib/api';
+import { api, apiBase, BUNDLE_VERSION, getLastOAuthLog, getToken, logout, probeSecureStore } from '@/lib/api';
 import { unregisterCurrentToken } from '@/lib/notifications';
 import { C } from '@/lib/theme';
 
@@ -17,6 +17,8 @@ interface DebugState {
   meBody: string | null;
   summaryStatus: number | null;
   summaryBody: string | null;
+  secureStore: string;
+  oauthLog: string | null;
 }
 
 const EMPTY: DebugState = {
@@ -27,6 +29,8 @@ const EMPTY: DebugState = {
   meBody: null,
   summaryStatus: null,
   summaryBody: null,
+  secureStore: '(not run)',
+  oauthLog: null,
 };
 
 export default function You() {
@@ -36,7 +40,7 @@ export default function You() {
 
   const probe = useCallback(async () => {
     setRunning(true);
-    const token = await getToken();
+    const [token, secure] = await Promise.all([getToken(), probeSecureStore()]);
     const meRes = await api<Me>('/api/auth/me', { noRecovery: true });
     const summaryRes = await api<unknown>('/api/today/summary', { noRecovery: true });
     setDebug({
@@ -47,6 +51,8 @@ export default function You() {
       meBody: JSON.stringify(meRes.data ?? null).slice(0, 200),
       summaryStatus: summaryRes.status,
       summaryBody: JSON.stringify(summaryRes.data ?? null).slice(0, 200),
+      secureStore: secure,
+      oauthLog: getLastOAuthLog(),
     });
     if (meRes.ok && meRes.data) setMe(meRes.data.user);
     setRunning(false);
@@ -78,7 +84,13 @@ export default function You() {
             <Text style={s.smallButtonText}>{running ? 'Probing…' : 'Re-run'}</Text>
           </TouchableOpacity>
         </View>
-        <Text style={s.label}>Token in SecureStore</Text>
+        <Text style={s.label}>Bundle</Text>
+        <Text style={s.value}>{BUNDLE_VERSION}</Text>
+        <Text style={[s.label, { marginTop: 8 }]}>SecureStore self-test</Text>
+        <Text style={s.value}>{debug.secureStore}</Text>
+        <Text style={[s.label, { marginTop: 8 }]}>Last OAuth</Text>
+        <Text style={s.mono}>{debug.oauthLog ?? '(no attempt this session)'}</Text>
+        <Text style={[s.label, { marginTop: 8 }]}>Token in SecureStore</Text>
         <Text style={s.value}>
           {debug.tokenPresent ? `${debug.tokenLen} chars · ${debug.tokenPreview}` : '(none)'}
         </Text>

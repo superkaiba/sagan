@@ -22,6 +22,30 @@ export async function clearToken(): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
 }
 
+// Captured by loginWithGoogle for diagnostics on the You tab.
+let lastOAuthLog: string | null = null;
+export function getLastOAuthLog(): string | null {
+  return lastOAuthLog;
+}
+function setOAuthLog(message: string): void {
+  lastOAuthLog = `[${new Date().toISOString().slice(11, 19)}] ${message}`;
+}
+
+export async function probeSecureStore(): Promise<string> {
+  const k = '__sagan_probe__';
+  const v = `probe-${Date.now()}`;
+  try {
+    await SecureStore.setItemAsync(k, v, SECURE_OPTS);
+    const read = await SecureStore.getItemAsync(k, SECURE_OPTS);
+    await SecureStore.deleteItemAsync(k, SECURE_OPTS).catch(() => {});
+    return read === v ? `ok (${read.length} chars)` : `MISMATCH wrote=${v} read=${read}`;
+  } catch (err) {
+    return `THREW ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+export const BUNDLE_VERSION = 'v7-keychain-and-probe';
+
 export async function api<T>(
   path: string,
   init?: RequestInit & { auth?: boolean; noRecovery?: boolean },
@@ -69,23 +93,40 @@ export type GoogleLoginResult =
 
 export async function loginWithGoogle(): Promise<GoogleLoginResult> {
   const returnUrl = Linking.createURL('auth/callback');
+  setOAuthLog(`start returnUrl=${returnUrl}`);
   const authUrl = `${API_BASE}/api/auth/google/start?mobile_redirect=${encodeURIComponent(returnUrl)}`;
   let result: WebBrowser.WebBrowserAuthSessionResult;
   try {
     result = await WebBrowser.openAuthSessionAsync(authUrl, returnUrl);
   } catch (err) {
+    setOAuthLog(`browser threw: ${err instanceof Error ? err.message : String(err)}`);
     return { kind: 'error', error: err instanceof Error ? err.message : 'browser_failed' };
   }
+  setOAuthLog(`result.type=${result.type} url=${('url' in result && result.url) || '<none>'}`);
   if (result.type === 'cancel' || result.type === 'dismiss') return { kind: 'cancel' };
   if (result.type !== 'success' || !result.url) return { kind: 'error', error: 'no_callback' };
 
   const parsed = Linking.parse(result.url);
   const params = (parsed.queryParams ?? {}) as Record<string, string | string[] | undefined>;
+  setOAuthLog(`parsed params keys=${Object.keys(params).join(',')}`);
   const errorParam = pickString(params.error);
-  if (errorParam) return { kind: 'error', error: errorParam };
+  if (errorParam) {
+    setOAuthLog(`callback returned error=${errorParam}`);
+    return { kind: 'error', error: errorParam };
+  }
   const token = pickString(params.token);
-  if (!token) return { kind: 'error', error: 'no_token' };
-  await setToken(token);
+  if (!token) {
+    setOAuthLog(`no token in callback url`);
+    return { kind: 'error', error: 'no_token' };
+  }
+  try {
+    await setToken(token);
+  } catch (err) {
+    setOAuthLog(`setToken threw: ${err instanceof Error ? err.message : String(err)}`);
+    return { kind: 'error', error: 'store_failed' };
+  }
+  const readback = await getToken();
+  setOAuthLog(`stored token len=${token.length}; readback ${readback ? 'ok' : 'NULL'}`);
   return { kind: 'success' };
 }
 

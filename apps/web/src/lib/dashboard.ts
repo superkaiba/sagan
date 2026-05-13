@@ -164,6 +164,7 @@ export const PIPELINE_STAGES = [
   { key: 'queued', title: 'Approved / Queued' },
   { key: 'running', title: 'Running' },
   { key: 'interpreting', title: 'Interpreting' },
+  { key: 'followups_running', title: 'Follow-ups running' },
   { key: 'clean_results', title: 'Clean results' },
   { key: 'blocked', title: 'Blocked' },
   { key: 'review', title: 'Review' },
@@ -726,7 +727,8 @@ function experimentStage(status: string, priority: string): PipelineStageKey {
   ) {
     return 'running';
   }
-  if (status === 'interpreting' || status === 'followups_running') return 'interpreting';
+  if (status === 'followups_running') return 'followups_running';
+  if (status === 'interpreting') return 'interpreting';
   if (status === 'reviewing' || status === 'awaiting_promotion') return 'review';
   if (status === 'shared' || status === 'completed' || status === 'done_experiment' || status === 'done_impl') return 'done';
   if (status === 'blocked' || status === 'failed') return 'blocked';

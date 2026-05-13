@@ -104,7 +104,6 @@ for (const path of [
   '.claude/skills/issue/SKILL.md',
   '.claude/skills/issue/markers.md',
   '.claude/agents/experiment-planner.md',
-  '.claude/agents/implementer.md',
   '.claude/agents/code-reviewer.md',
   '.claude/agents/codex-code-reviewer.md',
   '.claude/agents/interpretation-critic.md',

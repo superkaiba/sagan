@@ -5,7 +5,7 @@ import { experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendWorkflowEvent } from '@/lib/workflow';
-import { validateReviewerLoopEvent } from '@/lib/reviewer-loops';
+import { isKnownMarkerType, validateReviewerLoopEvent } from '@/lib/reviewer-loops';
 
 const WORKFLOW_EVENT_TYPES = [
   'created',
@@ -64,6 +64,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   const { eventType, markerType, fromStatus, toStatus, note, metadata: meta, actorKind } = parsed.data;
+  if (markerType && !isKnownMarkerType(markerType)) {
+    return NextResponse.json(
+      {
+        error: 'unknown_marker_type',
+        message: `Marker "${markerType}" is not in KNOWN_MARKER_TYPES. Add it to apps/web/src/lib/reviewer-loops.ts and .claude/workflow.yaml before posting.`,
+      },
+      { status: 400 },
+    );
+  }
   const combinedMetadata = markerType
     ? { ...(meta ?? {}), marker_type: markerType }
     : meta;

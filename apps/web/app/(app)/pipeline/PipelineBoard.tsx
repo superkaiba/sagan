@@ -72,6 +72,7 @@ const ISSUE_DEFAULTS_BY_STAGE: Record<PipelineStageKey, { status: string; priori
   queued: { status: 'planning', priority: 'normal' },
   running: { status: 'running', priority: 'normal' },
   interpreting: { status: 'interpreting', priority: 'normal' },
+  followups_running: { status: 'followups_running', priority: 'normal' },
   clean_results: { status: 'awaiting_promotion', priority: 'normal' },
   blocked: { status: 'blocked', priority: 'high' },
   review: { status: 'awaiting_promotion', priority: 'normal' },
@@ -80,7 +81,7 @@ const ISSUE_DEFAULTS_BY_STAGE: Record<PipelineStageKey, { status: string; priori
 };
 
 const dropTargets: Record<PipelineCardKind, PipelineStageKey[]> = {
-  experiment: ['later', 'idea', 'clarifying', 'awaiting_clarifications', 'planning', 'approval', 'queued', 'running', 'interpreting', 'blocked', 'review', 'done', 'archived'],
+  experiment: ['later', 'idea', 'clarifying', 'awaiting_clarifications', 'planning', 'approval', 'queued', 'running', 'interpreting', 'followups_running', 'blocked', 'review', 'done', 'archived'],
   clean_result: ['interpreting', 'clean_results', 'blocked', 'review', 'done', 'archived'],
   todo: ['later', 'idea', 'planning', 'running', 'interpreting', 'blocked', 'review', 'done', 'archived'],
   idea: ['clarifying', 'planning', 'archived'],

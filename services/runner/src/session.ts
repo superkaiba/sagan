@@ -140,6 +140,11 @@ Read only the plan and the two critic reports supplied in the prompt. Do not rev
 
 Return a binding Verdict, then a short adjudication table for the existing findings only. Reconciler suggestions do not count as a critique loop. After round 3, disagreement alone cannot block; choose the minimal necessary fix and continue unless a true user-decision blocker remains.`,
   },
+  'consistency-checker': {
+    description: 'Verifies the plan matches related prior experiments on baseline / eval suite / seeds / data version, and flags resource anti-patterns.',
+    tools: ['Read', 'Grep', 'Glob', 'Bash'],
+    prompt: `You independently verify that a new experiment plan is consistent with related prior experiments. See .claude/agents/consistency-checker.md for the full contract. Return verdict PASS / WARN / BLOCK and an enumeration of what differs from the parent — but treat multi-variable changes as expected, not as a default BLOCK. Real experiments often vary several things at once (e.g. switching SFT→DPO changes both method and loss). The blocking checks are: base model / checkpoint mismatch when the plan claims to compare against prior results, eval-suite mismatch when claiming comparable metrics, and the parallel-seed anti-pattern (N single-GPU pods proposed where one multi-GPU pod with CUDA_VISIBLE_DEVICES sharding would dispatch more reliably). Differences in seeds and data version are WARNs, not blocks.`,
+  },
 };
 
 function toolPolicyForRunKind(row: AgentRunRow): Pick<Options, 'tools' | 'canUseTool' | 'agents'> {
@@ -172,7 +177,7 @@ function toolPolicyForRunKind(row: AgentRunRow): Pick<Options, 'tools' | 'canUse
 
 function experimentPlanningToolGuard(kind: AgentRunRow['kind']): CanUseTool {
   const allowed = new Set<string>(EXPERIMENT_PLANNING_TOOLS);
-  const allowedAgents = new Set(['critic', 'codex-critic', 'reconciler']);
+  const allowedAgents = new Set(['critic', 'codex-critic', 'reconciler', 'consistency-checker']);
   return async (toolName, input, options) => {
     if (!allowed.has(toolName)) {
       return denyReadOnlyTool(kind, toolName, input, options.toolUseID);
@@ -185,7 +190,7 @@ function experimentPlanningToolGuard(kind: AgentRunRow['kind']): CanUseTool {
       return {
         behavior: 'deny',
         toolUseID: options.toolUseID,
-        message: `${kind} planning may only spawn critic, codex-critic, or reconciler agents. Claude must draft and revise the plan in the main session.`,
+        message: `${kind} planning may only spawn critic, codex-critic, reconciler, or consistency-checker agents. Claude must draft and revise the plan in the main session.`,
       };
     }
     if (toolName === 'Bash') {
@@ -627,6 +632,7 @@ async function buildExperimentOrchestratorPrompt(
   const parentRunId = row.request.slice(EXPERIMENT_ORCHESTRATOR_PREFIX.length).trim().split(/\s/)[0];
   let parentPlan = '';
   let experimentNumber: number | null = null;
+  let projectSlug: string | null = null;
   if (parentRunId) {
     const parentRows = await db()
       .select({ planMd: schema.agentRuns.planMd })
@@ -637,12 +643,22 @@ async function buildExperimentOrchestratorPrompt(
   }
   if (row.scopeEntityKind === 'experiment' && row.scopeEntityId) {
     const expRows = await db()
-      .select({ number: schema.experiments.number })
+      .select({ number: schema.experiments.number, projectId: schema.experiments.projectId })
       .from(schema.experiments)
       .where(eq(schema.experiments.id, row.scopeEntityId))
       .limit(1);
     experimentNumber = expRows[0]?.number ?? null;
+    const projectId = expRows[0]?.projectId ?? null;
+    if (projectId) {
+      const projectRows = await db()
+        .select({ slug: schema.projects.slug })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, projectId))
+        .limit(1);
+      projectSlug = projectRows[0]?.slug ?? null;
+    }
   }
+  const clientRepoPath = resolveClientRepoPath(projectSlug);
 
   return `${header}${scope}
 
@@ -654,9 +670,9 @@ Treat Sagan as the only workflow control plane. Use \`python scripts/sagan_state
 
 Workflow stages and the sub-agents to invoke at each one (use the Agent tool with the matching \`subagent_type\`; each agent is loaded from .claude/agents/<name>.md):
 
-1. **implementing** — set status \`implementing\` and post \`epm:experiment-implementation\`. Spawn \`experiment-implementer\` (subagent_type: experiment-implementer) with the approved plan and a per-experiment branch on \`/home/thomasjiralerspong/explore-persona-space\`. The implementer writes the experiment-specific code, commits, and returns the branch name + commit hash.
+1. **implementing** — set status \`implementing\` and post \`epm:experiment-implementation\`. Spawn \`experiment-implementer\` (subagent_type: experiment-implementer) with the approved plan and a per-experiment branch on the client repo at \`${clientRepoPath}\`${projectSlug ? ` (project \`${projectSlug}\`)` : ''}. The implementer writes the experiment-specific code, commits, and returns the branch name + commit hash. If \`${clientRepoPath}\` is the unconfigured placeholder, abort with \`epm:failure\` citing missing SAGAN_CLIENT_REPOS configuration for this project.
 2. **code_reviewing** — set status \`code_reviewing\`. Spawn \`code-reviewer\` and \`codex-code-reviewer\` in parallel (run_in_background=true) for round 1. Merge with \`reconciler\` if they disagree. Re-spawn the implementer with the agreed targeted fixes if needed. Cap at 3 rounds; round-3 reviewer disagreement alone does not block — the reconciler picks the minimal necessary fix and you continue. Post \`epm:code-review\`, \`epm:code-review-codex\`, and \`epm:review-reconcile\` markers as you go.
-3. **testing** — set status \`testing\`. Run the project's local checks (lint, unit tests). Post \`epm:test-verdict\`. If checks fail, loop back to implementing → code_reviewing for a targeted fix.
+3. **testing** — the code-reviewer pair runs lint + unit tests as Step 4 of its review (see .claude/agents/code-reviewer.md). Don't re-run them. Forward the reviewer's test outcome by posting \`epm:test-verdict\`. If reviewer said tests failed, you'd already be looping back to implementing — you shouldn't reach this status with broken tests.
 4. **running** — once the EPS branch has the code and tests pass, push the branch and ask Sagan to launch the pods by running:
    \`\`\`
    python scripts/sagan_state.py launch-pod ${parentRunId || '<parent_run_id>'}
@@ -666,7 +682,11 @@ Workflow stages and the sub-agents to invoke at each one (use the Agent tool wit
 6. **verifying** — set status \`verifying\` and spawn \`upload-verifier\` (subagent_type: upload-verifier) to confirm every artifact has a permanent URL. Hard gate: do not advance until verifier passes.
 7. **interpreting** — set status \`interpreting\` and spawn \`analyzer\` (subagent_type: analyzer) to produce the interpretation draft. Post \`epm:interpretation\`.
 8. **reviewing** — set status \`reviewing\`. Spawn \`interpretation-critic\` + \`codex-interpretation-critic\` for round 1, reconcile if needed. Same 3-round cap + round-3 rule. Then spawn \`clean-result-critic\` + \`codex-clean-result-critic\` for the clean-result write-up, same cap.
-9. **awaiting_promotion** — set status \`awaiting_promotion\` and post \`epm:awaiting-promotion\`. Stop. Promotion is owner-driven and happens via the dashboard's Promote button (or \`python scripts/sagan_state.py promote <N> useful\`).
+9. **follow-ups** — once the critic pairs pass, spawn \`follow-up-proposer\` to draft follow-up experiments. Instruct it to emit two separate lists in its output:
+   - \`auto_run\`: small, well-defined follow-ups that don't need owner sign-off — one extra seed, one extra eval condition, a smoke check, a scaling sanity check. Each must fit in <=2 GPU-hours of the same hardware class as the parent. The orchestrator auto-queues each as a child experiment in status \`followups_running\` (linked to the parent via \`metadata.parent_experiment_id\`) by POSTing to \`/api/experiments\` then approving its plan on the owner's behalf. These show up in the dashboard's "Follow-ups running" column.
+   - \`proposed\`: broader ideas — new directions, design extensions, follow-on questions. Do NOT auto-queue. Attach them to the parent experiment's body via \`sagan_state.py patch <N> --body-file …\` under a \`## Proposed follow-ups\` section so the owner sees them on the card and can decide to "Move to to-dos" (creates a row in \`todos\`).
+   Post a single \`epm:follow-ups\` marker summarising both lists. If follow-up-proposer returns nothing useful, post \`epm:follow-ups\` with an empty payload and move on — do not block on follow-ups.
+10. **awaiting_promotion** — set status \`awaiting_promotion\` and post \`epm:awaiting-promotion\`. Stop. The parent experiment can sit here while auto-queued follow-ups still run (they have their own \`followups_running\` cards in the pipeline; the parent doesn't wait on them). Promotion is owner-driven and happens via the dashboard's Promote button (or \`python scripts/sagan_state.py promote <N> useful\`).
 
 Marker discipline: every stage transition and every reviewer verdict goes into Sagan \`workflow_events\` via \`sagan_state.py marker <N> <epm:name> --note "..."\`. The reviewer-loop helpers in \`apps/web/src/lib/reviewer-loops.ts\` define the verdict + metadata shape — match it.
 
@@ -676,12 +696,42 @@ Reviewer-pair contract (\`code-review\`, \`interpretation\`, \`clean-result\`):
 
 Failure handling: on any unrecoverable error, post \`epm:failure\` with the diagnosis and set status to \`blocked\`. Do not silently retry. If the failure is transient (e.g. transient pod allocator error), the runner's recovery loop will queue a follow-up automatically.
 
-Working directory: \`/home/thomasjiralerspong/explore-persona-space\` for experiment-specific code edits. The Sagan repo at \`/home/thomasjiralerspong/sagan\` already contains \`scripts/sagan_state.py\` and is your call-control surface — do not edit Sagan code from this orchestrator unless the failure is explicitly an infrastructure bug.
+Working directory: \`${clientRepoPath}\` for experiment-specific code edits${projectSlug ? ` (project \`${projectSlug}\`)` : ''}. The Sagan repo at \`/home/thomasjiralerspong/sagan\` already contains \`scripts/sagan_state.py\` and is your call-control surface — do not edit Sagan code from this orchestrator unless the failure is explicitly an infrastructure bug.
 
 Approved plan (from parent agent_run ${parentRunId || '<unknown>'}):
 
 ${parentPlan ? parentPlan : '(plan_md not loaded — abort with epm:failure citing missing plan_md)'}
 `;
+}
+
+/**
+ * Map a Sagan project slug to a client-side checkout the orchestrator can
+ * work in. Reads `SAGAN_CLIENT_REPOS` as a JSON object `{ "<slug>": "<path>" }`
+ * with `SAGAN_DEFAULT_CLIENT_REPO` as the fallback when the slug is unknown.
+ * Returns a sentinel string when nothing is configured so the orchestrator
+ * brief can detect and abort cleanly instead of silently writing into the
+ * wrong tree. EPS is no longer hard-coded — set the env vars at deploy time.
+ */
+function resolveClientRepoPath(projectSlug: string | null): string {
+  const map = parseClientRepoMap(process.env.SAGAN_CLIENT_REPOS);
+  if (projectSlug && map[projectSlug]) return map[projectSlug]!;
+  if (process.env.SAGAN_DEFAULT_CLIENT_REPO) return process.env.SAGAN_DEFAULT_CLIENT_REPO;
+  return '<unconfigured: set SAGAN_CLIENT_REPOS or SAGAN_DEFAULT_CLIENT_REPO>';
+}
+
+function parseClientRepoMap(raw: string | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'string' && value.trim()) out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 async function buildGeneralChatPrompt(row: AgentRunRow, header: string, scope: string): Promise<string> {
@@ -1136,6 +1186,14 @@ Before finalizing, use this bounded review workflow:
 10. After the last loop, run a consistency check yourself: ensure the goal,
    hypothesis, prediction, kill criterion, compute, artifacts, verification,
    risks, likely clean-result shape, and runpod-spec all agree.
+11. Spawn the \`consistency-checker\` sub-agent once before producing the
+   final plan. It checks that the new design matches related prior
+   experiments on baseline / eval suite / seeds / data version when the
+   plan claims comparability, and flags the "N single-GPU pods instead of
+   one multi-GPU pod" anti-pattern. Multi-variable changes are fine if the
+   plan justifies them. If it returns BLOCK, fold the targeted fix in and
+   re-run it; a WARN you can accept with explicit justification in the
+   plan body.
 
 In ## Risks and Red Team, include a compact "Critique loop notes" subsection
 with the number of loops run, the final merged verdict, any Codex fallback,

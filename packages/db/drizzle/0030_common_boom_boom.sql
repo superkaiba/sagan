@@ -1,0 +1,1 @@
+ALTER TYPE "public"."entity_kind" ADD VALUE 'experiment_plan' BEFORE 'run';

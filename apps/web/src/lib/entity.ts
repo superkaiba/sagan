@@ -22,6 +22,7 @@ export type EntityKind =
   | 'project'
   | 'belief'
   | 'experiment'
+  | 'experiment_plan'
   | 'run'
   | 'clean_result'
   | 'todo'
@@ -38,6 +39,7 @@ export const ENTITY_KINDS: EntityKind[] = [
   'project',
   'belief',
   'experiment',
+  'experiment_plan',
   'run',
   'clean_result',
   'todo',
@@ -55,6 +57,7 @@ export const KIND_LABELS: Record<EntityKind, string> = {
   project: 'Project',
   belief: 'Belief',
   experiment: 'Experiment',
+  experiment_plan: 'Plan version',
   run: 'Run',
   clean_result: 'Clean result',
   todo: 'Task',
@@ -320,6 +323,12 @@ export async function loadEntity(kind: EntityKind, id: string): Promise<EntityRo
         ],
         raw: row,
       };
+    }
+    case 'experiment_plan': {
+      // Plan-version entities exist only as a comment scope; there's no
+      // standalone page for them. Comments on a plan render inside the
+      // parent experiment's overlay.
+      return null;
     }
   }
 }

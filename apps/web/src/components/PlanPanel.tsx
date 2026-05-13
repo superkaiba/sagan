@@ -3,6 +3,7 @@ import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { agentRuns, experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { MarkdownWithTextboxes } from '@/components/MarkdownWithTextboxes';
+import { PlanWithComments } from '@/components/PlanWithComments';
 
 /**
  * Persistent "Plan" section for the entity page. Sits in the main column
@@ -15,9 +16,11 @@ import { MarkdownWithTextboxes } from '@/components/MarkdownWithTextboxes';
 export async function PlanPanel({
   entityKind,
   entityId,
+  experimentStatus,
 }: {
   entityKind: string;
   entityId: string;
+  experimentStatus?: string | null;
 }) {
   let planMd: string | null = null;
   let runId: string | null = null;
@@ -83,6 +86,12 @@ export async function PlanPanel({
   if (!planMd) return null;
 
   const awaitingApproval = runStatus === 'awaiting_approval';
+  // Plan-pending and awaiting-approval experiments accept inline comments +
+  // a one-shot Revise. After approval the plan becomes read-only history.
+  const canRevise =
+    entityKind === 'experiment' &&
+    (experimentStatus === 'plan_pending' || experimentStatus === 'awaiting_approval');
+  const showCommentable = entityKind === 'experiment' && runId !== null;
 
   return (
     <section className="rounded-lg border border-[--color-border] bg-[--color-panel]">
@@ -105,12 +114,21 @@ export async function PlanPanel({
         ) : null}
       </header>
       <div className="px-4 py-3">
-        <MarkdownWithTextboxes
-          body={planMd}
-          entityKind={entityKind as 'experiment' | 'todo'}
-          entityId={entityId}
-          source="plan"
-        />
+        {showCommentable ? (
+          <PlanWithComments
+            experimentId={entityId}
+            planMd={planMd}
+            planRunId={runId!}
+            canRevise={canRevise}
+          />
+        ) : (
+          <MarkdownWithTextboxes
+            body={planMd}
+            entityKind={entityKind as 'experiment' | 'todo'}
+            entityId={entityId}
+            source="plan"
+          />
+        )}
       </div>
     </section>
   );

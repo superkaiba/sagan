@@ -4,6 +4,7 @@ export const entityKindSchema = z.enum([
   'project',
   'belief',
   'experiment',
+  'experiment_plan',
   'run',
   'clean_result',
   'todo',

@@ -5,6 +5,7 @@ import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { ClarifyingQuestionsPanel } from '@/components/ClarifyingQuestionsPanel';
 import { Comments } from '@/components/Comments';
 import { PlanPanel } from '@/components/PlanPanel';
+import { PlanHistory } from '@/components/PlanHistory';
 import { ProposedFollowUps } from '@/components/ProposedFollowUps';
 import { EditableBody } from '@/components/EditableBody';
 import { CommentableBody } from '@/components/CommentableBody';
@@ -158,7 +159,11 @@ export default async function EntityPage({
         ) : null}
 
         {(kind === 'experiment' || kind === 'todo') ? (
-          <PlanPanel entityKind={kind} entityId={entity.id} />
+          <PlanPanel entityKind={kind} entityId={entity.id} experimentStatus={entity.status} />
+        ) : null}
+
+        {kind === 'experiment' ? (
+          <PlanHistory experimentId={entity.id} />
         ) : null}
 
         {owner && canEditBody(kind) ? (

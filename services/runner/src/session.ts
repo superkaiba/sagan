@@ -1244,6 +1244,37 @@ async function markExperimentPlanPending(
       .where(eq(schema.experiments.id, experimentId));
   }
 
+  // Anchored comments on prior plan versions were the owner asking for this
+  // revision; mark them resolved so they don't accumulate as ever-growing
+  // open feedback. The history view still shows them (resolved badge); the
+  // current plan starts fresh.
+  const priorPlanRuns = await db()
+    .select({ id: schema.agentRuns.id })
+    .from(schema.agentRuns)
+    .where(
+      and(
+        eq(schema.agentRuns.scopeEntityKind, 'experiment'),
+        eq(schema.agentRuns.scopeEntityId, experimentId),
+        eq(schema.agentRuns.kind, 'experiment'),
+        ne(schema.agentRuns.id, runId),
+      ),
+    );
+  if (priorPlanRuns.length > 0) {
+    await db()
+      .update(schema.comments)
+      .set({ resolvedAt: new Date(), resolvedSummaryMd: 'Auto-resolved: addressed in revised plan version.' })
+      .where(
+        and(
+          eq(schema.comments.entityKind, 'experiment_plan'),
+          inArray(
+            schema.comments.entityId,
+            priorPlanRuns.map((r) => r.id),
+          ),
+          isNull(schema.comments.resolvedAt),
+        ),
+      );
+  }
+
   const existing = await db()
     .select({ id: schema.approvalRequests.id })
     .from(schema.approvalRequests)

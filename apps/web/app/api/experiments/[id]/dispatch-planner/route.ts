@@ -87,10 +87,38 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   // Pull unresolved comments and Claude's previous plan output so the new
-  // planner run sees the owner's answers in its starting message.
+  // planner run sees the owner's answers in its starting message. Comments
+  // can live on the experiment itself (general discussion) OR on the current
+  // plan version (anchored inline on the plan markdown). The latest
+  // experiment-kind agent_run is the entityId for plan-version comments.
+  const latestPlanRunRows = await db()
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.scopeEntityKind, 'experiment'),
+        eq(agentRuns.scopeEntityId, id),
+        eq(agentRuns.kind, 'experiment'),
+      ),
+    )
+    .orderBy(desc(agentRuns.updatedAt))
+    .limit(1);
+  const latestPlanRunId = latestPlanRunRows[0]?.id ?? null;
+
+  const planCommentFilter = latestPlanRunId
+    ? and(eq(comments.entityKind, 'experiment_plan'), eq(comments.entityId, latestPlanRunId))
+    : null;
+  const threadFilters = planCommentFilter
+    ? and(
+        sql`(${comments.entityKind} = 'experiment' AND ${comments.entityId} = ${id}) OR (${comments.entityKind} = 'experiment_plan' AND ${comments.entityId} = ${latestPlanRunId})`,
+        isNull(comments.resolvedAt),
+      )
+    : and(eq(comments.entityKind, 'experiment'), eq(comments.entityId, id), isNull(comments.resolvedAt));
+
   const threadRows = await db()
     .select({
       id: comments.id,
+      entityKind: comments.entityKind,
       authorKind: comments.authorKind,
       authorUserId: comments.authorUserId,
       authorName: users.displayName,
@@ -100,21 +128,16 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     })
     .from(comments)
     .leftJoin(users, eq(users.id, comments.authorUserId))
-    .where(
-      and(
-        eq(comments.entityKind, 'experiment'),
-        eq(comments.entityId, id),
-        isNull(comments.resolvedAt),
-      ),
-    )
+    .where(threadFilters)
     .orderBy(asc(comments.createdAt));
 
   const commentsBlock = threadRows.length
     ? threadRows
         .map((c, i) => {
           const who = c.authorKind === 'human' ? (c.authorName ?? 'owner') : 'claude';
+          const scope = c.entityKind === 'experiment_plan' ? 'on plan' : 'on experiment';
           const anchor = c.anchoredQuote ? `\nAnchored to: "${c.anchoredQuote.slice(0, 200)}"` : '';
-          return `### Comment ${i + 1} — ${who} @ ${c.createdAt.toISOString()}${anchor}\n${c.body}`;
+          return `### Comment ${i + 1} — ${who} (${scope}) @ ${c.createdAt.toISOString()}${anchor}\n${c.body}`;
         })
         .join('\n\n')
     : '(no unresolved comments — owner answered in the question textboxes; see below.)';

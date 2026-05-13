@@ -67,7 +67,6 @@ const ISSUE_DEFAULTS_BY_STAGE: Record<PipelineStageKey, { status: string; priori
   idea: { status: 'open', priority: 'normal' },
   planning: { status: 'planning', priority: 'normal' },
   approval: { status: 'planning', priority: 'high' },
-  queued: { status: 'planning', priority: 'normal' },
   running: { status: 'running', priority: 'normal' },
   interpreting: { status: 'interpreting', priority: 'normal' },
   followups_running: { status: 'followups_running', priority: 'normal' },
@@ -79,11 +78,11 @@ const ISSUE_DEFAULTS_BY_STAGE: Record<PipelineStageKey, { status: string; priori
 };
 
 const dropTargets: Record<PipelineCardKind, PipelineStageKey[]> = {
-  experiment: ['later', 'idea', 'planning', 'approval', 'queued', 'running', 'interpreting', 'followups_running', 'blocked', 'review', 'done', 'archived'],
+  experiment: ['later', 'idea', 'planning', 'approval', 'running', 'interpreting', 'followups_running', 'blocked', 'review', 'done', 'archived'],
   clean_result: ['interpreting', 'clean_results', 'blocked', 'review', 'done', 'archived'],
   todo: ['later', 'idea', 'planning', 'running', 'interpreting', 'blocked', 'review', 'done', 'archived'],
   idea: ['planning', 'archived'],
-  automation: ['approval', 'queued', 'running', 'done', 'blocked', 'archived'],
+  automation: ['approval', 'running', 'done', 'blocked', 'archived'],
 };
 
 function canDropCard(card: DashboardPipelineCard | null, stage: PipelineStageKey) {
@@ -362,10 +361,8 @@ function PipelineCard({
     if (pending || suppressClick.current || event?.defaultPrevented) return;
     const target = event?.target;
     if (target instanceof Element && target.closest('a,button,[data-card-control="true"]')) return;
-    if (event && 'metaKey' in event && (event.metaKey || event.ctrlKey)) {
-      window.open(card.href, '_blank', 'noopener,noreferrer');
-      return;
-    }
+    // Always push through router so Next.js intercepts to the overlay route.
+    // The overlay has its own "Open page" button for the full view.
     router.push(card.href);
   }
 

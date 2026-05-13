@@ -3,19 +3,21 @@ import { findClarifyingSection, readAnswers } from '@/lib/clarifying-questions';
 
 type Mode = 'active' | 'pending' | 'feedback' | 'readonly';
 
+// plan_pending and awaiting_approval intentionally omitted — those states
+// use anchored comments on the plan body (PlanWithComments) instead of
+// reopening the clarifying form. Past rounds still surface in the History
+// section.
 const MODE_BY_STATUS: Record<string, Mode> = {
   awaiting_clarifications: 'active',
   clarifying: 'pending',
   planning: 'pending',
-  plan_pending: 'feedback',
-  awaiting_approval: 'feedback',
 };
 
-// Statuses where the owner is expected to provide an answer. When the panel
-// renders for these but the planner's JSON has no recognisable "Clarifying
-// questions" section, fall back to a single open textbox so the owner is
-// never stranded with no place to type.
-const ANSWER_REQUIRED_STATUSES = new Set(['awaiting_clarifications', 'plan_pending', 'awaiting_approval']);
+// awaiting_clarifications is the only status that still needs a fallback
+// textbox when the planner emits no recognisable "Clarifying questions"
+// section. plan_pending / awaiting_approval are handled by inline
+// anchored comments on the plan body (see PlanWithComments).
+const ANSWER_REQUIRED_STATUSES = new Set(['awaiting_clarifications']);
 
 export function ClarifyingQuestionsPanel({
   experimentId,

@@ -857,7 +857,8 @@ function experimentStage(status: string, priority: string): PipelineStageKey {
 
 function cleanResultStage(status: string): PipelineStageKey {
   if (status === 'archived') return 'archived';
-  if (status === 'reviewing' || status === 'draft') return 'clean_results';
+  if (status === 'reviewing') return 'review';
+  if (status === 'draft') return 'clean_results';
   if (status === 'approved' || status === 'shared') return 'done';
   if (status === 'blocked') return 'blocked';
   return 'clean_results';

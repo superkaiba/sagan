@@ -101,7 +101,10 @@ function setPipelineStageOwnerNote(ownerNote: string | null | undefined, stage: 
 }
 
 const cleanResultStatusByStage: Partial<Record<PipelineStage, (typeof cleanResults.$inferSelect)['status']>> = {
-  clean_results: 'reviewing',
+  // Clean results column hosts drafts; Review column hosts in-review.
+  // Keeping both columns mapping to the same status (the old behavior)
+  // makes drop-on-review bounce back to the clean_results column.
+  clean_results: 'draft',
   interpreting: 'draft',
   review: 'reviewing',
   done: 'approved',

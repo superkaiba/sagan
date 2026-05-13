@@ -236,6 +236,11 @@ def cmd_promote(args: argparse.Namespace) -> None:
     print_json(request(args, "POST", f"/api/experiments/{exp_id}/promote", body))
 
 
+def cmd_launch_pod(args: argparse.Namespace) -> None:
+    response = request(args, "POST", f"/api/agent-runs/{args.agent_run_id}/launch-pod", body={})
+    print_json(response)
+
+
 def cmd_clean_result(args: argparse.Namespace) -> None:
     body: dict[str, Any] = {}
     body_md = read_text(args.body_md, args.body_md_file)
@@ -316,6 +321,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("verdict", choices=["useful", "not-useful", "not_useful"])
     p.add_argument("--note")
     p.set_defaults(func=lambda args: (setattr(args, "verdict", args.verdict.replace("-", "_")), cmd_promote(args))[1])
+
+    p = sub.add_parser(
+        "launch-pod",
+        help="Trigger Sagan's dispatcher to launch RunPod pods from an approved experiment-kind agent_run",
+    )
+    p.add_argument("agent_run_id", help="UUID of the experiment-kind agent_run whose plan to dispatch")
+    p.set_defaults(func=cmd_launch_pod)
 
     p = sub.add_parser("clean-result", help="Patch a clean-result record by UUID")
     p.add_argument("clean_result_id")

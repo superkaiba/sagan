@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { runAgentWithContinuation, stripSentinel } from './lib/run-agent.js';
+import { loadAgentsFromProject } from './lib/agent-loader.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { db, schema } from './db.js';
@@ -68,7 +69,7 @@ export async function runSession(runId: string): Promise<Outcome> {
     allowDangerouslySkipPermissions: true,
     env: runnerProcessEnv(),
     pathToClaudeCodeExecutable: env.CLAUDE_CLI_PATH,
-    ...toolPolicyForRunKind(row.kind),
+    ...toolPolicyForRunKind(row),
     // Conservative tool restriction: disable Bash and write tools for QA mode.
     ...(row.kind === 'qa'
       ? { tools: ['Read', 'Grep', 'Glob'], canUseTool: readOnlyToolGuard('qa') }
@@ -93,6 +94,10 @@ export async function runSession(runId: string): Promise<Outcome> {
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', 'ExitPlanMode'] as const;
 const EXPERIMENT_PLANNING_TOOLS = ['Read', 'Grep', 'Glob', 'Bash', 'Agent', 'TaskOutput', 'ExitPlanMode'] as const;
+const EXPERIMENT_ORCHESTRATOR_TOOLS = [
+  'Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write', 'Agent', 'TaskOutput', 'TaskStop',
+] as const;
+export const EXPERIMENT_ORCHESTRATOR_PREFIX = 'experiment-orchestrator-for:';
 const EXPERIMENT_PLANNING_AGENTS: NonNullable<Options['agents']> = {
   critic: {
     description: 'Claude experiment-plan critic for one specified lens.',
@@ -141,12 +146,22 @@ Return a binding Verdict, then a short adjudication table for the existing findi
   },
 };
 
-function toolPolicyForRunKind(kind: AgentRunRow['kind']): Pick<Options, 'tools' | 'canUseTool' | 'agents'> {
+function toolPolicyForRunKind(row: AgentRunRow): Pick<Options, 'tools' | 'canUseTool' | 'agents'> {
+  const kind = row.kind;
   if (kind === 'experiment') {
     return {
       tools: [...EXPERIMENT_PLANNING_TOOLS],
       canUseTool: experimentPlanningToolGuard(kind),
       agents: EXPERIMENT_PLANNING_AGENTS,
+    };
+  }
+  if (kind === 'apply' && row.request.startsWith(EXPERIMENT_ORCHESTRATOR_PREFIX)) {
+    return {
+      tools: [...EXPERIMENT_ORCHESTRATOR_TOOLS],
+      // No tool guard — the orchestrator needs to write code, post markers,
+      // and trigger the dispatcher via HTTP. All sub-agents loaded from
+      // .claude/agents are exposed via the Agent tool.
+      agents: loadAgentsFromProject(env.RUNNER_REPO_ROOT),
     };
   }
   if (kind !== 'plan') return {};
@@ -578,6 +593,9 @@ ${scopedContext ? `\nScoped record context:\n${scopedContext}` : ''}
 Comment reply request:
 ${row.request}`;
   }
+  if (row.kind === 'apply' && row.request.startsWith(EXPERIMENT_ORCHESTRATOR_PREFIX)) {
+    return await buildExperimentOrchestratorPrompt(row, header, scope);
+  }
   if (row.kind === 'apply' && row.chatSessionId && !row.scopeEntityKind && !row.scopeEntityId) {
     const transcript = await buildChatTranscript(row.chatSessionId);
     return `${header}${scope}
@@ -594,6 +612,80 @@ Latest improvement request:
 ${row.request}`;
   }
   return `${header}${scope}\n\n${row.request}`;
+}
+
+/**
+ * Brief for the post-approval orchestrator. After plan approval on a
+ * kind=experiment run, the dispatcher queues a kind=apply run scoped to the
+ * same experiment whose `request` begins with EXPERIMENT_ORCHESTRATOR_PREFIX
+ * followed by the parent agent_run id. The orchestrator walks the experiment
+ * through implementing → code_reviewing → testing → running → uploading →
+ * verifying → interpreting → reviewing → awaiting_promotion, matching the EPS
+ * /issue skill workflow. Sub-agents are loaded from .claude/agents/*.md.
+ */
+async function buildExperimentOrchestratorPrompt(
+  row: AgentRunRow,
+  header: string,
+  scope: string,
+): Promise<string> {
+  const parentRunId = row.request.slice(EXPERIMENT_ORCHESTRATOR_PREFIX.length).trim().split(/\s/)[0];
+  let parentPlan = '';
+  let experimentNumber: number | null = null;
+  if (parentRunId) {
+    const parentRows = await db()
+      .select({ planMd: schema.agentRuns.planMd })
+      .from(schema.agentRuns)
+      .where(eq(schema.agentRuns.id, parentRunId))
+      .limit(1);
+    parentPlan = parentRows[0]?.planMd ?? '';
+  }
+  if (row.scopeEntityKind === 'experiment' && row.scopeEntityId) {
+    const expRows = await db()
+      .select({ number: schema.experiments.number })
+      .from(schema.experiments)
+      .where(eq(schema.experiments.id, row.scopeEntityId))
+      .limit(1);
+    experimentNumber = expRows[0]?.number ?? null;
+  }
+
+  return `${header}${scope}
+
+You are the Sagan experiment orchestrator. The plan for experiment ${
+    experimentNumber !== null ? `#${experimentNumber}` : '(scope: experiment ' + (row.scopeEntityId ?? 'unknown') + ')'
+  } has just been approved by the owner. Walk the experiment through the EPS /issue workflow end to end, the same way the explore-persona-space /issue skill does.
+
+Treat Sagan as the only workflow control plane. Use \`python scripts/sagan_state.py …\` for every workflow mutation (status transitions, markers, clean-result, promotion). Do not modify GitHub issues, labels, or comments — they are historical evidence only.
+
+Workflow stages and the sub-agents to invoke at each one (use the Agent tool with the matching \`subagent_type\`; each agent is loaded from .claude/agents/<name>.md):
+
+1. **implementing** — set status \`implementing\` and post \`epm:experiment-implementation\`. Spawn \`experiment-implementer\` (subagent_type: experiment-implementer) with the approved plan and a per-experiment branch on \`/home/thomasjiralerspong/explore-persona-space\`. The implementer writes the experiment-specific code, commits, and returns the branch name + commit hash.
+2. **code_reviewing** — set status \`code_reviewing\`. Spawn \`code-reviewer\` and \`codex-code-reviewer\` in parallel (run_in_background=true) for round 1. Merge with \`reconciler\` if they disagree. Re-spawn the implementer with the agreed targeted fixes if needed. Cap at 3 rounds; round-3 reviewer disagreement alone does not block — the reconciler picks the minimal necessary fix and you continue. Post \`epm:code-review\`, \`epm:code-review-codex\`, and \`epm:review-reconcile\` markers as you go.
+3. **testing** — set status \`testing\`. Run the project's local checks (lint, unit tests). Post \`epm:test-verdict\`. If checks fail, loop back to implementing → code_reviewing for a targeted fix.
+4. **running** — once the EPS branch has the code and tests pass, push the branch and ask Sagan to launch the pods by running:
+   \`\`\`
+   python scripts/sagan_state.py launch-pod ${parentRunId || '<parent_run_id>'}
+   \`\`\`
+   This triggers the runner's dispatcher against the approved \`runpod-spec\` in the parent plan. The runner transitions status from \`running\` to terminal automatically.
+5. **uploading** — when the pod reports completion (\`runpod_status = STOPPED\` or \`COMPLETED\`), set status \`uploading\` and spawn \`uploader\` (subagent_type: uploader) to push artifacts to HF Hub / W&B / Sagan figures.
+6. **verifying** — set status \`verifying\` and spawn \`upload-verifier\` (subagent_type: upload-verifier) to confirm every artifact has a permanent URL. Hard gate: do not advance until verifier passes.
+7. **interpreting** — set status \`interpreting\` and spawn \`analyzer\` (subagent_type: analyzer) to produce the interpretation draft. Post \`epm:interpretation\`.
+8. **reviewing** — set status \`reviewing\`. Spawn \`interpretation-critic\` + \`codex-interpretation-critic\` for round 1, reconcile if needed. Same 3-round cap + round-3 rule. Then spawn \`clean-result-critic\` + \`codex-clean-result-critic\` for the clean-result write-up, same cap.
+9. **awaiting_promotion** — set status \`awaiting_promotion\` and post \`epm:awaiting-promotion\`. Stop. Promotion is owner-driven and happens via the dashboard's Promote button (or \`python scripts/sagan_state.py promote <N> useful\`).
+
+Marker discipline: every stage transition and every reviewer verdict goes into Sagan \`workflow_events\` via \`sagan_state.py marker <N> <epm:name> --note "..."\`. The reviewer-loop helpers in \`apps/web/src/lib/reviewer-loops.ts\` define the verdict + metadata shape — match it.
+
+Reviewer-pair contract (\`code-review\`, \`interpretation\`, \`clean-result\`):
+- Allowed verdicts: \`pass\`, \`needs_targeted_fix\`, \`blocked_needs_user_decision\`, \`fail_not_worth_continuing\`.
+- Up to 3 rounds per pair. After round 3, lack of consensus alone is not enough to block; the reconciler records the final critique, picks the minimal necessary fix, and the workflow continues unless there is a true user-decision blocker (missing owner input, unsafe execution, invalid artifacts, untestable hypothesis).
+
+Failure handling: on any unrecoverable error, post \`epm:failure\` with the diagnosis and set status to \`blocked\`. Do not silently retry. If the failure is transient (e.g. transient pod allocator error), the runner's recovery loop will queue a follow-up automatically.
+
+Working directory: \`/home/thomasjiralerspong/explore-persona-space\` for experiment-specific code edits. The Sagan repo at \`/home/thomasjiralerspong/sagan\` already contains \`scripts/sagan_state.py\` and is your call-control surface — do not edit Sagan code from this orchestrator unless the failure is explicitly an infrastructure bug.
+
+Approved plan (from parent agent_run ${parentRunId || '<unknown>'}):
+
+${parentPlan ? parentPlan : '(plan_md not loaded — abort with epm:failure citing missing plan_md)'}
+`;
 }
 
 async function buildGeneralChatPrompt(row: AgentRunRow, header: string, scope: string): Promise<string> {

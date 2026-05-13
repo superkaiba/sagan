@@ -1,0 +1,41 @@
+name: verify-workflow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude/**'
+      - 'apps/web/src/lib/workflow.ts'
+      - 'apps/web/src/lib/dashboard.ts'
+      - 'apps/web/src/lib/reviewer-loops.ts'
+      - 'apps/web/app/api/**'
+      - 'packages/db/src/schema/**'
+      - 'packages/api/src/schemas/**'
+      - 'scripts/sagan_state.py'
+      - 'scripts/verify-eps-workflow.mjs'
+      - 'services/runner/src/dispatcher.ts'
+      - 'docs/exec-plans/eps-workflow-port-plan.md'
+  pull_request:
+    paths:
+      - '.claude/**'
+      - 'apps/web/src/lib/workflow.ts'
+      - 'apps/web/src/lib/dashboard.ts'
+      - 'apps/web/src/lib/reviewer-loops.ts'
+      - 'apps/web/app/api/**'
+      - 'packages/db/src/schema/**'
+      - 'packages/api/src/schemas/**'
+      - 'scripts/sagan_state.py'
+      - 'scripts/verify-eps-workflow.mjs'
+      - 'services/runner/src/dispatcher.ts'
+      - 'docs/exec-plans/eps-workflow-port-plan.md'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run EPS workflow verifier
+        run: node scripts/verify-eps-workflow.mjs

@@ -114,6 +114,11 @@ for (const path of [
   '.claude/agents/reconciler.md',
   '.claude/agents/analyzer.md',
   '.claude/agents/follow-up-proposer.md',
+  '.claude/agents/experiment-implementer.md',
+  '.claude/agents/experimenter.md',
+  '.claude/agents/uploader.md',
+  '.claude/agents/upload-verifier.md',
+  '.claude/agents/consistency-checker.md',
   'docs/eps-sagan-workflow-integration.md',
 ]) {
   assertFile(path);

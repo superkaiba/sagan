@@ -14,10 +14,10 @@
  * Pod monitoring (W&B URL capture, completion detection) lives in a
  * separate watcher (services/runner/src/watcher.ts, Phase 2 follow-up).
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { db, schema } from './db.js';
-import { emitEvent } from './queue.js';
+import { emitEvent, QUEUED_CHANNEL } from './queue.js';
 import { dispatchBatch, stopPod, type DispatchPodSpec, type RunpodAccount } from './tools/runpod.js';
 import { log } from './log.js';
 import { recordTrail } from './trail.js';
@@ -141,7 +141,83 @@ export async function handleApprovedRun(runId: string): Promise<void> {
     return;
   }
 
+  // Insert the EPS-style post-approval orchestrator between plan-approval and
+  // pod dispatch. The orchestrator walks the experiment through implementing
+  // → code_reviewing → testing → running → uploading → verifying →
+  // interpreting → reviewing → awaiting_promotion, spawning the matching
+  // sub-agents from .claude/agents/ at each stage and calling launch-pod when
+  // it's ready for the dispatcher. We mark this experiment-kind run as
+  // completed once the orchestrator is queued — the experiment lifecycle
+  // continues on the new run.
+  //
+  // Re-entry from launch-pod (orchestrator calling back when it's ready to
+  // provision pods) is detected by an existing orchestrator run on this
+  // scope, and goes straight to the dispatcher.
+  if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
+    const existing = await db()
+      .select({ id: schema.agentRuns.id })
+      .from(schema.agentRuns)
+      .where(
+        and(
+          eq(schema.agentRuns.scopeEntityId, run.scopeEntityId),
+          eq(schema.agentRuns.kind, 'apply'),
+        ),
+      );
+    const orchestratorExists = existing.some(() => true) && (
+      await db()
+        .select({ id: schema.agentRuns.id })
+        .from(schema.agentRuns)
+        .where(
+          and(
+            eq(schema.agentRuns.scopeEntityId, run.scopeEntityId),
+            eq(schema.agentRuns.kind, 'apply'),
+            sql`${schema.agentRuns.request} LIKE ${`experiment-orchestrator-for:${runId}%`}`,
+          ),
+        )
+        .limit(1)
+    ).length > 0;
+    if (orchestratorExists) {
+      await dispatchApprovedExperiment(runId);
+      return;
+    }
+    await queuePostApprovalOrchestrator(run);
+    return;
+  }
+
+  // Fallback for legacy/unscoped experiment runs: dispatch immediately the
+  // old way.
   await dispatchApprovedExperiment(runId);
+}
+
+async function queuePostApprovalOrchestrator(parentRun: typeof schema.agentRuns.$inferSelect): Promise<void> {
+  const orchestratorRequest = `experiment-orchestrator-for:${parentRun.id}\n\nDrive experiment ${parentRun.scopeEntityId} from approved plan through awaiting_promotion. Sub-agents are loaded from .claude/agents/.`;
+  const inserted = await db()
+    .insert(schema.agentRuns)
+    .values({
+      kind: 'apply',
+      provider: parentRun.provider,
+      status: 'queued',
+      request: orchestratorRequest,
+      scopeEntityKind: parentRun.scopeEntityKind,
+      scopeEntityId: parentRun.scopeEntityId,
+      chatSessionId: parentRun.chatSessionId,
+      runpodAccount: parentRun.runpodAccount,
+      approvalRequired: false,
+    })
+    .returning({ id: schema.agentRuns.id });
+  const orchestratorId = inserted[0]!.id;
+  await emitEvent(parentRun.id, 'orchestrator_queued', orchestratorId, {
+    stage: 'implementing',
+    parentRunId: parentRun.id,
+  });
+  await db()
+    .update(schema.agentRuns)
+    .set({ status: 'completed', completedAt: new Date(), updatedAt: new Date() })
+    .where(eq(schema.agentRuns.id, parentRun.id));
+  if (parentRun.scopeEntityKind === 'experiment' && parentRun.scopeEntityId) {
+    await setExperimentStatus(parentRun.scopeEntityId, 'implementing', `Orchestrator ${orchestratorId.slice(0, 8)} queued to implement and dispatch.`);
+  }
+  await db().execute(sql`SELECT pg_notify(${QUEUED_CHANNEL}, ${orchestratorId})`);
 }
 
 /**

@@ -10,6 +10,7 @@ identifiers:
 statuses:
   - proposed
   - clarifying
+  - awaiting_clarifications
   - gate_pending
   - planning
   - plan_pending

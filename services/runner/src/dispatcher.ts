@@ -18,7 +18,7 @@ import { and, eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { db, schema } from './db.js';
 import { emitEvent } from './queue.js';
-import { dispatchBatch, type DispatchPodSpec, type RunpodAccount } from './tools/runpod.js';
+import { dispatchBatch, stopPod, type DispatchPodSpec, type RunpodAccount } from './tools/runpod.js';
 import { log } from './log.js';
 import { recordTrail } from './trail.js';
 import { queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
@@ -320,29 +320,60 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
     } else {
       failed++;
       failures.push(`spec[${i}]: ${r.error}`);
-      await emitEvent(runId, 'deploy_pod_failed', r.error.slice(0, 500), { spec: dispatchSpecs[i] });
+      await emitEvent(runId, 'deploy_pod_failed', r.error.slice(0, 500), {
+        spec: dispatchSpecs[i],
+        attempts: r.attempts,
+      });
     }
+  }
+
+  // Partial-dispatch is treated as a hard failure: when the plan asked for N
+  // pods and the allocator only gave us M < N, the experiment was designed
+  // around N partitions and proceeding with M would silently produce a
+  // broken result. Stop the survivors, mark the run blocked, and force the
+  // owner to decide. The previous behavior — silently continuing on whatever
+  // succeeded — caused the 365 "1 H100 instead of 4" surprise.
+  const partial = succeeded > 0 && failed > 0;
+  const finalSucceeded = partial ? 0 : succeeded;
+  const finalRunStatus = finalSucceeded > 0 ? 'deploying' : 'blocked';
+  if (partial) {
+    for (const podId of podIds) {
+      try {
+        await stopPod(podId, account);
+        await emitEvent(runId, 'partial_dispatch_pod_stopped', podId, { reason: 'partial_dispatch' });
+      } catch (err) {
+        await emitEvent(
+          runId,
+          'partial_dispatch_pod_stop_failed',
+          err instanceof Error ? err.message : String(err),
+          { podId },
+        );
+      }
+    }
+    failures.unshift(
+      `Partial RunPod dispatch: ${succeeded}/${results.length} pods came up. ` +
+        `Survivors were stopped because the plan was designed around ${results.length} partitions and ` +
+        `proceeding with fewer would corrupt the result. Re-approve the plan to retry, or revise it to fit ` +
+        `available capacity (smaller cloudType, different gpuType, fewer pods, or one pod with more GPUs).`,
+    );
   }
 
   await db()
     .update(schema.agentRuns)
     .set({
-      runpodPodIds: podIds,
-      runpodPodId: podIds[0] ?? null,
-      runpodStatus: succeeded > 0 ? 'deploying' : 'blocked',
-      status: succeeded > 0 ? 'deploying' : 'blocked',
+      runpodPodIds: partial ? [] : podIds,
+      runpodPodId: partial ? null : podIds[0] ?? null,
+      runpodStatus: finalRunStatus === 'deploying' ? 'deploying' : 'blocked',
+      status: finalRunStatus,
       lastError: failures.length ? failures.join('\n').slice(0, 4000) : null,
-      completedAt: succeeded > 0 ? null : new Date(),
+      completedAt: finalSucceeded > 0 ? null : new Date(),
       updatedAt: new Date(),
     })
     .where(eq(schema.agentRuns.id, runId));
-  if (succeeded === 0 && experimentId) {
-    await setExperimentStatus(experimentId, 'blocked', failures.join('\n').slice(0, 1000));
-  }
 
-  await emitEvent(runId, succeeded > 0 ? 'deploy_completed' : 'runpod_blocked',
+  await emitEvent(runId, finalSucceeded > 0 ? 'deploy_completed' : 'runpod_blocked',
     `dispatched ${succeeded}/${results.length} pod(s)`,
-    { succeeded, failed, podIds });
+    { succeeded, failed, podIds, partial });
   await recordTrail({
     action: `Finished RunPod dispatch for run ${runId.slice(0, 8)}`,
     why: 'Record the outcome of the approved experiment launch.',
@@ -352,7 +383,35 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
     detail: `Dispatched ${succeeded}/${results.length} pod(s). Pod IDs: ${podIds.join(', ') || 'none'}`,
   });
 
-  log.info('dispatch finished', { runId, succeeded, failed, podIds });
+  // Full failure OR partial-dispatch (which we just downgraded to "stopped
+  // survivors, 0 effective pods"): hand the failure to the recovery loop so
+  // the planning agent runs again with the failure transcript in its prompt
+  // and can revise the plan to fit the available capacity (smaller cloud,
+  // one larger pod, different gpuType, fewer partitions).
+  if (finalSucceeded === 0) {
+    const reason = failures.join('\n');
+    if (experimentId) {
+      await setExperimentStatus(experimentId, 'blocked', reason.slice(0, 1000));
+    }
+    const recovered = await queueAutomaticRecoveryRun(runId, reason).catch((recoveryErr) => {
+      log.warn('failed to queue automatic recovery after dispatch failure', {
+        runId,
+        err: recoveryErr instanceof Error ? recoveryErr.message : String(recoveryErr),
+      });
+      return false;
+    });
+    if (!recovered) {
+      await cascadeAgentRunFailureToScope({
+        runId,
+        scopeEntityKind: run.scopeEntityKind,
+        scopeEntityId: run.scopeEntityId,
+        reason: 'failed',
+        detail: reason,
+      });
+    }
+  }
+
+  log.info('dispatch finished', { runId, succeeded, failed, podIds, partial });
 }
 
 function randomProgressToken() {

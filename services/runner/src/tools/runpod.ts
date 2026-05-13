@@ -272,18 +272,47 @@ function graphqlInputValue(value: string | number | boolean | Array<{ key: strin
   return JSON.stringify(value);
 }
 
+// RunPod returns a generic INTERNAL_SERVER_ERROR on podFindAndDeployOnDemand
+// when its on-demand allocator can't find capacity for the requested
+// GPU/cloudType in the moment. The pool usually replenishes within minutes;
+// retry transient capacity errors with bounded exponential backoff before
+// giving up. Auth / malformed-spec errors should fail fast.
+const TRANSIENT_RUNPOD_RE = /INTERNAL_SERVER_ERROR|returned null — no capacity|HTTP 5\d\d from RunPod|ECONNRESET|ETIMEDOUT|fetch failed/i;
+const DISPATCH_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
+
+async function dispatchPodWithRetry(
+  spec: DispatchPodSpec,
+): Promise<{ ok: true; pod: PodInfo } | { ok: false; error: string; attempts: number }> {
+  let attempts = 0;
+  let lastError = '';
+  for (;;) {
+    attempts++;
+    try {
+      const pod = await dispatchPod(spec);
+      return { ok: true as const, pod };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      const transient = TRANSIENT_RUNPOD_RE.test(lastError);
+      const delay = DISPATCH_RETRY_DELAYS_MS[attempts - 1];
+      if (!transient || delay === undefined) {
+        return { ok: false as const, error: lastError, attempts };
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 /** Dispatch many pods concurrently. Use for hyperparameter sweeps etc. */
 export async function dispatchBatch(specs: DispatchPodSpec[]): Promise<
-  Array<{ ok: true; pod: PodInfo } | { ok: false; spec: DispatchPodSpec; error: string }>
+  Array<
+    | { ok: true; pod: PodInfo; attempts?: number }
+    | { ok: false; spec: DispatchPodSpec; error: string; attempts: number }
+  >
 > {
-  const results = await Promise.allSettled(specs.map((s) => dispatchPod(s)));
+  const results = await Promise.all(specs.map((s) => dispatchPodWithRetry(s)));
   return results.map((r, i) => {
-    if (r.status === 'fulfilled') return { ok: true as const, pod: r.value };
-    return {
-      ok: false as const,
-      spec: specs[i]!,
-      error: r.reason instanceof Error ? r.reason.message : String(r.reason),
-    };
+    if (r.ok) return { ok: true as const, pod: r.pod };
+    return { ok: false as const, spec: specs[i]!, error: r.error, attempts: r.attempts };
   });
 }
 

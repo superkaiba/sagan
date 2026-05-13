@@ -1089,6 +1089,8 @@ After those sections, include a fenced \`\`\`runpod-spec block containing valid 
 
 Choose the smallest GPU type/count that can plausibly run the approved experiment. If the experiment truly should not launch compute, do not use kind=experiment; write a blocker explaining that it should be handled as a planning/QA run instead.
 
+When multiple GPUs are needed, default to **one pod with \`gpuCount: N\`** rather than an array of N specs each with \`gpuCount: 1\`. RunPod's on-demand allocator frequently has capacity for one larger pod when it lacks capacity for many smaller ones, and a single multi-GPU pod is cheaper to dispatch, easier to monitor, and avoids partial-dispatch failures. Use multi-pod arrays only when the work is genuinely partitioned across machines (data-parallel sharded over disjoint hosts, per-source independence with no shared memory, or the experiment design intentionally relies on per-pod state); state the reason in ## Compute and Hardware and in the Approval Checklist. If you do request multiple pods, the runner will treat partial dispatch (e.g. 3 of 4 pods came up) as a hard failure, stop the survivors, and block the run.
+
 The ## Compute and Hardware section must include a USD cost estimate alongside GPU-hours, computed from RunPod Secure Cloud on-demand rates. Use these reference prices (per GPU per hour, last checked May 2026; treat as guidance — note in the section that they may drift):
 
 | GPU                | USD/hr |

@@ -169,10 +169,16 @@ export function getMentorWeeklyUpdate(): MentorWeeklyUpdate {
   const issueResults = getMentorIssueResults();
   const results = [...mentorDiscussionCards, ...issueResults];
   const meta = snapshot.weeklyUpdate;
+  // Legacy mentor pipeline targets are configurable via env so a hypothetical
+  // second tenant doesn't inherit EPS-shaped defaults at runtime. Falling back
+  // to the EPS values keeps existing deployments working unchanged.
+  const fallbackRepo = process.env.MENTOR_LEGACY_REPO_SLUG ?? 'superkaiba/explore-persona-space';
+  const fallbackProjectUrl =
+    process.env.MENTOR_LEGACY_PROJECT_URL ?? 'https://github.com/users/superkaiba/projects/1';
   return {
     title: meta?.title ?? 'Weekly update',
-    sourceRepo: meta?.sourceRepo ?? 'superkaiba/explore-persona-space',
-    sourceProjectUrl: meta?.sourceProjectUrl ?? 'https://github.com/users/superkaiba/projects/1',
+    sourceRepo: meta?.sourceRepo ?? fallbackRepo,
+    sourceProjectUrl: meta?.sourceProjectUrl ?? fallbackProjectUrl,
     sourceColumn: 'Useful',
     generatedAt: meta?.generatedAt ?? null,
     issueCount: issueResults.length,

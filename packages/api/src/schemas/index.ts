@@ -11,6 +11,10 @@ export const entityKindSchema = z.enum([
   'project_narrative',
   'daily_log_entry',
   'weekly_digest',
+  'agent_run',
+  'chat_session',
+  'html_artifact',
+  'figure',
 ]);
 export type EntityKind = z.infer<typeof entityKindSchema>;
 

@@ -1,9 +1,12 @@
 import { eq } from 'drizzle-orm';
 import {
+  agentRuns,
   beliefs,
+  chatSessions,
   cleanResults,
   dailyLogEntries,
   experiments,
+  figures,
   litItems,
   projectNarratives,
   projects,
@@ -23,7 +26,11 @@ export type EntityKind =
   | 'lit_item'
   | 'project_narrative'
   | 'daily_log_entry'
-  | 'weekly_digest';
+  | 'weekly_digest'
+  | 'agent_run'
+  | 'chat_session'
+  | 'html_artifact'
+  | 'figure';
 
 export const ENTITY_KINDS: EntityKind[] = [
   'project',
@@ -36,6 +43,10 @@ export const ENTITY_KINDS: EntityKind[] = [
   'project_narrative',
   'daily_log_entry',
   'weekly_digest',
+  'agent_run',
+  'chat_session',
+  'html_artifact',
+  'figure',
 ];
 
 export const KIND_LABELS: Record<EntityKind, string> = {
@@ -49,6 +60,10 @@ export const KIND_LABELS: Record<EntityKind, string> = {
   project_narrative: 'Narrative',
   daily_log_entry: 'Daily log entry',
   weekly_digest: 'Weekly review',
+  agent_run: 'Agent run',
+  chat_session: 'Chat session',
+  html_artifact: 'HTML artifact',
+  figure: 'Figure',
 };
 
 export function isEntityKind(s: string): s is EntityKind {
@@ -244,6 +259,60 @@ export async function loadEntity(kind: EntityKind, id: string): Promise<EntityRo
         meta: [
           { label: 'week', value: row.weekStart },
           { label: 'shared', value: row.shareToken ? 'yes' : 'no' },
+        ],
+        raw: row,
+      };
+    }
+    case 'agent_run': {
+      const r = await db().select().from(agentRuns).where(eq(agentRuns.id, id)).limit(1);
+      const row = r[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        title: `Agent run · ${row.kind} · ${row.id.slice(0, 8)}`,
+        status: row.status,
+        body: row.request,
+        meta: [
+          { label: 'kind', value: row.kind },
+          { label: 'provider', value: row.provider },
+          ...(row.scopeEntityKind && row.scopeEntityId
+            ? [{ label: 'scope', value: `${row.scopeEntityKind}:${row.scopeEntityId.slice(0, 8)}` }]
+            : []),
+        ],
+        raw: row,
+      };
+    }
+    case 'chat_session': {
+      const r = await db().select().from(chatSessions).where(eq(chatSessions.id, id)).limit(1);
+      const row = r[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        title: `Chat · ${row.agentHandle ?? 'session'} · ${row.id.slice(0, 8)}`,
+        status: row.archivedAt ? 'archived' : 'active',
+        body: null,
+        meta: [
+          ...(row.scopeEntityKind && row.scopeEntityId
+            ? [{ label: 'scope', value: `${row.scopeEntityKind}:${row.scopeEntityId.slice(0, 8)}` }]
+            : []),
+          ...(row.lastMessageAt ? [{ label: 'last', value: row.lastMessageAt.toISOString() }] : []),
+        ],
+        raw: row,
+      };
+    }
+    case 'html_artifact':
+    case 'figure': {
+      const r = await db().select().from(figures).where(eq(figures.id, id)).limit(1);
+      const row = r[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        title: row.caption ?? `${kind === 'html_artifact' ? 'HTML artifact' : 'Figure'} · ${row.id.slice(0, 8)}`,
+        status: null,
+        body: row.altText ?? null,
+        meta: [
+          { label: 'url', value: row.url },
+          { label: 'parent', value: `${row.entityKind}:${row.entityId.slice(0, 8)}` },
         ],
         raw: row,
       };

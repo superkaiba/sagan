@@ -4,6 +4,8 @@ import { agentRuns, agentRunEvents, podLifecycle, runArtifacts } from '@sagan/db
 import { db } from '@/lib/db';
 import { isOwner } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
+import { loadRunPodAccountSummaries } from '@/lib/runpod-api';
+import { Comments } from '@/components/Comments';
 import { RunStream } from './RunStream';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +31,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
     .from(runArtifacts)
     .where(eq(runArtifacts.agentRunId, id))
     .orderBy(runArtifacts.createdAt);
+  const runpodAccounts = pods.length > 0 ? await loadRunPodAccountSummaries() : [];
 
   return (
     <div className="space-y-6">
@@ -60,16 +63,24 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
           name: pod.name,
           gpuTypeId: pod.gpuTypeId,
           gpuCount: pod.gpuCount,
+          costPerHr: pod.costPerHr,
+          adjustedCostPerHr: pod.adjustedCostPerHr,
+          uptimeSeconds: pod.uptimeSeconds,
           status: pod.status,
           desiredStatus: pod.desiredStatus,
           sshHost: pod.sshHost,
           sshPort: pod.sshPort,
+          lastStartedAt: pod.lastStartedAt?.toISOString() ?? null,
           retryCount: pod.retryCount,
           maxRetries: pod.maxRetries,
           blockedReason: pod.blockedReason,
           lastError: pod.lastError,
           lastCheckedAt: pod.lastCheckedAt?.toISOString() ?? null,
+          stoppedAt: pod.stoppedAt?.toISOString() ?? null,
+          terminatedAt: pod.terminatedAt?.toISOString() ?? null,
+          createdAt: pod.createdAt.toISOString(),
         }))}
+        runpodAccounts={runpodAccounts}
         initialArtifacts={artifacts.map((artifact) => ({
           id: artifact.id,
           kind: artifact.kind,
@@ -80,6 +91,13 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
         }))}
         canManageRun={isOwner(session)}
       />
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[--color-muted]">
+          Discussion
+        </h2>
+        <Comments entityKind="agent_run" entityId={run.id} />
+      </section>
     </div>
   );
 }

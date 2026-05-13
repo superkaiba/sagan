@@ -49,6 +49,12 @@ function EntryList({
                       minute: '2-digit',
                     })}
                   </time>
+                  <Link
+                    href={`/e/daily_log_entry/${entry.id}`}
+                    className="ml-auto text-[--color-muted] hover:text-[--color-fg]"
+                  >
+                    open · discuss →
+                  </Link>
                 </div>
                 <Markdown>{entry.bodyMd}</Markdown>
               </article>

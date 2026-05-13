@@ -53,8 +53,11 @@ interface RawPod {
   desiredStatus?: string;
   gpuCount?: number;
   createdAt?: string;
-  machine?: { gpuTypeId?: string };
-  runtime?: { ports?: PodPort[] };
+  lastStartedAt?: string;
+  costPerHr?: number;
+  adjustedCostPerHr?: number;
+  machine?: { gpuTypeId?: string; costPerHr?: number; currentPricePerGpu?: number };
+  runtime?: { ports?: PodPort[]; uptimeInSeconds?: number };
 }
 
 export interface PodInfo {
@@ -66,6 +69,10 @@ export interface PodInfo {
   sshHost: string | null;
   sshPort: number | null;
   createdAt: string | null;
+  lastStartedAt: string | null;
+  costPerHr: number | null;
+  adjustedCostPerHr: number | null;
+  uptimeSeconds: number | null;
 }
 
 interface AccountAuth {
@@ -117,7 +124,7 @@ async function graphql<T>(
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
     // RunPod's CF rules block the default fetch UA; use a curl-shaped one.
-    'User-Agent': 'eps-research-dashboard/runner (curl-compat)',
+    'User-Agent': 'sagan/runner (curl-compat)',
   };
   if (teamId) headers['X-Team-Id'] = teamId;
 
@@ -171,6 +178,14 @@ function parsePod(raw: RawPod): PodInfo {
     sshHost,
     sshPort,
     createdAt: raw.createdAt ?? null,
+    lastStartedAt: raw.lastStartedAt ?? null,
+    costPerHr: raw.costPerHr ?? raw.machine?.costPerHr ?? null,
+    adjustedCostPerHr:
+      raw.adjustedCostPerHr ??
+      (raw.machine?.currentPricePerGpu != null && raw.gpuCount != null
+        ? raw.machine.currentPricePerGpu * raw.gpuCount
+        : null),
+    uptimeSeconds: raw.runtime?.uptimeInSeconds ?? null,
   };
 }
 
@@ -226,9 +241,9 @@ export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
   const query = `
     mutation {
       podFindAndDeployOnDemand(input: { ${inputsBlock} }) {
-        id name desiredStatus gpuCount createdAt
-        machine { gpuTypeId }
-        runtime { ports { ip publicPort privatePort type isIpPublic } }
+        id name desiredStatus gpuCount createdAt lastStartedAt costPerHr adjustedCostPerHr
+        machine { gpuTypeId costPerHr currentPricePerGpu }
+        runtime { uptimeInSeconds ports { ip publicPort privatePort type isIpPublic } }
       }
     }
   `;
@@ -263,9 +278,9 @@ export async function getPod(podId: string, account: RunpodAccount = 'team'): Pr
     account,
     `query Pod($id: String!) {
       pod(input: {podId: $id}) {
-        id name desiredStatus gpuCount createdAt
-        machine { gpuTypeId }
-        runtime { ports { ip publicPort privatePort type isIpPublic } }
+        id name desiredStatus gpuCount createdAt lastStartedAt costPerHr adjustedCostPerHr
+        machine { gpuTypeId costPerHr currentPricePerGpu }
+        runtime { uptimeInSeconds ports { ip publicPort privatePort type isIpPublic } }
       }
     }`,
     { id: podId },
@@ -283,8 +298,9 @@ export async function listPods(account: RunpodAccount = 'team'): Promise<PodInfo
       myself {
         pods {
           id name desiredStatus gpuCount createdAt
-          machine { gpuTypeId }
-          runtime { ports { ip publicPort privatePort type isIpPublic } }
+          lastStartedAt costPerHr adjustedCostPerHr
+          machine { gpuTypeId costPerHr currentPricePerGpu }
+          runtime { uptimeInSeconds ports { ip publicPort privatePort type isIpPublic } }
         }
       }
     }`,
@@ -314,7 +330,13 @@ export async function stopPod(
 
   const data = await graphql<{ podStop: RawPod | null }>(
     account,
-    `mutation Stop($id: String!) { podStop(input: {podId: $id}) { id name desiredStatus } }`,
+    `mutation Stop($id: String!) {
+      podStop(input: {podId: $id}) {
+        id name desiredStatus gpuCount createdAt lastStartedAt costPerHr adjustedCostPerHr
+        machine { gpuTypeId costPerHr currentPricePerGpu }
+        runtime { uptimeInSeconds ports { ip publicPort privatePort type isIpPublic } }
+      }
+    }`,
     { id: podId },
   );
   if (!data.podStop) throw new RunPodError(`podStop returned null for ${podId}`);
@@ -333,8 +355,9 @@ export async function resumePod(
     `mutation Resume($id: String!, $n: Int!) {
       podResume(input: {podId: $id, gpuCount: $n}) {
         id name desiredStatus gpuCount createdAt
-        machine { gpuTypeId }
-        runtime { ports { ip publicPort privatePort type isIpPublic } }
+        lastStartedAt costPerHr adjustedCostPerHr
+        machine { gpuTypeId costPerHr currentPricePerGpu }
+        runtime { uptimeInSeconds ports { ip publicPort privatePort type isIpPublic } }
       }
     }`,
     { id: podId, n: gpuCount },
@@ -384,6 +407,10 @@ function dryRunPod(spec: DispatchPodSpec): PodInfo {
     sshHost: '127.0.0.1',
     sshPort: 2222,
     createdAt: new Date().toISOString(),
+    lastStartedAt: new Date().toISOString(),
+    costPerHr: 0,
+    adjustedCostPerHr: 0,
+    uptimeSeconds: 0,
   };
 }
 
@@ -401,5 +428,9 @@ function dryRunPodInfo(
     sshHost: desiredStatus === 'RUNNING' ? '127.0.0.1' : null,
     sshPort: desiredStatus === 'RUNNING' ? 2222 : null,
     createdAt: new Date().toISOString(),
+    lastStartedAt: desiredStatus === 'RUNNING' ? new Date().toISOString() : null,
+    costPerHr: 0,
+    adjustedCostPerHr: 0,
+    uptimeSeconds: 0,
   };
 }

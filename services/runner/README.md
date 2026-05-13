@@ -61,8 +61,7 @@ journalctl -u eps-runner -f
 The unit reads env from the repo's `.env` file and runs as
 `thomasjiralerspong` so it has the same permissions as the interactive
 checkout. `ProtectHome=read-only` is loosened only for
-`/home/thomasjiralerspong/eps-research-dashboard` so the runner can make
-self-improvement edits.
+`/home/thomasjiralerspong/sagan` so the runner can make self-improvement edits.
 
 ## Env
 

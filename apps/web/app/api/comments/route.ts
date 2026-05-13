@@ -62,9 +62,12 @@ export async function GET(req: Request) {
       updatedAt: comments.updatedAt,
       authorEmail: users.email,
       authorDisplayName: users.displayName,
+      agentRunStatus: agentRuns.status,
+      agentRunKind: agentRuns.kind,
     })
     .from(comments)
     .leftJoin(users, eq(comments.authorUserId, users.id))
+    .leftJoin(agentRuns, eq(comments.agentRunId, agentRuns.id))
     .where(and(eq(comments.entityKind, entityKind), eq(comments.entityId, entityId)))
     .orderBy(asc(comments.createdAt));
   return NextResponse.json({ comments: rows, viewerUserId: session.user.id });
@@ -82,9 +85,14 @@ const createSchema = z.object({
     'project_narrative',
     'daily_log_entry',
     'weekly_digest',
+    'agent_run',
+    'chat_session',
+    'html_artifact',
+    'figure',
   ]),
   entityId: z.string().uuid(),
   body: z.string().min(1).max(10_000),
+  askAgent: z.enum(['Claude']).optional(),
   parentCommentId: z.string().uuid().optional(),
   // Google-Docs-style anchor: the selected text snippet the comment targets.
   // Only set on root comments; replies inherit the root's anchor visually.
@@ -129,7 +137,7 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  const requestedAgent = requestedCommentAgent(parsed.data.body);
+  const requestedAgent = parsed.data.askAgent ?? requestedCommentAgent(parsed.data.body);
 
   let parentInfo: ResolvedParentComment | null = null;
   if (parsed.data.parentCommentId) {
@@ -218,7 +226,7 @@ export async function POST(req: Request) {
         `Comment responder: ${agentName}`,
         `Entity: ${parsed.data.entityKind} ${parsed.data.entityId}`,
         `Task: Write the reply that should be posted to this Sagan comment thread.`,
-        `The @claude/@codex mention is only a routing command; answer the comment content itself.`,
+        `The user asked for an agent answer from the comment UI. Answer the comment content itself.`,
         commentContext,
         `Latest human comment:\n\n${stripLeadingAgentMention(parsed.data.body)}`,
       ]

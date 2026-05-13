@@ -48,7 +48,7 @@ interface MemexItem {
 function ghHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
-    'User-Agent': 'eps-research-dashboard-snapshot',
+    'User-Agent': 'sagan-runner-mentor-snapshot',
     'X-GitHub-Api-Version': '2022-11-28',
   };
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
@@ -113,7 +113,7 @@ function excerptFor(body: string) {
 
 async function main() {
   const res = await fetch(PROJECT_URL, {
-    headers: { Accept: 'text/html', 'User-Agent': 'eps-research-dashboard-snapshot' },
+    headers: { Accept: 'text/html', 'User-Agent': 'sagan-runner-mentor-snapshot' },
   });
   if (!res.ok) throw new Error(`project fetch ${res.status}`);
   const html = await res.text();

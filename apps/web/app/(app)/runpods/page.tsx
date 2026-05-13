@@ -163,6 +163,21 @@ export default async function RunPodsPage() {
                             <div className="mt-1 text-xs text-[--color-muted]">{formatUsd(remainingCost)} remaining</div>
                           </>
                         )}
+                        {pod.experimentProgressPct == null ? null : (
+                          <div className="mt-1 font-mono text-xs text-[--color-running]">
+                            {pod.experimentProgressPct.toFixed(pod.experimentProgressPct % 1 === 0 ? 0 : 1)}%
+                          </div>
+                        )}
+                        {pod.experimentEstimatedRemainingMessage ? (
+                          <div className="mt-1 max-w-[12rem] truncate text-xs text-[--color-muted]">
+                            {pod.experimentEstimatedRemainingMessage}
+                          </div>
+                        ) : null}
+                        {pod.experimentEstimatedRemainingSource ? (
+                          <div className="mt-1 text-[10px] uppercase tracking-wide text-[--color-muted]">
+                            {pod.experimentEstimatedRemainingSource}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 align-top font-mono">
                         {formatRunway(account?.clientBalance ?? null, rate)}

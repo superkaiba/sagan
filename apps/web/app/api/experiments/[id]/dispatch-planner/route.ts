@@ -125,6 +125,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const section = findClarifyingSection(experiment.planJson);
   const answers = readAnswers(experiment.planJson);
   const questions = section ? parseClarifyingQuestions(section.body) : [];
+  const looseAnswers = Object.entries(answers)
+    .map(([k, v]) => ({ index: k, value: v.trim() }))
+    .filter((a) => a.value.length > 0);
   const qaBlock = questions.length
     ? questions
         .map((q) => {
@@ -139,7 +142,11 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
           ].join('\n');
         })
         .join('\n\n')
-    : '(no structured clarifying questions on this experiment)';
+    : looseAnswers.length
+      ? looseAnswers
+          .map((a) => `### Owner feedback (slot ${a.index})\n\n${a.value}`)
+          .join('\n\n')
+      : '(no structured clarifying questions on this experiment)';
 
   const heading =
     experiment.status === 'awaiting_clarifications'

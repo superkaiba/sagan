@@ -68,31 +68,29 @@ export function parseClarifyingQuestions(body: string): ClarifyingQuestion[] {
   return questions;
 }
 
-// Recognise a clarifying-questions section either by title (any heading
-// containing "clarif", "questions", "need", "ask") or by body shape (any
-// numbered-heading question matched by HEADING_RES). The planner's section
-// title varies between iterations ("Clarifying questions", "What I need
-// before drafting a plan", etc.), so we cast a wide net rather than rely on
-// one literal title.
+// Recognise a clarifying-questions section by its title. Plan sections like
+// "Kill Criterion" or "Approval Checklist" frequently have numbered-heading
+// content too, so a body-shape fallback would mis-grab them; only the title
+// is a safe signal. Older planner outputs used titles like "What I need
+// before drafting a plan", so we accept titles containing "clarif" OR
+// "question" (covers "Clarifying questions" / "Clarifying Questions" /
+// "Open questions" / "Questions for the owner" / etc.) and nothing else.
 export function findClarifyingSection(planJson: unknown): { body: string } | null {
   if (!planJson || typeof planJson !== 'object') return null;
   const sections = (planJson as { sections?: unknown }).sections;
   if (!Array.isArray(sections)) return null;
-  const candidates: Array<{ title: string; body: string }> = [];
   for (const s of sections) {
     if (
       s &&
       typeof s === 'object' &&
       typeof (s as { title?: unknown }).title === 'string' &&
-      typeof (s as { body?: unknown }).body === 'string'
+      typeof (s as { body?: unknown }).body === 'string' &&
+      /clarif|question/i.test((s as { title: string }).title)
     ) {
-      candidates.push({ title: (s as { title: string }).title, body: (s as { body: string }).body });
+      return { body: (s as { body: string }).body };
     }
   }
-  const titleMatch = candidates.find((s) => /clarif|question|need|ask/i.test(s.title));
-  if (titleMatch) return { body: titleMatch.body };
-  const bodyMatch = candidates.find((s) => s.body.split('\n').some((line) => matchHeading(line) !== null));
-  return bodyMatch ? { body: bodyMatch.body } : null;
+  return null;
 }
 
 export function readAnswers(planJson: unknown): Record<string, string> {

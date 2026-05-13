@@ -1119,6 +1119,13 @@ async function markAwaitingApproval(runId: string, planMd: string) {
   if (row?.kind === 'experiment' && row.scopeEntityKind === 'experiment' && row.scopeEntityId) {
     await markExperimentPlanPending(row.scopeEntityId, runId, planMd, planJson);
   }
+  // Todos don't have a `plan_pending` status enum value, so we use the
+  // owner_note `sagan:pipeline-stage=approval` override instead. This moves
+  // the card from the Planning column to the Awaiting approval column when
+  // a plan-kind run finishes drafting, matching the experiment behaviour.
+  if (row?.kind === 'plan' && row.scopeEntityKind === 'todo' && row.scopeEntityId) {
+    await markTodoPlanPending(row.scopeEntityId, runId, planMd);
+  }
   await recordTrail({
     action: `Run ${runId.slice(0, 8)} is awaiting approval`,
     why: 'Claude Code produced a plan and paused before applying changes.',
@@ -1132,6 +1139,35 @@ async function markAwaitingApproval(runId: string, planMd: string) {
     body: `Run ${runId.slice(0, 8)} — ${planMd.length} chars`,
     url: `/agent/${runId}`,
     data: { kind: 'awaiting_approval', runId },
+  });
+}
+
+async function markTodoPlanPending(todoId: string, runId: string, planMd: string) {
+  const rows = await db()
+    .select({ ownerNote: schema.todos.ownerNote, status: schema.todos.status })
+    .from(schema.todos)
+    .where(eq(schema.todos.id, todoId))
+    .limit(1);
+  const todo = rows[0];
+  if (!todo) return;
+
+  // Replace any existing `sagan:pipeline-stage=` line with =approval so the
+  // dashboard's pipelineStageFromOwnerNote override moves the card.
+  const PREFIX = 'sagan:pipeline-stage=';
+  const remaining = (todo.ownerNote ?? '')
+    .split('\n')
+    .filter((line) => !line.trim().startsWith(PREFIX))
+    .join('\n')
+    .trim();
+  const nextOwnerNote = remaining ? `${PREFIX}approval\n${remaining}` : `${PREFIX}approval`;
+
+  await db()
+    .update(schema.todos)
+    .set({ ownerNote: nextOwnerNote, updatedAt: new Date() })
+    .where(eq(schema.todos.id, todoId));
+  await emitEvent(runId, 'todo_plan_pending', todoId, {
+    plan_len: planMd.length,
+    prevStatus: todo.status,
   });
 }
 

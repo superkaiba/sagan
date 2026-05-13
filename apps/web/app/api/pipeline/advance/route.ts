@@ -234,6 +234,10 @@ async function queueAgentRun(input: {
   actorUserId: string;
 }) {
   if (input.scopeEntityKind && input.scopeEntityId) {
+    // Dedup against same-kind in-flight runs only. A `plan` waiting on owner
+    // approval must not block dispatching an `apply` when the owner moves the
+    // card forward — otherwise the card silently lands in Running with no
+    // implementer behind it (incident 2026-05-13, Tinker todo).
     const existing = await db()
       .select({ id: agentRuns.id, status: agentRuns.status })
       .from(agentRuns)
@@ -241,12 +245,39 @@ async function queueAgentRun(input: {
         and(
           eq(agentRuns.scopeEntityKind, input.scopeEntityKind),
           eq(agentRuns.scopeEntityId, input.scopeEntityId),
+          eq(agentRuns.kind, input.kind),
           inArray(agentRuns.status, [...activeRunStatuses]),
         ),
       )
       .orderBy(desc(agentRuns.updatedAt))
       .limit(1);
     if (existing[0]) return { runId: existing[0].id, existing: true };
+
+    // If we're about to queue an `apply` while an earlier-stage `plan` (or
+    // `experiment` planner for experiments/ideas) is still awaiting owner
+    // approval, treat the forward move as implicit approval and finalize the
+    // pending plan so it doesn't sit forever in the approvals queue.
+    if (input.kind === 'apply' || input.kind === 'qa') {
+      const supersededKinds = input.kind === 'apply'
+        ? (input.scopeEntityKind === 'experiment' ? (['plan', 'experiment'] as const) : (['plan'] as const))
+        : (['apply'] as const);
+      await db()
+        .update(agentRuns)
+        .set({
+          status: 'completed',
+          completedAt: new Date(),
+          updatedAt: new Date(),
+          lastError: 'Superseded by forward move on the Pipeline board.',
+        })
+        .where(
+          and(
+            eq(agentRuns.scopeEntityKind, input.scopeEntityKind),
+            eq(agentRuns.scopeEntityId, input.scopeEntityId),
+            inArray(agentRuns.kind, [...supersededKinds]),
+            eq(agentRuns.status, 'awaiting_approval'),
+          ),
+        );
+    }
   }
 
   // Auto-approve the planner output for orchestrator-spawned follow-up

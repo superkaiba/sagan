@@ -10,11 +10,13 @@ export function DispatchPlannerButton({
   label = 'Dispatch planner',
   size = 'md',
   className,
+  onDispatched,
 }: {
   experimentId: string;
   label?: string;
   size?: 'sm' | 'md';
   className?: string;
+  onDispatched?: () => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -31,7 +33,8 @@ export function DispatchPlannerButton({
       if (!res.ok) {
         throw new Error(data.message ?? data.error ?? 'Dispatch failed.');
       }
-      router.refresh();
+      if (onDispatched) onDispatched();
+      else router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dispatch failed.');
     } finally {

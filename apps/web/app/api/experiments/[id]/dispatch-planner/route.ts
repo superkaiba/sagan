@@ -3,6 +3,11 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { agentRuns, comments, experiments, users } from '@sagan/db/schema';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
+import {
+  findClarifyingSection,
+  parseClarifyingQuestions,
+  readAnswers,
+} from '@/lib/clarifying-questions';
 import { db } from '@/lib/db';
 import { setExperimentStatus } from '@/lib/workflow';
 
@@ -39,6 +44,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
       number: experiments.number,
       title: experiments.title,
       status: experiments.status,
+      planJson: experiments.planJson,
     })
     .from(experiments)
     .where(eq(experiments.id, id))
@@ -122,15 +128,37 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
           return `### Comment ${i + 1} — ${who} @ ${c.createdAt.toISOString()}${anchor}\n${c.body}`;
         })
         .join('\n\n')
-    : '(no unresolved comments — owner answered elsewhere; re-read the experiment body and prior plan output.)';
+    : '(no unresolved comments — owner answered in the question textboxes; see below.)';
+
+  // Pull per-question answers the owner typed into the panel and pair them
+  // back with their questions so the planner reads a tight Q/A block instead
+  // of having to cross-reference the section body and comment thread.
+  const section = findClarifyingSection(experiment.planJson);
+  const answers = readAnswers(experiment.planJson);
+  const questions = section ? parseClarifyingQuestions(section.body) : [];
+  const qaBlock = questions.length
+    ? questions
+        .map((q) => {
+          const answer = answers[String(q.index)]?.trim();
+          const answerBlock = answer ? answer : '(no answer entered)';
+          return [
+            `### Q${q.index}. ${q.heading}`,
+            q.detail ? `\n${q.detail}` : '',
+            '',
+            'Owner answer:',
+            answerBlock,
+          ].join('\n');
+        })
+        .join('\n\n')
+    : '(no structured clarifying questions on this experiment)';
 
   const heading =
     experiment.status === 'awaiting_clarifications'
-      ? 'Owner answered your clarifying questions. Re-read the experiment record and the unresolved comments below, then decide:\n' +
+      ? 'Owner answered your clarifying questions. Read the per-question answers below, then decide:\n' +
         '- If the answers fully unblock planning, produce a full experiment plan (runpod-spec block + ## Approval Checklist section).\n' +
         '- If anything material is still ambiguous, post only the few remaining targeted clarifying questions instead.\n\n' +
         'Do not invent new requirements. Use the existing experiment body as the source of truth for scope.'
-      : 'Owner left feedback on your drafted plan. Re-read the existing plan and the unresolved comments below, then either:\n' +
+      : 'Owner left feedback on your drafted plan. Re-read the existing plan and the answers/comments below, then either:\n' +
         '- Produce a revised full plan (runpod-spec block + ## Approval Checklist section) that incorporates the feedback, or\n' +
         '- Post targeted clarifying questions if the feedback needs further input before re-planning.';
 
@@ -140,6 +168,10 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   const request = [
     heading,
+    '',
+    '## Owner answers to your clarifying questions',
+    '',
+    qaBlock,
     '',
     '## Unresolved comments on this experiment',
     '',

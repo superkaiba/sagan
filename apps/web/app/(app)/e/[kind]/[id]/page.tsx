@@ -4,6 +4,7 @@ import { agentRuns, podLifecycle, projectNarratives, projects } from '@sagan/db/
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { ClarifyingQuestionsPanel } from '@/components/ClarifyingQuestionsPanel';
 import { Comments } from '@/components/Comments';
+import { PlanPanel } from '@/components/PlanPanel';
 import { ProposedFollowUps } from '@/components/ProposedFollowUps';
 import { EditableBody } from '@/components/EditableBody';
 import { CommentableBody } from '@/components/CommentableBody';
@@ -145,12 +146,21 @@ export default async function EntityPage({
         </header>
 
         {kind === 'experiment' ? (
-          <ClarifyingQuestionsPanel
-            experimentId={entity.id}
-            status={entity.status}
-            planJson={(entity.raw as { planJson?: unknown }).planJson}
-            canDispatch={owner}
-          />
+          <section className="space-y-2">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">
+              Clarifications
+            </h2>
+            <ClarifyingQuestionsPanel
+              experimentId={entity.id}
+              status={entity.status}
+              planJson={(entity.raw as { planJson?: unknown }).planJson}
+              canDispatch={owner}
+            />
+          </section>
+        ) : null}
+
+        {(kind === 'experiment' || kind === 'todo') ? (
+          <PlanPanel entityKind={kind} entityId={entity.id} />
         ) : null}
 
         {owner && canEditBody(kind) ? (

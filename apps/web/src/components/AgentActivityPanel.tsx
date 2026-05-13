@@ -5,6 +5,8 @@ import { Markdown } from '@/components/Markdown';
 import type { EntityKind } from '@/lib/entity';
 import { db } from '@/lib/db';
 import { effectiveRunPodRate, estimateRunPodSpendUsd, formatUsd, formatUsdPerHour } from '@/lib/runpod-cost';
+import { deriveAgentStage, type AgentStage, type AgentStageTone } from '@/lib/agent-stage';
+import { cn } from '@/lib/cn';
 import { ResumeAgentButton } from './ResumeAgentButton';
 
 interface AgentActivityPanelProps {
@@ -16,6 +18,36 @@ interface AgentActivityPanelProps {
 
 const RESUMABLE_STATUSES = new Set(['failed', 'blocked', 'cancelled', 'rejected']);
 const METERING_POD_STATUSES = new Set(['deploying', 'running', 'retrying', 'stop_requested']);
+const ACTIVE_RUN_STATUSES = new Set(['queued', 'running', 'awaiting_approval', 'approved', 'deploying']);
+
+function stageBadgeClass(tone: AgentStageTone): string {
+  switch (tone) {
+    case 'danger':
+      return 'border-[--color-danger-border] bg-[--color-danger-bg] text-[--color-danger]';
+    case 'warn':
+      return 'border-[--color-warning-border] bg-[--color-warning-bg] text-[--color-warning]';
+    case 'success':
+      return 'border-[--color-success-border] bg-[--color-success-bg] text-[--color-success]';
+    case 'info':
+      return 'border-[--color-info-border] bg-[--color-info-bg] text-[--color-info]';
+    default:
+      return 'border-[--color-border] bg-[--color-muted-bg] text-[--color-muted]';
+  }
+}
+
+function StageBadge({ stage }: { stage: AgentStage }) {
+  return (
+    <span
+      className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium', stageBadgeClass(stage.tone))}
+      title={stage.detail ?? undefined}
+    >
+      {stage.label}
+      {stage.detail ? (
+        <span className="hidden font-normal text-[--color-muted] sm:inline">— {stage.detail}</span>
+      ) : null}
+    </span>
+  );
+}
 
 function formatDate(value: Date | string | null) {
   if (!value) return 'not recorded';
@@ -142,6 +174,21 @@ export async function AgentActivityPanel({
     list.push(pod);
     podsByRun.set(pod.agentRunId, list);
   }
+  const stagesByRun = new Map<string, AgentStage>();
+  for (const run of runs) {
+    stagesByRun.set(
+      run.id,
+      deriveAgentStage({
+        status: run.status,
+        kind: run.kind,
+        lastError: run.lastError,
+        events: eventsByRun.get(run.id) ?? [],
+      }),
+    );
+  }
+  // `runs` is ordered desc by createdAt — the first run we see that is still
+  // active is the "currently working" one. Mark it so the overlay can glow it.
+  const activeRunId = runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status))?.id ?? null;
 
   return (
     <section className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-panel] text-sm">
@@ -172,10 +219,20 @@ export async function AgentActivityPanel({
             const activityEvents = runEvents.filter((event) => isActivityEvent(event.eventType));
             const crashed = ['failed', 'blocked'].includes(run.status) && Boolean(run.lastError);
             const resumable = canManageRun && RESUMABLE_STATUSES.has(run.status);
-            const open = crashed;
+            const stage = stagesByRun.get(run.id) ?? null;
+            const isActive = run.id === activeRunId;
+            const open = crashed || isActive;
 
             return (
-              <details key={run.id} open={open} className="group">
+              <details
+                key={run.id}
+                open={open}
+                className={cn(
+                  'group',
+                  isActive && 'animate-sagan-active-pulse border border-[--color-running-border] bg-[--color-running-bg]/30',
+                  crashed && 'animate-sagan-blocked-pulse border border-[--color-danger-border]',
+                )}
+              >
                 <summary className="cursor-pointer list-none px-3 py-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <Link href={`/agent/${run.id}`} className="font-mono text-xs text-[--color-accent] hover:underline">
@@ -185,14 +242,16 @@ export async function AgentActivityPanel({
                     <span className="rounded-md border border-[--color-border] px-1.5 py-0.5 text-xs">
                       {run.status.replaceAll('_', ' ')}
                     </span>
+                    {stage ? <StageBadge stage={stage} /> : null}
+                    {isActive ? (
+                      <span className="inline-flex items-center gap-1 rounded-md border border-[--color-running-border] bg-[--color-running-bg] px-1.5 py-0.5 text-xs text-[--color-running]">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[--color-running]" aria-hidden="true" />
+                        active
+                      </span>
+                    ) : null}
                     {activePods.length > 0 ? (
                       <span className="rounded-md border border-[--color-running-border] bg-[--color-running-bg] px-1.5 py-0.5 text-xs text-[--color-running]">
                         RunPod spend {activePodSpends.length > 0 ? formatUsd(activeSpendTotal) : 'pending'}
-                      </span>
-                    ) : null}
-                    {crashed ? (
-                      <span className="rounded-md border border-[--color-danger-border] bg-[--color-danger-bg] px-1.5 py-0.5 text-xs text-[--color-danger]">
-                        crash recorded
                       </span>
                     ) : null}
                     <span className="ml-auto text-xs text-[--color-muted]">
@@ -203,6 +262,26 @@ export async function AgentActivityPanel({
                 </summary>
 
                 <div className="space-y-2 px-3 pb-3">
+                  {crashed && stage ? (
+                    <div className="rounded-md border border-[--color-danger-border] bg-[--color-danger-bg] p-2 text-xs text-[--color-danger]">
+                      <div className="flex items-center gap-1 font-medium">
+                        <span>Crashed</span>
+                        {stage.detail ? <span className="font-normal">— {stage.detail}</span> : null}
+                      </div>
+                      <p className="mt-1 text-[--color-muted]">
+                        This Claude Code run stopped before reaching approval. Use Retry on the card or below to resume.
+                      </p>
+                    </div>
+                  ) : null}
+                  {isActive && stage ? (
+                    <div className="rounded-md border border-[--color-running-border] bg-[--color-running-bg]/40 p-2 text-xs">
+                      <div className="flex items-center gap-1 font-medium text-[--color-running]">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[--color-running]" aria-hidden="true" />
+                        <span>Current stage: {stage.label}</span>
+                      </div>
+                      {stage.detail ? <p className="mt-1 text-[--color-muted]">{stage.detail}</p> : null}
+                    </div>
+                  ) : null}
                   <dl className="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1 text-xs">
                     <dt className="text-[--color-muted]">Started</dt>
                     <dd>{formatDate(run.startedAt ?? run.createdAt)}</dd>

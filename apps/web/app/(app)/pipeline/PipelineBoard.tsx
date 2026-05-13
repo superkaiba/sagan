@@ -250,10 +250,14 @@ function SessionStrip({
 }) {
   const failed = RUN_FAILED_STATUSES.includes(run.status);
   const active = RUN_ACTIVE_STATUSES.includes(run.status);
+  const stage = run.currentStage;
+  const stageLabel = stage ? stage.label : null;
+  const stageDetail = stage?.detail ?? null;
+  const stageTitle = stage && stageDetail ? `${stageLabel}: ${stageDetail}` : stageLabel ?? undefined;
   return (
     <div
       className={cn(
-        'sagan-cloud-strip mt-2 flex items-center gap-2 overflow-hidden border px-2 py-1 text-[11px]',
+        'sagan-cloud-strip mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 overflow-hidden border px-2 py-1 text-[11px]',
         failed
           ? 'border-[--color-danger-border] bg-[--color-danger-bg] text-[--color-danger]'
           : active
@@ -267,6 +271,14 @@ function SessionStrip({
     >
       {failed ? <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
       <span className="font-medium capitalize">{RUN_LABEL[run.status]}</span>
+      {stageLabel && stageLabel.toLowerCase() !== RUN_LABEL[run.status].toLowerCase() ? (
+        <span
+          className="inline-flex max-w-full items-center gap-1 rounded border border-current/40 px-1.5 py-0 font-medium normal-case"
+          title={stageTitle}
+        >
+          <span className="truncate">{stageLabel}</span>
+        </span>
+      ) : null}
       <Link
         href={run.href}
         className="ml-1 inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
@@ -745,6 +757,7 @@ export function PipelineBoard({
             lastError: null,
             href: `/agent/${data.agentRunId}`,
             canRetry: false,
+            currentStage: null,
           };
         }
         return insertCardAtTarget(current, merged, target, [removeKey, data.card.key]);

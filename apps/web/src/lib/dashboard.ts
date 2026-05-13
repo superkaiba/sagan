@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import {
+  agentRunEvents,
   agentRuns,
   approvalRequests,
   cleanResults,
@@ -17,6 +18,7 @@ import { statusTone, type StatusTone } from './status';
 import { deriveProcessState, type ProcessState } from './process-state';
 import { loadRunPodAccountSummaries, type RunPodAccountSummary } from './runpod-api';
 import { getExperimentEstimate } from './experiment-estimate';
+import { deriveAgentStage, type AgentStage } from './agent-stage';
 
 export type ApprovalAction =
   | { kind: 'experiment'; id: string; status: string }
@@ -79,6 +81,7 @@ export interface PipelineCardRun {
   lastError: string | null;
   href: string;
   canRetry: boolean;
+  currentStage: AgentStage | null;
 }
 
 export interface PipelineCardPod {
@@ -913,6 +916,34 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
       runByScope.set(key, run);
     }
   }
+
+  const activeRunIds = agentRows.map((row) => row.id);
+  const eventRows = activeRunIds.length === 0
+    ? []
+    : await db()
+        .select({
+          runId: agentRunEvents.runId,
+          eventType: agentRunEvents.eventType,
+          body: agentRunEvents.body,
+          metadata: agentRunEvents.metadata,
+          createdAt: agentRunEvents.createdAt,
+        })
+        .from(agentRunEvents)
+        .where(inArray(agentRunEvents.runId, activeRunIds))
+        .orderBy(asc(agentRunEvents.createdAt));
+  const eventsByRun = new Map<string, typeof eventRows>();
+  for (const event of eventRows) {
+    const list = eventsByRun.get(event.runId) ?? [];
+    list.push(event);
+    eventsByRun.set(event.runId, list);
+  }
+  const stageForRun = (run: typeof agentRows[number]): AgentStage =>
+    deriveAgentStage({
+      status: run.status,
+      kind: run.kind,
+      lastError: run.lastError,
+      events: eventsByRun.get(run.id) ?? [],
+    });
   const runForScope = (kind: string, id: string): PipelineCardRun | null => {
     const run = runByScope.get(`${kind}:${id}`);
     if (!run) return null;
@@ -924,6 +955,7 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
       lastError: run.lastError,
       href: `/agent/${run.id}`,
       canRetry: ['failed', 'blocked', 'cancelled', 'rejected'].includes(run.status),
+      currentStage: stageForRun(run),
     };
   };
   const podByAgentRun = new Map<string, typeof activePodRows>();
@@ -1115,6 +1147,7 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
           lastError: run.lastError,
           href: `/agent/${run.id}`,
           canRetry: ['failed', 'blocked', 'cancelled', 'rejected'].includes(run.status),
+          currentStage: stageForRun(run),
         };
         const pods = podsForCard({
           run: cardRun,

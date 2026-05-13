@@ -38,12 +38,16 @@ ProtectHome=read-only
 #   monorepo for self-improvement.
 # - /home/thomasjiralerspong/.claude: Claude Agent SDK state (worktrees,
 #   project transcripts, sub-agent definitions).
+# - /home/thomasjiralerspong/.codex: codex CLI session/history/log state
+#   written by codex-companion when planner runs spawn the codex-critic
+#   sub-agent. Without this, plan-review codex critics fail with EROFS and
+#   the planner falls back to Claude-only critique.
 # - /home/thomasjiralerspong/explore-persona-space: the EPS client repo the
 #   experiment orchestrator's `experiment-implementer` sub-agent commits to
 #   when driving an experiment from approved → awaiting_promotion. Without
 #   this, the orchestrator cannot create `issue-<N>` branches or push code
 #   for the pod to pull, and post-approval runs end in `epm:failure`.
-ReadWritePaths=/home/thomasjiralerspong/sagan /home/thomasjiralerspong/.claude /home/thomasjiralerspong/explore-persona-space
+ReadWritePaths=/home/thomasjiralerspong/sagan /home/thomasjiralerspong/.claude /home/thomasjiralerspong/.codex /home/thomasjiralerspong/explore-persona-space
 
 [Install]
 WantedBy=multi-user.target

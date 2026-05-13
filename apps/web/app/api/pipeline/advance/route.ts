@@ -174,6 +174,14 @@ function cardPayload(input: {
   };
 }
 
+function isReopenFromTerminal(fromStage: PipelineStage | undefined) {
+  // Moving a card back from `done` or `archived` is the owner reopening it
+  // to look at again — the visual stage should update, but no new agent
+  // work should fire. Without this guard, dragging Done → Review (or any
+  // stage with an agent step) silently queues a fresh QA/plan/apply run.
+  return fromStage === 'done' || fromStage === 'archived';
+}
+
 function agentStepFor(kind: PipelineKind, stage: PipelineStage): AgentRunKind | null {
   // Drag-to-planning fires a classifier first for any card that could be
   // either kind. The classifier emits `KIND: todo|experiment` and the runner
@@ -560,9 +568,12 @@ async function advanceExperiment(input: z.infer<typeof advanceSchema>, actorUser
       .where(eq(experiments.id, input.id));
   }
 
+  const reopened = isReopenFromTerminal(input.fromStage);
   let agentRunId: string | undefined;
-  let message = `Moved to ${input.toStage}.`;
-  if (input.toStage === 'running') {
+  let message = reopened ? `Reopened to ${input.toStage}.` : `Moved to ${input.toStage}.`;
+  if (reopened) {
+    // Skip agent dispatch — owner is reorganizing a completed card.
+  } else if (input.toStage === 'running') {
     const approvedRun = await approveLatestScopedRun({
       scopeEntityKind: 'experiment',
       scopeEntityId: input.id,
@@ -702,9 +713,10 @@ async function advanceCleanResult(input: z.infer<typeof advanceSchema>, actorUse
       .where(eq(cleanResults.id, input.id));
   }
 
+  const reopened = isReopenFromTerminal(input.fromStage);
   let agentRunId: string | undefined;
-  let message = `Moved to ${input.toStage}.`;
-  const step = agentStepFor('clean_result', input.toStage);
+  let message = reopened ? `Reopened to ${input.toStage}.` : `Moved to ${input.toStage}.`;
+  const step = reopened ? null : agentStepFor('clean_result', input.toStage);
   if (step) {
     const run = await queueAgentRun({
       kind: step,
@@ -772,9 +784,10 @@ async function advanceTodo(input: z.infer<typeof advanceSchema>, actorUserId: st
     .set({ status, priority: nextPriority, ownerNote: setPipelineStageOwnerNote(todo.ownerNote, input.toStage), updatedAt: new Date() })
     .where(eq(todos.id, input.id));
 
+  const reopened = isReopenFromTerminal(input.fromStage);
   let agentRunId: string | undefined;
-  let message = `Moved to ${input.toStage}.`;
-  const step = agentStepFor('todo', input.toStage);
+  let message = reopened ? `Reopened to ${input.toStage}.` : `Moved to ${input.toStage}.`;
+  const step = reopened ? null : agentStepFor('todo', input.toStage);
   if (step) {
     const run = await queueAgentRun({
       kind: step,

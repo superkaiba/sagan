@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, notInArray } from 'drizzle-orm';
 import { z } from 'zod';
-import { approvalRequests, experiments, runs, workflowEvents } from '@sagan/db/schema';
+import { agentRuns, approvalRequests, experiments, runs, workflowEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { EXPERIMENT_STATUSES, experimentTurn, setExperimentStatus } from '@/lib/workflow';
+
+const AGENT_RUN_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled', 'rejected'] as const;
 
 const EXPERIMENT_KINDS = ['experiment', 'infra', 'survey'] as const;
 const COMPUTE_SIZES = ['none', 'small', 'medium', 'large'] as const;
@@ -26,10 +28,17 @@ const patchSchema = z.object({
   hasCleanResult: z.boolean().optional(),
   runpodAccount: z.enum(['team', 'personal']).optional(),
   note: z.string().max(2_000).optional(),
-  // Owners may overwrite plan_json when iterating on a plan before approval —
-  // e.g. folding in comment-thread decisions. The runner is still the canonical
-  // writer during planning; this is an owner escape hatch.
+  // Owners may overwrite plan_json / plan_md when iterating on a plan before
+  // approval — e.g. folding in comment-thread decisions. The runner is still
+  // the canonical writer during planning; this is an owner escape hatch.
+  //
+  // plan_md isn't an experiments column (it lives on agent_runs), but we
+  // accept it here and propagate it to the latest non-terminal experiment-kind
+  // agent_run for this experiment so the approval UI + dispatcher see the
+  // edit. plan_json is mirrored the same way for consistency on the agent_run
+  // detail page; experiments.plan_json remains the canonical workflow record.
   planJson: z.record(z.string(), z.unknown()).optional(),
+  planMd: z.string().max(500_000).optional(),
 });
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -75,7 +84,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!parsed.success) {
     return NextResponse.json({ error: 'invalid_input', detail: z.treeifyError(parsed.error) }, { status: 400 });
   }
-  const { status, note, ...metadataUpdates } = parsed.data;
+  // planMd lives on agent_runs, not experiments — peel it off so it doesn't
+  // hit the experiments update.
+  const { status, note, planMd, ...metadataUpdates } = parsed.data;
   const updateValues: Partial<typeof experiments.$inferInsert> = { ...metadataUpdates, updatedAt: new Date() };
   const updated = await db()
     .update(experiments)
@@ -84,6 +95,36 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .returning({ id: experiments.id, title: experiments.title, status: experiments.status });
   if (!updated[0]) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   let experiment = updated[0]!;
+
+  // Propagate plan_md / plan_json to the latest non-terminal experiment-kind
+  // agent_run. The dispatcher reads runpod-spec from agent_runs.plan_md, and
+  // the /agent/[id] approval surface reads both plan_md and plan_json from
+  // the agent_run row — so without this propagation an owner PATCH to
+  // experiments.plan_json silently bypasses the approval + dispatch path.
+  if (metadataUpdates.planJson !== undefined || planMd !== undefined) {
+    const targetRunRows = await db()
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.scopeEntityKind, 'experiment'),
+          eq(agentRuns.scopeEntityId, id),
+          eq(agentRuns.kind, 'experiment'),
+          notInArray(agentRuns.status, [...AGENT_RUN_TERMINAL_STATUSES]),
+        ),
+      )
+      .orderBy(desc(agentRuns.updatedAt))
+      .limit(1);
+    const targetRun = targetRunRows[0];
+    if (targetRun) {
+      const runUpdates: Partial<typeof agentRuns.$inferInsert> = { updatedAt: new Date() };
+      if (metadataUpdates.planJson !== undefined) {
+        runUpdates.planJson = metadataUpdates.planJson as typeof agentRuns.$inferInsert.planJson;
+      }
+      if (planMd !== undefined) runUpdates.planMd = planMd;
+      await db().update(agentRuns).set(runUpdates).where(eq(agentRuns.id, targetRun.id));
+    }
+  }
 
   // When a caller flips hasCleanResult=true, ensure there's a pending
   // runs row so the /promote endpoint has something to flip. The analyzer's

@@ -439,43 +439,64 @@ function wrapFirstMatch(root: HTMLElement, quote: string, commentId: string) {
       return NodeFilter.FILTER_ACCEPT;
     },
   });
-  // Search node-by-node, but also try a window across two siblings for the
-  // common case where the quote spans <strong>/<em>/<span> boundaries.
-  let prev: Text | null = null;
+  // Collect every visible text node and the concatenated string. We search
+  // the combined text and map the hit back to (startNode, endNode), so a
+  // quote can cross any number of inline boundaries (<strong>, <em>, links).
+  const textNodes: Text[] = [];
+  let combined = '';
   while (true) {
-    const next = walker.nextNode() as Text | null;
-    if (!next) break;
-    if (tryWrapSingle(next, quote, commentId)) return;
-    if (prev && tryWrapPair(prev, next, quote, commentId)) return;
-    prev = next;
+    const node = walker.nextNode() as Text | null;
+    if (!node) break;
+    textNodes.push(node);
+    combined += node.nodeValue ?? '';
   }
-}
-
-function tryWrapSingle(node: Text, quote: string, commentId: string): boolean {
-  const idx = indexOfNormalized(node.nodeValue ?? '', quote);
-  if (idx < 0) return false;
-  splitAndWrapTextNode(node, idx, idx + quote.length, commentId);
-  return true;
-}
-
-/**
- * Handle quotes that cross a single inline-element boundary by stitching the
- * trailing chars of `a` with the leading chars of `b`. Only goes one boundary
- * deep — good enough for "spans **one bold** word" cases.
- */
-function tryWrapPair(a: Text, b: Text, quote: string, commentId: string): boolean {
-  const aVal = a.nodeValue ?? '';
-  const bVal = b.nodeValue ?? '';
-  const combined = `${aVal}${bVal}`;
+  if (textNodes.length === 0) return;
   const idx = indexOfNormalized(combined, quote);
-  if (idx < 0 || idx + quote.length <= aVal.length || idx >= aVal.length) return false;
-  // Wrap aVal[idx..] and bVal[..end-aVal.length]. We do this as two marks
-  // sharing the same commentId so hover behaves consistently.
-  const aEnd = aVal.length;
-  const bEnd = idx + quote.length - aVal.length;
-  splitAndWrapTextNode(a, idx, aEnd, commentId);
-  splitAndWrapTextNode(b, 0, bEnd, commentId);
-  return true;
+  if (idx < 0) return;
+  const end = idx + quote.length;
+
+  let cursor = 0;
+  let startNodeIdx = -1;
+  let startOffset = 0;
+  let endNodeIdx = -1;
+  let endOffset = 0;
+  for (let i = 0; i < textNodes.length; i++) {
+    const len = (textNodes[i]!.nodeValue ?? '').length;
+    const nodeStart = cursor;
+    const nodeEnd = cursor + len;
+    if (startNodeIdx === -1 && idx >= nodeStart && idx < nodeEnd) {
+      startNodeIdx = i;
+      startOffset = idx - nodeStart;
+    }
+    if (endNodeIdx === -1 && end > nodeStart && end <= nodeEnd) {
+      endNodeIdx = i;
+      endOffset = end - nodeStart;
+    }
+    cursor = nodeEnd;
+  }
+  if (startNodeIdx === -1 || endNodeIdx === -1) return;
+
+  if (startNodeIdx === endNodeIdx) {
+    splitAndWrapTextNode(textNodes[startNodeIdx]!, startOffset, endOffset, commentId);
+    return;
+  }
+  // Wrap from tail to head so each splitAndWrapTextNode keeps the references
+  // for earlier nodes intact (we mutate the parent's children).
+  splitAndWrapTextNode(
+    textNodes[endNodeIdx]!,
+    0,
+    endOffset,
+    commentId,
+  );
+  for (let i = endNodeIdx - 1; i > startNodeIdx; i--) {
+    const node = textNodes[i]!;
+    const len = (node.nodeValue ?? '').length;
+    if (len === 0) continue;
+    splitAndWrapTextNode(node, 0, len, commentId);
+  }
+  const startNode = textNodes[startNodeIdx]!;
+  const startLen = (startNode.nodeValue ?? '').length;
+  splitAndWrapTextNode(startNode, startOffset, startLen, commentId);
 }
 
 function splitAndWrapTextNode(text: Text, start: number, end: number, commentId: string) {

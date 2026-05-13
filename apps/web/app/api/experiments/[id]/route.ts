@@ -26,6 +26,10 @@ const patchSchema = z.object({
   hasCleanResult: z.boolean().optional(),
   runpodAccount: z.enum(['team', 'personal']).optional(),
   note: z.string().max(2_000).optional(),
+  // Owners may overwrite plan_json when iterating on a plan before approval —
+  // e.g. folding in comment-thread decisions. The runner is still the canonical
+  // writer during planning; this is an owner escape hatch.
+  planJson: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {

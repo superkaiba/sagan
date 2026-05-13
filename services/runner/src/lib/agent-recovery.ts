@@ -88,6 +88,17 @@ async function queueAutomaticFollowupRun(
     correlationId: sourceRunId,
     detail: reason.slice(0, 500),
   });
+  // For qa runs triggered by an @claude comment, re-point the trigger
+  // comment at the followup run id. Without this, maybePostCommentReply on
+  // the followup can't find its trigger (it looks up by agent_run_id) and
+  // the user sees a "Claude failed" badge with no follow-up reply even when
+  // the recovery succeeds.
+  if (source.kind === 'qa') {
+    await db()
+      .update(schema.comments)
+      .set({ agentRunId: followupId, updatedAt: new Date() })
+      .where(eq(schema.comments.agentRunId, sourceRunId));
+  }
   await reopenScopeForFollowup(source, followupId, mode);
   await notifyQueued(followupId);
   await notifyPipelineChanged(`auto-${mode}:${sourceRunId}`);

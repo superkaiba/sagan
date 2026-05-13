@@ -7,6 +7,7 @@ import { requireSession } from '@/lib/auth';
 import { loadRunPodAccountSummaries } from '@/lib/runpod-api';
 import { Comments } from '@/components/Comments';
 import { RunStream } from './RunStream';
+import { AgentRunRequest } from './AgentRunRequest';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
           <span className="text-xs uppercase tracking-wide text-[--color-muted]">{run.kind}</span>
           <h1 className="text-2xl font-semibold tracking-tight">Run {run.id.slice(0, 8)}</h1>
         </div>
-        <p className="text-sm text-[--color-muted]">{run.request}</p>
+        <AgentRunRequest request={run.request} />
       </header>
 
       <RunStream

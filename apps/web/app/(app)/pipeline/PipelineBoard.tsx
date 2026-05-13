@@ -14,7 +14,7 @@ import {
   type MouseEvent,
 } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Archive, CheckCircle2, Cloud, ExternalLink, GripVertical, Loader2, RotateCcw, Server } from 'lucide-react';
+import { AlertTriangle, Archive, CheckCircle2, ExternalLink, GripVertical, Loader2, RotateCcw, Server } from 'lucide-react';
 import { Panel } from '@/components/ui';
 import { ProcessStateBadge } from '@/components/ProcessStateBadge';
 import { cn } from '@/lib/cn';
@@ -188,13 +188,6 @@ const RUN_LABEL: Record<PipelineRunStatus, string> = {
 const RUN_FAILED_STATUSES: PipelineRunStatus[] = ['failed', 'blocked', 'cancelled', 'rejected'];
 const RUN_ACTIVE_STATUSES: PipelineRunStatus[] = ['queued', 'running', 'approved', 'deploying'];
 
-function cloudStepLabel(kind: string) {
-  if (kind === 'apply') return 'applying';
-  if (kind === 'qa') return 'reviewing';
-  if (kind === 'experiment' || kind === 'plan') return 'planning';
-  return 'working';
-}
-
 function optimisticRunKind(kind: PipelineCardKind, stage: PipelineStageKey) {
   if (stage === 'interpreting' || stage === 'review') return 'qa';
   if (kind === 'todo' && stage === 'running') return 'apply';
@@ -271,14 +264,8 @@ function SessionStrip({
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      {failed ? (
-        <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
-      ) : active ? (
-        <Cloud className="h-3 w-3 shrink-0" aria-hidden="true" />
-      ) : (
-        <Cloud className="h-3 w-3 shrink-0" aria-hidden="true" />
-      )}
-      <span className="font-medium">Cloud {cloudStepLabel(run.kind)} · {RUN_LABEL[run.status]}</span>
+      {failed ? <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
+      <span className="font-medium capitalize">{RUN_LABEL[run.status]}</span>
       <Link
         href={run.href}
         className="ml-1 inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
@@ -384,6 +371,10 @@ function PipelineCard({
   const attentionColumn = card.stage === 'approval' || card.stage === 'review';
   const needsOwner = Boolean(card.ownerAction) && attentionColumn;
   const approvalLabel = card.stage === 'approval' ? 'Approve & dispatch' : card.stage === 'review' ? 'Approve' : null;
+  const runActive = card.run ? RUN_ACTIVE_STATUSES.includes(card.run.status) : false;
+  const runFailed = card.run ? RUN_FAILED_STATUSES.includes(card.run.status) : false;
+  const cardBlocked = !needsOwner && (card.stage === 'blocked' || runFailed);
+  const cardActive = !needsOwner && !cardBlocked && runActive;
 
   function openCard(event?: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) {
     if (pending || suppressClick.current || event?.defaultPrevented) return;
@@ -429,7 +420,8 @@ function PipelineCard({
         needsOwner
           ? 'border-[3px] border-[--color-attention] bg-[--color-attention-soft] animate-sagan-approval-pulse'
           : 'border border-[--color-border]',
-        card.stage === 'blocked' && !needsOwner && 'border-[--color-danger-border] bg-[--color-danger-bg]',
+        cardBlocked && 'border-[--color-danger-border] bg-[--color-danger-bg] animate-sagan-blocked-pulse',
+        cardActive && 'animate-sagan-active-pulse',
         dragging && 'opacity-45',
         pending && 'cursor-wait opacity-70',
       )}
@@ -509,11 +501,11 @@ function PipelineCard({
             event.stopPropagation();
             onArchive(card);
           }}
-          className="absolute bottom-2 right-2 z-30 inline-flex h-7 w-7 items-center justify-center border border-[--color-border] bg-[--color-panel] text-[--color-muted] shadow-[var(--shadow-inset)] hover:border-[--color-danger-border] hover:bg-[--color-danger-bg] hover:text-[--color-danger] focus:outline-none focus:ring-2 focus:ring-[--color-focus] disabled:cursor-wait disabled:opacity-60"
+          className="absolute right-2 top-2 z-30 inline-flex h-6 w-6 items-center justify-center rounded border border-[--color-border] bg-[--color-panel] text-[--color-muted] opacity-0 shadow-[var(--shadow-inset)] transition-opacity hover:border-[--color-danger-border] hover:bg-[--color-danger-bg] hover:text-[--color-danger] focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[--color-focus] group-hover:opacity-100 disabled:cursor-wait disabled:opacity-60"
           title="Archive"
           aria-label={`Archive ${card.title}`}
         >
-          <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+          <Archive className="h-3 w-3" aria-hidden="true" />
         </button>
       ) : null}
     </article>

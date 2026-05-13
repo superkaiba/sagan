@@ -1470,6 +1470,12 @@ async function markCompleted(runId: string, resultText: string, costUsd: number,
   await maybePersistChatReply(runId, resultText);
   await maybePostCommentReply(runId, resultText);
   const row = await loadRun(runId);
+  // Apply-on-todo lands changes on a branch + PR (see the apply prompt in
+  // apps/web/app/api/pipeline/advance/route.ts). Auto-bump the card to
+  // `review` so the owner sees the PR before anything merges.
+  if (row?.kind === 'apply' && row.scopeEntityKind === 'todo' && row.scopeEntityId) {
+    await markTodoApplyAwaitingReview(row.scopeEntityId, runId, resultText);
+  }
   await recordTrail({
     action: `Run ${runId.slice(0, 8)} completed`,
     why: row?.request.slice(0, 500) ?? 'Agent run finished.',
@@ -1483,6 +1489,41 @@ async function markCompleted(runId: string, resultText: string, costUsd: number,
     body: truncate(resultText, 140) || `Run ${runId.slice(0, 8)} finished`,
     url: `/agent/${runId}`,
     data: { kind: 'completed', runId, costUsd, numTurns },
+  });
+}
+
+function extractPrUrl(resultText: string): string | null {
+  const match = resultText.match(/PR:\s*(https?:\/\/\S+)/i);
+  if (!match) return null;
+  return match[1]!.replace(/[.,;)\]]+$/, '');
+}
+
+async function markTodoApplyAwaitingReview(todoId: string, runId: string, resultText: string) {
+  const rows = await db()
+    .select({ ownerNote: schema.todos.ownerNote, status: schema.todos.status })
+    .from(schema.todos)
+    .where(eq(schema.todos.id, todoId))
+    .limit(1);
+  const todo = rows[0];
+  if (!todo) return;
+
+  const PREFIX = 'sagan:pipeline-stage=';
+  const remaining = (todo.ownerNote ?? '')
+    .split('\n')
+    .filter((line) => !line.trim().startsWith(PREFIX))
+    .join('\n')
+    .trim();
+  const nextOwnerNote = remaining ? `${PREFIX}review\n${remaining}` : `${PREFIX}review`;
+
+  await db()
+    .update(schema.todos)
+    .set({ status: 'awaiting_promotion', ownerNote: nextOwnerNote, updatedAt: new Date() })
+    .where(eq(schema.todos.id, todoId));
+
+  const prUrl = extractPrUrl(resultText);
+  await emitEvent(runId, 'todo_apply_awaiting_review', todoId, {
+    prevStatus: todo.status,
+    prUrl,
   });
 }
 

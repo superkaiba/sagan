@@ -206,7 +206,15 @@ function agentRequest(input: {
       return `${movement} on the Pipeline board.\n\nDraft the next experiment plan for the scoped experiment. Use the scoped experiment record as the source of truth for title and scope, and produce a plan that can be reviewed and approved. Do not rename, retitle, or otherwise mutate the scoped issue/experiment.`;
     case 'todo':
       if (input.toStage === 'running') {
-        return `${movement} on the Pipeline board.\n\nAdvance this task now: "${input.title}". Use the scoped task context and make the smallest useful change or report the exact blocker.`;
+        return [
+          `${movement} on the Pipeline board.`,
+          '',
+          `Advance this task: "${input.title}".`,
+          '',
+          'If the task requires code changes, do not commit to the default branch. Work on a new branch off the target repo\'s default branch, push the branch, and open a draft pull request against the default branch with `gh pr create --draft`. Do not merge the PR — owner review happens after you stop. End your final message with `PR: <url>` on its own line.',
+          '',
+          'For non-code tasks (a comment, a writeup, a status update), proceed without a branch and report the result inline.',
+        ].join('\n');
       }
       return `${movement} on the Pipeline board.\n\nPlan or review the next step for this task: "${input.title}". Use the scoped task context and keep the result directly actionable.`;
     case 'clean_result':

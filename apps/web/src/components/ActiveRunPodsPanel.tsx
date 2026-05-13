@@ -42,7 +42,12 @@ export function ActiveRunPodsPanel({
   accounts?: RunPodAccountSummary[];
 }) {
   const pods = initialPods;
-  const primaryAccount = accounts.find((account) => account.account === 'team') ?? accounts[0] ?? null;
+  // Show every account (team + personal) so the left-rail panel always
+  // surfaces the full picture instead of just the primary account.
+  const sortedAccounts = [...accounts].sort((a, b) => {
+    if (a.account === b.account) return 0;
+    return a.account === 'team' ? -1 : 1;
+  });
 
   const activeSpend = pods
     .map((pod) => estimateRunPodSpendUsd(pod))
@@ -73,21 +78,29 @@ export function ActiveRunPodsPanel({
           </span>
         </span>
       </div>
-      {primaryAccount ? (
-        <Link href="/runpods" className="block border-b border-[--color-border] px-3 py-2 text-xs hover:bg-[--color-hover]">
-          <span className="flex items-center justify-between gap-2">
-            <span className="text-[--color-muted]">{primaryAccount.label} balance</span>
-            <span className="font-mono text-[--color-fg]">
-              {primaryAccount.error ? 'unavailable' : formatUsd(primaryAccount.clientBalance)}
-            </span>
-          </span>
-          {!primaryAccount.error && primaryAccount.currentSpendPerHr != null && primaryAccount.currentSpendPerHr > 0 ? (
-            <span className="mt-1 flex items-center justify-between gap-2 text-[--color-muted]">
-              <span>{formatUsdPerHour(primaryAccount.currentSpendPerHr)}</span>
-              <span>{formatRunway(primaryAccount.clientBalance, primaryAccount.currentSpendPerHr)}</span>
-            </span>
-          ) : null}
-        </Link>
+      {sortedAccounts.length > 0 ? (
+        <div className="divide-y divide-[--color-border] border-b border-[--color-border]">
+          {sortedAccounts.map((account) => (
+            <Link
+              key={account.account}
+              href="/runpods"
+              className="block px-3 py-2 text-xs hover:bg-[--color-hover]"
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-[--color-muted]">{account.label} balance</span>
+                <span className="font-mono text-[--color-fg]">
+                  {account.error ? 'unavailable' : formatUsd(account.clientBalance)}
+                </span>
+              </span>
+              {!account.error && account.currentSpendPerHr != null && account.currentSpendPerHr > 0 ? (
+                <span className="mt-1 flex items-center justify-between gap-2 text-[--color-muted]">
+                  <span>{formatUsdPerHour(account.currentSpendPerHr)}</span>
+                  <span>{formatRunway(account.clientBalance, account.currentSpendPerHr)}</span>
+                </span>
+              ) : null}
+            </Link>
+          ))}
+        </div>
       ) : null}
       {pods.length === 0 ? (
         <p className="px-3 py-2 text-xs leading-4 text-[--color-muted]">No active pods</p>

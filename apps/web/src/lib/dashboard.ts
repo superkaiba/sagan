@@ -160,11 +160,11 @@ export const PIPELINE_STAGES = [
   { key: 'planning', title: 'Planning' },
   { key: 'approval', title: 'Awaiting approval' },
   { key: 'running', title: 'Running' },
+  { key: 'blocked', title: 'Blocked' },
   { key: 'interpreting', title: 'Interpreting' },
   { key: 'followups_running', title: 'Follow-ups running' },
   { key: 'review', title: 'Review' },
   { key: 'clean_results', title: 'Clean results' },
-  { key: 'blocked', title: 'Blocked' },
   { key: 'done', title: 'Shared / Done' },
   { key: 'archived', title: 'Archived' },
 ] as const;

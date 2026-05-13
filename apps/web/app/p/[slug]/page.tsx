@@ -127,7 +127,7 @@ export default async function PublicProjectPage({
 
           <div className="space-y-6 min-w-0">
             {narrative ? (
-              <article className="rounded-lg border border-[--color-border] bg-[--color-panel] p-8">
+              <article className="public-narrative-host rounded-lg border border-[--color-border] bg-[--color-panel] p-8">
                 <NarrativeBody body={processedBody} />
               </article>
             ) : project.summaryMd ? (

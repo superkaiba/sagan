@@ -588,3 +588,19 @@ mark.anchor-pending {
   border-bottom: 1px dashed color-mix(in srgb, var(--color-warning) 70%, transparent);
   border-radius: 2px;
 }
+
+/* Public project narrative page: the page already renders its own TOC in the
+   left rail (NarrativeToc, extracted from headings), so hide the body's
+   embedded doc-toc and collapse the doc-layout grid to a single column. */
+.public-narrative-host .narrative-html .doc-toc { display: none; }
+.public-narrative-host .narrative-html .doc-layout {
+  display: block;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+/* Tailwind preflight removes list bullets by default. Restore them inside
+   narrative bodies so embedded ul/ol render as expected. */
+.narrative-html ul { list-style: disc; }
+.narrative-html ul ul { list-style: circle; }
+.narrative-html ol { list-style: decimal; }

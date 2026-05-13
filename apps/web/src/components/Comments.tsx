@@ -52,6 +52,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   const [threadOriginTop, setThreadOriginTop] = useState<number | null>(null);
   const [threadHeights, setThreadHeights] = useState<Record<string, number>>({});
   const [alignAnchoredThreads, setAlignAnchoredThreads] = useState(false);
+  const [scrolledPastIds, setScrolledPastIds] = useState<Set<string>>(() => new Set());
 
   async function load() {
     const res = await fetch(
@@ -301,6 +302,19 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
         if (id) next[id] = Math.ceil(node.getBoundingClientRect().height);
       });
       setThreadHeights((prev) => (sameNumberRecord(prev, next) ? prev : next));
+
+      // Auto-collapse threads whose anchor has scrolled off-screen so they
+      // don't pile up at full size in the sticky sidebar.
+      const viewportTop = window.scrollY;
+      const viewportBottom = viewportTop + window.innerHeight;
+      const past = new Set<string>();
+      anchorPositionById.forEach((pos, id) => {
+        const anchorBottom = pos.top + pos.height;
+        if (anchorBottom < viewportTop - 40 || pos.top > viewportBottom + 40) {
+          past.add(id);
+        }
+      });
+      setScrolledPastIds((prev) => (sameStringSet(prev, past) ? prev : past));
     }
 
     measureRail();
@@ -334,7 +348,9 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     const isHovered = hoverable && anchorCtx?.hoveredId === c.id;
     const agentLabel = agentStatusLabel(c);
     const agentActive = Boolean(c.agentRunStatus && activeAgentStatuses.has(c.agentRunStatus));
-    const wrap = `group p-3 transition-colors ${c.resolvedAt ? 'opacity-60' : ''} ${isAgent ? 'bg-[--color-muted-bg]' : ''} ${isReply ? 'border-l-2 border-[--color-border] ml-4' : ''} ${isHovered ? 'bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]' : ''}`;
+    const scrolledPast =
+      alignAnchoredThreads && !isReply && scrolledPastIds.has(c.id) && !isHovered;
+    const wrap = `group p-3 transition-all duration-150 ${c.resolvedAt ? 'opacity-60' : ''} ${isAgent ? 'bg-[--color-muted-bg]' : ''} ${isReply ? 'border-l-2 border-[--color-border] ml-4' : ''} ${isHovered ? 'bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]' : ''} ${scrolledPast ? 'max-h-9 overflow-hidden opacity-50 hover:opacity-100 hover:max-h-none' : ''}`;
     return (
       <article
         key={c.id}
@@ -612,6 +628,14 @@ function sameNumberRecord(a: Record<string, number>, b: Record<string, number>) 
   if (aKeys.length !== bKeys.length) return false;
   for (const key of aKeys) {
     if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+function sameStringSet(a: Set<string>, b: Set<string>) {
+  if (a.size !== b.size) return false;
+  for (const id of a) {
+    if (!b.has(id)) return false;
   }
   return true;
 }

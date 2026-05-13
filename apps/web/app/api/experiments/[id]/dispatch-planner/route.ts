@@ -44,6 +44,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
       number: experiments.number,
       title: experiments.title,
       status: experiments.status,
+      planMd: experiments.planMd,
       planJson: experiments.planJson,
     })
     .from(experiments)
@@ -52,22 +53,25 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const experiment = expRows[0];
   if (!experiment) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  // planMd lives on agent_runs (not experiments) — pull the most recent
-  // experiment-scoped planner run's output so the new run sees the same
-  // context Claude already produced.
-  const priorPlanRow = await db()
-    .select({ planMd: agentRuns.planMd })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.scopeEntityKind, 'experiment'),
-        eq(agentRuns.scopeEntityId, id),
-        eq(agentRuns.kind, 'experiment'),
-      ),
-    )
-    .orderBy(desc(agentRuns.updatedAt))
-    .limit(1);
-  const priorPlanMd = priorPlanRow[0]?.planMd ?? null;
+  // Canonical plan_md lives on experiments. Fall back to the most recent
+  // experiment-kind agent_run only if the experiment row hasn't been
+  // backfilled (legacy experiments that pre-date 0028_nice_genesis).
+  let priorPlanMd: string | null = experiment.planMd ?? null;
+  if (!priorPlanMd) {
+    const priorPlanRow = await db()
+      .select({ planMd: agentRuns.planMd })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.scopeEntityKind, 'experiment'),
+          eq(agentRuns.scopeEntityId, id),
+          eq(agentRuns.kind, 'experiment'),
+        ),
+      )
+      .orderBy(desc(agentRuns.updatedAt))
+      .limit(1);
+    priorPlanMd = priorPlanRow[0]?.planMd ?? null;
+  }
 
   if (experiment.status !== 'awaiting_clarifications' && experiment.status !== 'plan_pending') {
     return NextResponse.json(

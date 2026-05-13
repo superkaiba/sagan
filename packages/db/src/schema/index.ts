@@ -515,6 +515,11 @@ export const experiments = pgTable(
     title: text('title').notNull(),
     body: text('body'),
     hypothesis: text('hypothesis'),
+    // plan_md and plan_json are the canonical workflow plan for an experiment.
+    // The planner writes them on awaiting_approval finalization; the dispatcher
+    // reads runpod-spec from plan_md; owner-edit PATCH writes here. Each
+    // agent_run still keeps its own working copy on agent_runs (per-run audit).
+    planMd: text('plan_md'),
     planJson: jsonb('plan_json'),
     configYaml: text('config_yaml'),
     status: experimentStatusEnum('status').notNull().default('planning'),

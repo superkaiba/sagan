@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { eq } from 'drizzle-orm';
-import { agentRuns, agentRunEvents, podLifecycle, runArtifacts } from '@sagan/db/schema';
+import { agentRuns, agentRunEvents, experiments, podLifecycle, runArtifacts } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { isOwner } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
@@ -34,6 +34,24 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
     .orderBy(runArtifacts.createdAt);
   const runpodAccounts = pods.length > 0 ? await loadRunPodAccountSummaries() : [];
 
+  // For experiment-scoped runs, the canonical plan lives on experiments.
+  // Prefer that; fall back to the per-run copy when the run isn't scoped to
+  // an experiment or the experiment row hasn't been backfilled.
+  let canonicalPlanMd: string | null = run.planMd;
+  let canonicalPlanJson: typeof run.planJson = run.planJson;
+  if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
+    const expRows = await db()
+      .select({ planMd: experiments.planMd, planJson: experiments.planJson })
+      .from(experiments)
+      .where(eq(experiments.id, run.scopeEntityId))
+      .limit(1);
+    const exp = expRows[0];
+    if (exp) {
+      if (exp.planMd && exp.planMd.length > 0) canonicalPlanMd = exp.planMd;
+      if (exp.planJson) canonicalPlanJson = exp.planJson;
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="space-y-2">
@@ -49,8 +67,8 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
         kind={run.kind}
         request={run.request}
         initialStatus={run.status}
-        initialPlanMd={run.planMd}
-        initialPlanJson={run.planJson}
+        initialPlanMd={canonicalPlanMd}
+        initialPlanJson={canonicalPlanJson}
         initialEvents={events.map((e) => ({
           id: e.id,
           eventType: e.eventType,

@@ -1089,7 +1089,7 @@ async function markAwaitingApproval(runId: string, planMd: string) {
       const prevStatus = current[0]?.status ?? null;
       await db()
         .update(schema.experiments)
-        .set({ status: 'approved', planJson, updatedAt: new Date() })
+        .set({ status: 'approved', planMd, planJson, updatedAt: new Date() })
         .where(eq(schema.experiments.id, row.scopeEntityId));
       await db().insert(schema.workflowEvents).values({
         entityKind: 'experiment',
@@ -1196,7 +1196,7 @@ async function markExperimentAwaitingClarifications(
   if (experiment.status !== 'awaiting_clarifications') {
     await db()
       .update(schema.experiments)
-      .set({ status: 'awaiting_clarifications', planJson, updatedAt: new Date() })
+      .set({ status: 'awaiting_clarifications', planMd, planJson, updatedAt: new Date() })
       .where(eq(schema.experiments.id, experimentId));
     await db().insert(schema.workflowEvents).values({
       entityKind: 'experiment',
@@ -1211,7 +1211,7 @@ async function markExperimentAwaitingClarifications(
   } else {
     await db()
       .update(schema.experiments)
-      .set({ planJson, updatedAt: new Date() })
+      .set({ planMd, planJson, updatedAt: new Date() })
       .where(eq(schema.experiments.id, experimentId));
   }
 }
@@ -1400,7 +1400,7 @@ async function markExperimentPlanPending(
   if (experiment.status !== 'plan_pending') {
     await db()
       .update(schema.experiments)
-      .set({ status: 'plan_pending', planJson, updatedAt: new Date() })
+      .set({ status: 'plan_pending', planMd, planJson, updatedAt: new Date() })
       .where(eq(schema.experiments.id, experimentId));
     await db().insert(schema.workflowEvents).values({
       entityKind: 'experiment',
@@ -1412,6 +1412,11 @@ async function markExperimentPlanPending(
       note: 'Experiment plan is ready for owner approval.',
       metadata: { agentRunId: runId, structuredSections: planJson.sections.length },
     });
+  } else {
+    await db()
+      .update(schema.experiments)
+      .set({ planMd, planJson, updatedAt: new Date() })
+      .where(eq(schema.experiments.id, experimentId));
   }
 
   const existing = await db()

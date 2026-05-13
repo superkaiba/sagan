@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { agentRuns, agentRunEvents } from '@sagan/db/schema';
+import { agentRuns, agentRunEvents, experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
@@ -29,6 +29,18 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     .orderBy(agentRunEvents.createdAt)
     .limit(80);
 
+  // Canonical plan_md lives on experiments for experiment-scoped runs.
+  let planMd: string | null = run.planMd ?? null;
+  if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
+    const expRows = await db()
+      .select({ planMd: experiments.planMd })
+      .from(experiments)
+      .where(eq(experiments.id, run.scopeEntityId))
+      .limit(1);
+    const expPlanMd = expRows[0]?.planMd ?? null;
+    if (expPlanMd && expPlanMd.length > 0) planMd = expPlanMd;
+  }
+
   const prompt = `Review this Claude Code run as Codex.
 
 Focus on bugs, missed requirements, unsafe assumptions, and whether the run actually reached the user's requested final state. Classify each finding as blocker, important, follow-up, or nit.
@@ -49,7 +61,7 @@ Run:
 - lastError: ${run.lastError ?? '(none)'}
 
 Plan:
-${run.planMd ?? '(none)'}
+${planMd ?? '(none)'}
 
 Events:
 ${events

@@ -233,14 +233,29 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
     log.debug('dispatch: run is not approved', { runId, status: run.status });
     return;
   }
-  if (!run.planMd) {
+  // Canonical plan_md lives on experiments.plan_md (the workflow-port canonical
+  // record). Fall back to the per-run copy on agent_runs.plan_md only when the
+  // run isn't scoped to an experiment (e.g. todo-kind apply runs that someday
+  // grow a runpod-spec) or when the experiment row hasn't been backfilled.
+  let planMd: string | null = run.planMd ?? null;
+  if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
+    const expRows = await db()
+      .select({ planMd: schema.experiments.planMd })
+      .from(schema.experiments)
+      .where(eq(schema.experiments.id, run.scopeEntityId))
+      .limit(1);
+    const expPlanMd = expRows[0]?.planMd ?? null;
+    if (expPlanMd && expPlanMd.length > 0) planMd = expPlanMd;
+  }
+
+  if (!planMd) {
     await fail(runId, 'plan_md is empty; cannot dispatch');
     return;
   }
 
   let specs: ParsedSpec[];
   try {
-    specs = parseSpecsFromPlan(run.planMd);
+    specs = parseSpecsFromPlan(planMd);
   } catch (err) {
     await fail(runId, err instanceof Error ? err.message : String(err));
     return;

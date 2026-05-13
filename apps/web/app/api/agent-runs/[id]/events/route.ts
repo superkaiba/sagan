@@ -1,9 +1,35 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { and, eq, gt } from 'drizzle-orm';
-import { agentRuns, agentRunEvents } from '@sagan/db/schema';
+import { agentRuns, agentRunEvents, experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
+
+// Canonical plan_md / plan_json for an experiment-scoped agent_run live on
+// experiments. Fall back to the run row only when there is no scoped
+// experiment (or it isn't backfilled).
+async function loadCanonicalPlan(run: {
+  scopeEntityKind: string | null;
+  scopeEntityId: string | null;
+  planMd: string | null;
+  planJson: unknown;
+}): Promise<{ planMd: string | null; planJson: unknown }> {
+  if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
+    const rows = await db()
+      .select({ planMd: experiments.planMd, planJson: experiments.planJson })
+      .from(experiments)
+      .where(eq(experiments.id, run.scopeEntityId))
+      .limit(1);
+    const exp = rows[0];
+    if (exp) {
+      return {
+        planMd: exp.planMd ?? run.planMd ?? null,
+        planJson: exp.planJson ?? run.planJson ?? null,
+      };
+    }
+  }
+  return { planMd: run.planMd ?? null, planJson: run.planJson ?? null };
+}
 
 const TERMINAL_STATUSES = new Set([
   'completed',
@@ -73,7 +99,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           return;
         }
         if (run.status !== lastStatus) {
-          send('status', { status: run.status, planMd: run.planMd, planJson: run.planJson, lastError: run.lastError });
+          const plan = await loadCanonicalPlan(run);
+          send('status', {
+            status: run.status,
+            planMd: plan.planMd,
+            planJson: plan.planJson,
+            lastError: run.lastError,
+          });
           lastStatus = run.status;
         }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
-import { agentRunEvents, agentRuns } from '@sagan/db/schema';
+import { agentRunEvents, agentRuns, experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 
@@ -36,7 +36,19 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (run.kind !== 'experiment') {
     return NextResponse.json({ error: 'not_experiment_run', kind: run.kind }, { status: 409 });
   }
-  if (!run.planMd) {
+  // Canonical plan_md lives on experiments.plan_md; fall back to the run row
+  // when the experiment hasn't been backfilled.
+  let planMd: string | null = run.planMd ?? null;
+  if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
+    const expRows = await db()
+      .select({ planMd: experiments.planMd })
+      .from(experiments)
+      .where(eq(experiments.id, run.scopeEntityId))
+      .limit(1);
+    const expPlanMd = expRows[0]?.planMd ?? null;
+    if (expPlanMd && expPlanMd.length > 0) planMd = expPlanMd;
+  }
+  if (!planMd) {
     return NextResponse.json({ error: 'plan_md_missing' }, { status: 409 });
   }
   await db()

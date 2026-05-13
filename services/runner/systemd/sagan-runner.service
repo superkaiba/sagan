@@ -33,9 +33,17 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
-# WorkingDirectory must be writable (runner edits the monorepo for self-improvement),
-# so re-allow exactly that path:
-ReadWritePaths=/home/thomasjiralerspong/sagan /home/thomasjiralerspong/.claude
+# Writable paths for the runner and its orchestrator subagents:
+# - /home/thomasjiralerspong/sagan: WorkingDirectory; the runner edits the
+#   monorepo for self-improvement.
+# - /home/thomasjiralerspong/.claude: Claude Agent SDK state (worktrees,
+#   project transcripts, sub-agent definitions).
+# - /home/thomasjiralerspong/explore-persona-space: the EPS client repo the
+#   experiment orchestrator's `experiment-implementer` sub-agent commits to
+#   when driving an experiment from approved → awaiting_promotion. Without
+#   this, the orchestrator cannot create `issue-<N>` branches or push code
+#   for the pod to pull, and post-approval runs end in `epm:failure`.
+ReadWritePaths=/home/thomasjiralerspong/sagan /home/thomasjiralerspong/.claude /home/thomasjiralerspong/explore-persona-space
 
 [Install]
 WantedBy=multi-user.target

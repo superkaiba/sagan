@@ -15,6 +15,10 @@ export type ExperimentEstimateOptions = {
   progressPct?: number | null;
 };
 
+export type ExperimentProgressUpdate = ExperimentEstimateOptions & {
+  remainingMinutes?: number | null;
+};
+
 const UI_KEY = 'saganUi';
 const REMAINING_MINUTES_KEY = 'estimatedRemainingMinutes';
 const UPDATED_AT_KEY = 'estimatedRemainingUpdatedAt';
@@ -59,6 +63,47 @@ export function mergeExperimentEstimate(
     if (options.message) ui[MESSAGE_KEY] = options.message.slice(0, 500);
     if (options.progressPct != null && Number.isFinite(options.progressPct)) {
       ui[PROGRESS_KEY] = Math.max(0, Math.min(100, options.progressPct));
+    }
+  }
+
+  if (Object.keys(ui).length > 0) {
+    base[UI_KEY] = ui;
+  } else {
+    delete base[UI_KEY];
+  }
+
+  return base;
+}
+
+export function mergeExperimentProgress(
+  planJson: unknown,
+  update: ExperimentProgressUpdate,
+): JsonRecord {
+  const base: JsonRecord = isPlainRecord(planJson) ? { ...planJson } : planJson == null ? {} : { value: planJson };
+  const ui: JsonRecord = isPlainRecord(base[UI_KEY]) ? { ...(base[UI_KEY] as JsonRecord) } : {};
+
+  ui[UPDATED_AT_KEY] = new Date().toISOString();
+  if (update.source) ui[SOURCE_KEY] = update.source;
+  if (update.podId !== undefined) {
+    if (update.podId) ui[POD_ID_KEY] = update.podId;
+    else delete ui[POD_ID_KEY];
+  }
+  if (update.message !== undefined) {
+    if (update.message) ui[MESSAGE_KEY] = update.message.slice(0, 500);
+    else delete ui[MESSAGE_KEY];
+  }
+  if (update.progressPct !== undefined) {
+    if (update.progressPct != null && Number.isFinite(update.progressPct)) {
+      ui[PROGRESS_KEY] = Math.max(0, Math.min(100, update.progressPct));
+    } else {
+      delete ui[PROGRESS_KEY];
+    }
+  }
+  if (update.remainingMinutes !== undefined) {
+    if (update.remainingMinutes != null && Number.isFinite(update.remainingMinutes)) {
+      ui[REMAINING_MINUTES_KEY] = Math.max(0, Math.floor(update.remainingMinutes));
+    } else {
+      delete ui[REMAINING_MINUTES_KEY];
     }
   }
 

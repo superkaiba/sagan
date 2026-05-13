@@ -117,6 +117,14 @@ export function ActiveRunPodsPanel({
                             {remainingCost == null ? '' : ` · ${formatUsd(remainingCost)}`}
                           </span>
                         )}
+                        {pod.experimentProgressPct == null ? null : (
+                          <span className="font-mono text-[--color-running]">
+                            {pod.experimentProgressPct.toFixed(pod.experimentProgressPct % 1 === 0 ? 0 : 1)}%
+                          </span>
+                        )}
+                        {pod.experimentEstimatedRemainingMessage ? (
+                          <span className="max-w-full truncate">{pod.experimentEstimatedRemainingMessage}</span>
+                        ) : null}
                         <span>{formatRelativeTime(pod.updatedAt)}</span>
                       </span>
                     </span>

@@ -306,9 +306,13 @@ function SessionStrip({
 function RunPodStrip({
   pods,
   estimatedRemainingMinutes,
+  progressPct,
+  message,
 }: {
   pods: PipelineCardPod[];
   estimatedRemainingMinutes?: number | null;
+  progressPct?: number | null;
+  message?: string | null;
 }) {
   if (pods.length === 0) return null;
   const primary = pods.find((pod) => pod.status === 'running') ?? pods[0]!;
@@ -317,6 +321,10 @@ function RunPodStrip({
   const rate = effectiveRunPodRate(primary);
   const remainingCost = estimateCostLabel(totalRunPodRate(pods), estimatedRemainingMinutes);
   const remainingLabel = estimateLabel(estimatedRemainingMinutes);
+  const progressLabel =
+    typeof progressPct === 'number' && Number.isFinite(progressPct)
+      ? `${progressPct.toFixed(progressPct % 1 === 0 ? 0 : 1)}%`
+      : null;
 
   return (
     <div
@@ -332,8 +340,10 @@ function RunPodStrip({
       {gpu ? <span className="truncate">{gpu}</span> : null}
       {spend == null ? null : <span className="font-mono">{formatUsd(spend)}</span>}
       {rate == null ? null : <span className="truncate">{formatUsdPerHour(rate)}</span>}
+      {progressLabel ? <span className="font-mono text-[--color-running]">{progressLabel}</span> : null}
       {remainingLabel ? <span className="font-mono">{remainingLabel}</span> : null}
       {remainingCost == null ? null : <span className="font-mono">{formatUsd(remainingCost)} left</span>}
+      {message ? <span className="max-w-[9rem] truncate text-[--color-muted]">{message}</span> : null}
       <Link
         href={`/runpods?pod=${encodeURIComponent(primary.podId)}`}
         className="ml-auto inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
@@ -480,7 +490,12 @@ function PipelineCard({
       ) : null}
       {card.pods?.length ? (
         <div className="relative z-20">
-          <RunPodStrip pods={card.pods} estimatedRemainingMinutes={card.estimatedRemainingMinutes} />
+          <RunPodStrip
+            pods={card.pods}
+            estimatedRemainingMinutes={card.estimatedRemainingMinutes}
+            progressPct={card.progressPct}
+            message={card.estimatedRemainingMessage}
+          />
         </div>
       ) : null}
       {card.stage !== 'archived' ? (

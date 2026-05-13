@@ -3,7 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { agentRunEvents, experiments, podLifecycle } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { mergeExperimentEstimate } from '@/lib/experiment-estimate';
+import { mergeExperimentProgress } from '@/lib/experiment-estimate';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     })
     .where(eq(podLifecycle.id, pod.id));
 
-  if (pod.experimentId && parsed.data.estimatedRemainingMinutes !== undefined) {
+  if (pod.experimentId) {
     const experimentRows = await db()
       .select({ planJson: experiments.planJson })
       .from(experiments)
@@ -78,14 +78,16 @@ export async function POST(req: Request) {
       .limit(1);
     const experiment = experimentRows[0];
     if (experiment) {
+      const message = parsed.data.message ?? parsed.data.status;
       await db()
         .update(experiments)
         .set({
-          planJson: mergeExperimentEstimate(experiment.planJson, parsed.data.estimatedRemainingMinutes ?? null, {
+          planJson: mergeExperimentProgress(experiment.planJson, {
             source: 'pod',
             podId: pod.runpodPodId,
-            message: parsed.data.message ?? parsed.data.status ?? null,
-            progressPct: parsed.data.progressPct ?? null,
+            remainingMinutes: parsed.data.estimatedRemainingMinutes,
+            message: message === undefined ? undefined : message,
+            progressPct: parsed.data.progressPct,
           }),
           updatedAt: now,
         })

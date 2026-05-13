@@ -1,10 +1,51 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Maximize2, Minimize2, X } from 'lucide-react';
+import { Rnd } from 'react-rnd';
 import { Markdown } from './Markdown';
 import { useAnchoredComments } from './AnchoredCommentsContext';
+
+const POPOUT_STORAGE_KEY = 'sagan:comments-popout';
+const POPOUT_DEFAULT = { popped: false, x: 0, y: 0, width: 720, height: 600 } as const;
+
+type PopOutState = {
+  popped: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+function readPopOutState(): PopOutState {
+  if (typeof window === 'undefined') return { ...POPOUT_DEFAULT };
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(POPOUT_STORAGE_KEY) ?? 'null');
+    if (parsed && typeof parsed === 'object') {
+      return {
+        popped: Boolean(parsed.popped),
+        x: Number.isFinite(parsed.x) ? parsed.x : POPOUT_DEFAULT.x,
+        y: Number.isFinite(parsed.y) ? parsed.y : POPOUT_DEFAULT.y,
+        width: Number.isFinite(parsed.width) ? parsed.width : POPOUT_DEFAULT.width,
+        height: Number.isFinite(parsed.height) ? parsed.height : POPOUT_DEFAULT.height,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return { ...POPOUT_DEFAULT };
+}
+
+function writePopOutState(state: PopOutState) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(POPOUT_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore
+  }
+}
 
 const CODEX_REPLY_MARKER = '<!-- agent:codex -->';
 type CommentAgentName = 'Claude' | 'Codex';
@@ -53,6 +94,25 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   const [threadHeights, setThreadHeights] = useState<Record<string, number>>({});
   const [alignAnchoredThreads, setAlignAnchoredThreads] = useState(false);
   const [scrolledPastIds, setScrolledPastIds] = useState<Set<string>>(() => new Set());
+  const [popout, setPopout] = useState<PopOutState>(() => ({ ...POPOUT_DEFAULT }));
+  const [popoutHydrated, setPopoutHydrated] = useState(false);
+
+  useEffect(() => {
+    // Read after mount so SSR + client agree.
+    const initial = readPopOutState();
+    // Anchor the default position to the right edge if the user hasn't moved it yet.
+    if (initial.x === 0 && initial.y === 0 && typeof window !== 'undefined') {
+      initial.x = Math.max(16, window.innerWidth - initial.width - 24);
+      initial.y = 80;
+    }
+    setPopout(initial);
+    setPopoutHydrated(true);
+  }, []);
+
+  function persistPopout(next: PopOutState) {
+    setPopout(next);
+    writePopOutState(next);
+  }
 
   async function load() {
     const res = await fetch(
@@ -485,123 +545,209 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     );
   }
 
+  function renderCommentsBody() {
+    return (
+      <>
+        {reviseError ? <p className="text-xs text-[--color-danger]">{reviseError}</p> : null}
+        <div ref={threadsRef} className="space-y-2">
+          {visibleRoots.length === 0 ? (
+            <p className="rounded-lg border border-[--color-border] p-3 text-sm text-[--color-muted]">No comments yet.</p>
+          ) : (
+            orderedVisibleRoots.map((root) => {
+              const replies = repliesByParent.get(root.id) ?? [];
+              const collapsed = collapsedIds.has(root.id);
+              const baseClass = 'rounded-lg border border-[--color-border] bg-[--color-panel] shadow-sm divide-y divide-[--color-border]';
+              return (
+                <div
+                  key={root.id}
+                  data-comment-thread-id={root.id}
+                  className={`${baseClass} ${alignAnchoredThreads ? 'transition-[margin-top] duration-150 ease-out' : ''}`}
+                  style={alignAnchoredThreads ? { marginTop: threadMargins.get(root.id) ?? 0 } : undefined}
+                >
+                  {renderComment(root, false, replies.length)}
+                  {collapsed ? null : replies.map((reply) => renderComment(reply, true))}
+                </div>
+              );
+            })
+          )}
+        </div>
+        <form
+          onSubmit={onTopLevelSubmit}
+          className="space-y-2 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-3"
+        >
+          {anchorCtx?.pendingAnchor ? (
+            <div className="flex items-start gap-2 rounded-md border border-[--color-accent] bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] px-2 py-1.5 text-xs">
+              <span className="mt-0.5 text-[--color-muted]">Commenting on:</span>
+              <span className="min-w-0 flex-1 truncate italic text-[--color-fg]">
+                “{anchorCtx.pendingAnchor.quote}”
+              </span>
+              <button
+                type="button"
+                aria-label="Clear anchor"
+                onClick={() => anchorCtx.setPendingAnchor(null)}
+                className="text-[--color-muted] hover:text-[--color-fg]"
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
+          <textarea
+            ref={bodyRef}
+            rows={3}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(event) => {
+              if (shouldSubmitFromTextarea(event)) void submitTopLevel();
+            }}
+            placeholder={
+              anchorCtx?.pendingAnchor
+                ? 'Write a comment about the highlighted text. Enter posts; Shift-Enter adds a line.'
+                : 'Add a comment. Enter posts; Shift-Enter adds a line.'
+            }
+            className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-[--color-muted]">Enter posts. Shift-Enter adds a line.</p>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void submitTopLevel('Claude')}
+                disabled={submitting || !body.trim()}
+                className="rounded-md border border-[--color-border] px-3 py-1.5 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+              >
+                @claude
+              </button>
+              <button
+                type="submit"
+                disabled={submitting || !body.trim()}
+                className="rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg] disabled:opacity-50"
+              >
+                {submitting ? 'Posting…' : 'Comment'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </>
+    );
+  }
+
+  const headerToolbar: ReactNode = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void reviseFromComments()}
+        disabled={revising || unresolvedCount === 0}
+        className="inline-flex items-center gap-1 rounded-md border border-[--color-border] px-2.5 py-1 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg] disabled:opacity-45"
+      >
+        {revising ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : null}
+        Revise
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowResolved((v) => !v)}
+        className="text-xs text-[--color-muted] hover:text-[--color-fg]"
+      >
+        {showResolved ? 'Hide resolved' : 'Show resolved'}
+      </button>
+      {popoutHydrated ? (
+        <button
+          type="button"
+          onClick={() => persistPopout({ ...popout, popped: !popout.popped })}
+          className="hidden xl:inline-flex items-center gap-1 rounded-md border border-[--color-border] px-2 py-1 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+          title={popout.popped ? 'Dock comments back into the sidebar' : 'Pop comments out into a movable window'}
+        >
+          {popout.popped ? <Minimize2 className="h-3 w-3" aria-hidden="true" /> : <Maximize2 className="h-3 w-3" aria-hidden="true" />}
+          {popout.popped ? 'Dock' : 'Pop out'}
+        </button>
+      ) : null}
+    </div>
+  );
+
+  const headerStatus: ReactNode = (
+    <div className="flex flex-wrap items-center gap-2">
+      <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">Comments</h2>
+      {activeAgentCount > 0 ? (
+        <span className="inline-flex items-center gap-1 rounded-full border border-[--color-info-border] bg-[--color-info-bg] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[--color-info]">
+          <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+          Agent running
+        </span>
+      ) : null}
+      {reviseRunId ? (
+        <Link href={`/agent/${reviseRunId}`} className="text-xs text-[--color-accent] underline-offset-2 hover:underline">
+          revision run
+        </Link>
+      ) : null}
+    </div>
+  );
+
+  if (popoutHydrated && popout.popped) {
+    return (
+      <>
+        <section ref={sectionRef} className="space-y-2 rounded-lg border border-dashed border-[--color-border] bg-[--color-muted-bg] p-3 text-xs text-[--color-muted]">
+          <p>Comments popped out into a movable window.</p>
+          <button
+            type="button"
+            onClick={() => persistPopout({ ...popout, popped: false })}
+            className="inline-flex items-center gap-1 rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs font-medium text-[--color-fg] hover:bg-[--color-hover]"
+          >
+            <Minimize2 className="h-3 w-3" aria-hidden="true" />
+            Dock back
+          </button>
+        </section>
+        {typeof window !== 'undefined'
+          ? createPortal(
+              <Rnd
+                position={{ x: popout.x, y: popout.y }}
+                size={{ width: popout.width, height: popout.height }}
+                minWidth={360}
+                minHeight={240}
+                bounds="window"
+                dragHandleClassName="popout-drag-handle"
+                onDragStop={(_, d) => persistPopout({ ...popout, x: d.x, y: d.y })}
+                onResizeStop={(_, _direction, ref, _delta, position) =>
+                  persistPopout({
+                    ...popout,
+                    width: parseInt(ref.style.width, 10) || popout.width,
+                    height: parseInt(ref.style.height, 10) || popout.height,
+                    x: position.x,
+                    y: position.y,
+                  })
+                }
+                className="z-40 flex flex-col rounded-lg border border-[--color-border] bg-[--color-panel] shadow-2xl"
+              >
+                <div className="popout-drag-handle flex shrink-0 cursor-move items-center justify-between gap-2 rounded-t-lg border-b border-[--color-border] bg-[--color-muted-bg] px-3 py-2">
+                  {headerStatus}
+                  <div className="flex items-center gap-2">
+                    {headerToolbar}
+                    <button
+                      type="button"
+                      onClick={() => persistPopout({ ...popout, popped: false })}
+                      className="rounded-md p-1 text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                      title="Close and dock back to sidebar"
+                      aria-label="Close popped-out comments"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto p-3">
+                  {renderCommentsBody()}
+                </div>
+              </Rnd>,
+              document.body,
+            )
+          : null}
+      </>
+    );
+  }
+
   return (
     <section ref={sectionRef} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">Comments</h2>
-          {activeAgentCount > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-[--color-info-border] bg-[--color-info-bg] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[--color-info]">
-              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              Agent running
-            </span>
-          ) : null}
-          {reviseRunId ? (
-            <Link href={`/agent/${reviseRunId}`} className="text-xs text-[--color-accent] underline-offset-2 hover:underline">
-              revision run
-            </Link>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void reviseFromComments()}
-            disabled={revising || unresolvedCount === 0}
-            className="inline-flex items-center gap-1 rounded-md border border-[--color-border] px-2.5 py-1 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg] disabled:opacity-45"
-          >
-            {revising ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : null}
-            Revise
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowResolved((v) => !v)}
-            className="text-xs text-[--color-muted] hover:text-[--color-fg]"
-          >
-            {showResolved ? 'Hide resolved' : 'Show resolved'}
-          </button>
-        </div>
+        {headerStatus}
+        {headerToolbar}
       </div>
-      {reviseError ? <p className="text-xs text-[--color-danger]">{reviseError}</p> : null}
-
-      <div ref={threadsRef} className="space-y-2">
-        {visibleRoots.length === 0 ? (
-          <p className="rounded-lg border border-[--color-border] p-3 text-sm text-[--color-muted]">No comments yet.</p>
-        ) : (
-          orderedVisibleRoots.map((root) => {
-            const replies = repliesByParent.get(root.id) ?? [];
-            const collapsed = collapsedIds.has(root.id);
-            const baseClass = 'rounded-lg border border-[--color-border] bg-[--color-panel] shadow-sm divide-y divide-[--color-border]';
-            return (
-              <div
-                key={root.id}
-                data-comment-thread-id={root.id}
-                className={`${baseClass} ${alignAnchoredThreads ? 'transition-[margin-top] duration-150 ease-out' : ''}`}
-                style={alignAnchoredThreads ? { marginTop: threadMargins.get(root.id) ?? 0 } : undefined}
-              >
-                {renderComment(root, false, replies.length)}
-                {collapsed ? null : replies.map((reply) => renderComment(reply, true))}
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      <form
-        onSubmit={onTopLevelSubmit}
-        className="space-y-2 rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-3"
-      >
-        {anchorCtx?.pendingAnchor ? (
-          <div className="flex items-start gap-2 rounded-md border border-[--color-accent] bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] px-2 py-1.5 text-xs">
-            <span className="mt-0.5 text-[--color-muted]">Commenting on:</span>
-            <span className="min-w-0 flex-1 truncate italic text-[--color-fg]">
-              “{anchorCtx.pendingAnchor.quote}”
-            </span>
-            <button
-              type="button"
-              aria-label="Clear anchor"
-              onClick={() => anchorCtx.setPendingAnchor(null)}
-              className="text-[--color-muted] hover:text-[--color-fg]"
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
-        <textarea
-          ref={bodyRef}
-          rows={3}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(event) => {
-            if (shouldSubmitFromTextarea(event)) void submitTopLevel();
-          }}
-          placeholder={
-            anchorCtx?.pendingAnchor
-              ? 'Write a comment about the highlighted text. Enter posts; Shift-Enter adds a line.'
-              : 'Add a comment. Enter posts; Shift-Enter adds a line.'
-          }
-          className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
-        />
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-[--color-muted]">Enter posts. Shift-Enter adds a line.</p>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void submitTopLevel('Claude')}
-              disabled={submitting || !body.trim()}
-              className="rounded-md border border-[--color-border] px-3 py-1.5 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
-            >
-              Ask Claude
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || !body.trim()}
-              className="rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg] disabled:opacity-50"
-            >
-              {submitting ? 'Posting…' : 'Comment'}
-            </button>
-          </div>
-        </div>
-      </form>
+      {renderCommentsBody()}
     </section>
   );
 }

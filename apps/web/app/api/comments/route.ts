@@ -247,7 +247,8 @@ export async function POST(req: Request) {
       const runRequest = [
         `Comment responder: ${agentName}`,
         `Entity: ${parsed.data.entityKind} ${parsed.data.entityId}`,
-        `Task: Write the reply that should be posted to this Sagan comment thread.`,
+        `Task: Respond to the latest comment in this Sagan thread. You are Claude Code with the full toolset (Read, Edit, Write, Bash, Agent, etc.) and permissions are bypassed. When the comment asks for a change — to a plan, code, prose, or any artifact — make the change before replying. When it only asks a question, just answer. Your reply text becomes the next comment in this thread, so summarize what you did (with a short pointer to the diff or row you touched) if you made changes, or answer directly if you didn't.`,
+        `Working directory is the Sagan repo. For Sagan workflow state — experiments.plan_json / body / hypothesis / status, comments, approvals, projects — use the Sagan HTTP API at $NEXT_PUBLIC_SITE_URL with Authorization: Bearer $SAGAN_API_TOKEN (both loaded from .env). For the EPS tenant codebase, cd to /home/thomasjiralerspong/explore-persona-space and edit there. Do not write directly to the database; always go through the API.`,
         `The user asked for an agent answer from the comment UI. Answer the comment content itself.`,
         commentContext,
         `Latest human comment:\n\n${stripLeadingAgentMention(parsed.data.body)}`,

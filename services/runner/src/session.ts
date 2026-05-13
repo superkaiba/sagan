@@ -70,10 +70,6 @@ export async function runSession(runId: string): Promise<Outcome> {
     env: runnerProcessEnv(),
     pathToClaudeCodeExecutable: env.CLAUDE_CLI_PATH,
     ...toolPolicyForRunKind(row),
-    // Conservative tool restriction: disable Bash and write tools for QA mode.
-    ...(row.kind === 'qa'
-      ? { tools: ['Read', 'Grep', 'Glob'], canUseTool: readOnlyToolGuard('qa') }
-      : {}),
     ...(chatResumeId ? { resume: chatResumeId } : chatStartId ? { sessionId: chatStartId } : {}),
   };
 

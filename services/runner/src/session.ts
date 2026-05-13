@@ -1,23 +1,36 @@
 /**
- * Wraps a single agent_runs row → Claude Agent SDK query() invocation.
+ * Wraps a single agent_runs row → headless Claude Code invocation.
  *
- * Streams every SDKMessage into agent_run_events as it arrives, captures the
- * plan_md when the model invokes ExitPlanMode, and finalizes the run row when
- * the SDKResultMessage arrives.
+ * Spawns `claude --print --input-format stream-json --output-format stream-json …`
+ * (see services/runner/src/lib/run-agent.ts) so the runner inherits Claude
+ * Code's full surface: CLAUDE.md auto-load, hooks, plugins, MCP, skills, and
+ * auto-discovered sub-agents from `.claude/agents/` + user-global. Streams
+ * every SDKMessage into agent_run_events as it arrives, captures the plan_md
+ * when the model invokes ExitPlanMode, and finalizes the run row when the
+ * terminal `result` envelope arrives.
  */
-import { type CanUseTool, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { extractPodSpecFromPlanMd } from '@sagan/api';
-import { runAgentWithContinuation, stripSentinel } from './lib/run-agent.js';
-import { loadAgentsFromProject } from './lib/agent-loader.js';
-import { loadPlannerSubagents, loadPromptText } from './lib/prompt-loader.js';
+import {
+  runAgentWithContinuation,
+  stripSentinel,
+  type RunAgentOptions,
+  type SDKMessage,
+} from './lib/run-agent.js';
+import { loadPromptText } from './lib/prompt-loader.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db, schema } from './db.js';
-import { APPROVED_CHANNEL, emitEvent, notifyPipelineChanged } from './queue.js';
+import { APPROVED_CHANNEL, QUEUED_CHANNEL, emitEvent, notifyPipelineChanged } from './queue.js';
+import {
+  convertExperimentToTodo,
+  convertTodoToExperiment,
+  loadEntityTitle,
+  type ConvertResult,
+} from './lib/entity-conversion.js';
 import { env, requireEnv } from './env.js';
 import { log } from './log.js';
 import { pushToUser } from './lib/push.js';
@@ -65,10 +78,8 @@ export async function runSession(runId: string): Promise<Outcome> {
   const chatStartId =
     row.kind === 'qa' && row.chatSessionId && !chatResumeId ? row.chatSessionId : null;
 
-  const options: Options = {
+  const options: RunAgentOptions = {
     cwd: env.RUNNER_REPO_ROOT,
-    permissionMode: 'bypassPermissions',
-    allowDangerouslySkipPermissions: true,
     env: runnerProcessEnv(),
     pathToClaudeCodeExecutable: env.CLAUDE_CLI_PATH,
     ...toolPolicyForRunKind(row),
@@ -76,14 +87,19 @@ export async function runSession(runId: string): Promise<Outcome> {
   };
 
   const prompt = await buildPrompt(row);
-  await emitEvent(runId, 'started', `kind=${row.kind}`, { permissionMode: options.permissionMode });
+  const permissionLabel = options.dangerouslySkipPermissions
+    ? 'bypassPermissions'
+    : options.allowedTools?.length
+      ? `allowedTools=${options.allowedTools.length}`
+      : 'default';
+  await emitEvent(runId, 'started', `kind=${row.kind}`, { permissionMode: permissionLabel });
   await recordTrail({
     action: `Runner started ${row.kind} run ${runId.slice(0, 8)}`,
     why: row.request.slice(0, 500),
     entityKind: row.scopeEntityKind,
     entityId: row.scopeEntityId,
     agentRunId: runId,
-    detail: `permissionMode=${options.permissionMode}`,
+    detail: `permissionMode=${permissionLabel}`,
   });
 
   const result = await runWithStreaming(runId, row, prompt, options, chatResumeId);
@@ -92,26 +108,31 @@ export async function runSession(runId: string): Promise<Outcome> {
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', 'ExitPlanMode'] as const;
 const EXPERIMENT_PLANNING_TOOLS = ['Read', 'Grep', 'Glob', 'Bash', 'Agent', 'TaskOutput', 'ExitPlanMode'] as const;
-const EXPERIMENT_ORCHESTRATOR_TOOLS = [
-  'Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write', 'Agent', 'TaskOutput', 'TaskStop',
-] as const;
 export const EXPERIMENT_ORCHESTRATOR_PREFIX = 'experiment-orchestrator-for:';
 export const EXPERIMENT_IMPROVE_PREFIX = 'experiment-improve-for:';
 export const EXPERIMENT_REINTERPRET_PREFIX = 'experiment-reinterpret-for:';
 export const EXPERIMENT_CLEAN_RESULT_PREFIX = 'experiment-clean-result-for:';
-// Planner sub-agent prompts (critic / codex-critic / reconciler /
-// consistency-checker) are loaded from `.claude/prompts/runner/planner-subagents/`
-// at session start so prompt edits land via a web deploy without a runner
-// restart. See services/runner/src/lib/prompt-loader.ts.
+// Sub-agents come from headless Claude Code's normal discovery: agents live
+// either in <cwd>/.claude/agents/*.md (Sagan repo) or ~/.claude/agents/*.md
+// (user-global) or any installed plugin. The runner used to hand-pick a
+// curated subset per run-kind; we now let the CLI do that natively so the
+// orchestrator sees the same surface a human's `claude` session would.
 
-function toolPolicyForRunKind(row: AgentRunRow): Pick<Options, 'tools' | 'canUseTool' | 'agents'> {
+type ToolPolicy = Pick<
+  RunAgentOptions,
+  'allowedTools' | 'disallowedTools' | 'dangerouslySkipPermissions'
+>;
+
+function toolPolicyForRunKind(row: AgentRunRow): ToolPolicy {
   const kind = row.kind;
   if (kind === 'experiment') {
-    return {
-      tools: [...EXPERIMENT_PLANNING_TOOLS],
-      canUseTool: experimentPlanningToolGuard(kind),
-      agents: loadPlannerSubagents(),
-    };
+    // Planning is read-mostly. Bash and Agent are allowed because critics
+    // need them (codex-critic shells out to the Codex companion; sub-agent
+    // pair runs need the Agent tool). The orchestrator-brief / planner-
+    // instructions constrain *which* subagents and *which* bash commands —
+    // we deliberately do not pass --dangerously-skip-permissions so a
+    // misbehaving planner that tries Edit/Write will be blocked by the CLI.
+    return { allowedTools: [...EXPERIMENT_PLANNING_TOOLS] };
   }
   if (
     kind === 'apply' &&
@@ -120,93 +141,25 @@ function toolPolicyForRunKind(row: AgentRunRow): Pick<Options, 'tools' | 'canUse
       row.request.startsWith(EXPERIMENT_REINTERPRET_PREFIX) ||
       row.request.startsWith(EXPERIMENT_CLEAN_RESULT_PREFIX))
   ) {
-    return {
-      tools: [...EXPERIMENT_ORCHESTRATOR_TOOLS],
-      // No tool guard — the orchestrator/improve/reinterpret session needs to
-      // write code, post markers, and (for improve/reinterpret runs) spawn
-      // analyzer/critic/pod-provisioner subagents. All sub-agents loaded from
-      // .claude/agents are exposed via the Agent tool.
-      agents: loadAgentsFromProject(env.RUNNER_REPO_ROOT),
-    };
+    // Orchestrator/improve/reinterpret/clean-result need the full toolset:
+    // edits, writes, spawning sub-agents, calling Bash for sagan_state.py
+    // and curl. Skip permissions wholesale — equivalent to the previous
+    // SDK permissionMode='bypassPermissions'.
+    return { dangerouslySkipPermissions: true };
   }
-  if (kind !== 'plan') return {};
-
-  return {
-    // Restrict the actual tool surface. `allowedTools` only auto-approves
-    // tools; it does not hide everything else from Claude Code.
-    tools: [...READ_ONLY_TOOLS],
-    canUseTool: readOnlyToolGuard(kind),
-  };
-}
-
-function experimentPlanningToolGuard(kind: AgentRunRow['kind']): CanUseTool {
-  const allowed = new Set<string>(EXPERIMENT_PLANNING_TOOLS);
-  const allowedAgents = new Set(['critic', 'codex-critic', 'reconciler', 'consistency-checker']);
-  return async (toolName, input, options) => {
-    if (!allowed.has(toolName)) {
-      return denyReadOnlyTool(kind, toolName, input, options.toolUseID);
-    }
-    if (toolName === 'Agent') {
-      const subagentType = typeof input.subagent_type === 'string' ? input.subagent_type : '';
-      if (allowedAgents.has(subagentType)) {
-        return { behavior: 'allow', toolUseID: options.toolUseID };
-      }
-      return {
-        behavior: 'deny',
-        toolUseID: options.toolUseID,
-        message: `${kind} planning may only spawn critic, codex-critic, reconciler, or consistency-checker agents. Claude must draft and revise the plan in the main session.`,
-      };
-    }
-    if (toolName === 'Bash') {
-      const command = typeof input.command === 'string' ? input.command : '';
-      if (isCodexCompanionTaskCommand(command)) {
-        return { behavior: 'allow', toolUseID: options.toolUseID };
-      }
-      return {
-        behavior: 'deny',
-        toolUseID: options.toolUseID,
-        message: `${kind} planning is read-only. Bash is reserved for the codex-critic wrapper's Codex companion task invocation.`,
-      };
-    }
-    return { behavior: 'allow', toolUseID: options.toolUseID };
-  };
-}
-
-function readOnlyToolGuard(kind: AgentRunRow['kind']): CanUseTool {
-  const allowed = new Set<string>(READ_ONLY_TOOLS);
-  return async (toolName, input, options) => {
-    if (allowed.has(toolName)) {
-      return { behavior: 'allow', toolUseID: options.toolUseID };
-    }
-
-    return denyReadOnlyTool(kind, toolName, input, options.toolUseID);
-  };
-}
-
-function denyReadOnlyTool(
-  kind: AgentRunRow['kind'],
-  _toolName: string,
-  input: Record<string, unknown>,
-  toolUseID: string,
-) {
-  const command = typeof input.command === 'string' ? input.command : null;
-  const suffix = command ? ` Command was: ${command.slice(0, 240)}` : '';
-  return {
-    behavior: 'deny' as const,
-    toolUseID,
-    message:
-      `${kind} runs are read-only. Use the scoped Sagan record and repo reads only; do not run arbitrary shell commands, edit files, or mutate records.` +
-      suffix,
-  };
-}
-
-function isCodexCompanionTaskCommand(command: string) {
-  const normalized = command.replace(/\s+/g, ' ').trim();
-  if (!normalized.startsWith('node ')) return false;
-  if (!normalized.includes('codex-companion.mjs')) return false;
-  if (!/\btask\b/.test(normalized)) return false;
-  if (/\s--write\b/.test(normalized)) return false;
-  return true;
+  if (kind === 'apply') {
+    // Generic apply runs (dashboard improvements, comment-revise, narrative-
+    // improve) also need full mutation power.
+    return { dangerouslySkipPermissions: true };
+  }
+  if (kind === 'qa') {
+    // QA / chat replies want to read files and run web tools, but they
+    // shouldn't mutate anything by default. Keep them unrestricted to match
+    // previous behavior (the SDK era left qa with no tool policy).
+    return { dangerouslySkipPermissions: true };
+  }
+  // kind === 'plan' (and anything else that falls through): read-only.
+  return { allowedTools: [...READ_ONLY_TOOLS] };
 }
 
 function runnerProcessEnv(): Record<string, string> {
@@ -251,7 +204,7 @@ async function runWithStreaming(
   runId: string,
   row: AgentRunRow,
   prompt: string,
-  options: Options,
+  options: RunAgentOptions,
   initialClaudeSessionId: string | null,
 ): Promise<Outcome> {
   let planMd: string | null = null;
@@ -277,9 +230,10 @@ async function runWithStreaming(
         await syncChatSessionHandle(row.chatSessionId, messageSessionId);
       }
 
-      if (message.type === 'assistant' && message.message?.content) {
-        for (const block of message.message.content) {
-          if (block.type === 'text') {
+      if (message.type === 'assistant' && Array.isArray(message.message?.content)) {
+        for (const raw of message.message.content as Array<Record<string, unknown>>) {
+          const block = raw ?? {};
+          if (block.type === 'text' && typeof block.text === 'string') {
             // Track the most recent non-empty assistant text — used as a
             // fallback if ExitPlanMode's input.plan is empty.
             if (block.text.trim()) lastAssistantText = block.text;
@@ -437,37 +391,48 @@ function invalidQaReplyReason(text: string): string | null {
 
 async function handleMessage(runId: string, message: SDKMessage) {
   switch (message.type) {
-    case 'assistant':
+    case 'assistant': {
       // Persist a compact summary; full content blocks go in metadata.
-      for (const block of message.message?.content ?? []) {
-        if (block.type === 'text') {
+      const content = Array.isArray(message.message?.content)
+        ? (message.message?.content as Array<Record<string, unknown>>)
+        : [];
+      for (const raw of content) {
+        const block = raw ?? {};
+        if (block.type === 'text' && typeof block.text === 'string') {
           await emitEvent(runId, 'assistant_text', truncate(block.text, 4000));
-        } else if (block.type === 'tool_use') {
-          const fileChange = summarizeFileChangeTool(block.name, block.input);
+        } else if (block.type === 'tool_use' && typeof block.name === 'string') {
+          const toolInput = (block.input ?? {}) as Record<string, unknown>;
+          const fileChange = summarizeFileChangeTool(block.name, toolInput);
           if (fileChange) {
             await emitEvent(runId, 'file_change', fileChange.body, fileChange.metadata);
           }
           await emitEvent(runId, 'tool_call', block.name, {
             tool: block.name,
-            input: redactInput(block.input),
+            input: redactInput(toolInput),
           });
         }
       }
       break;
+    }
     case 'user': {
       // BetaMessage user content can be a plain string or an array of blocks.
       const content = message.message?.content;
-      const blocks = Array.isArray(content) ? content : [];
-      for (const block of blocks) {
-        if (typeof block === 'string' || block.type !== 'tool_result') continue;
+      const blocks = Array.isArray(content) ? (content as Array<Record<string, unknown> | string>) : [];
+      for (const raw of blocks) {
+        if (typeof raw === 'string') continue;
+        const block = raw ?? {};
+        if (block.type !== 'tool_result') continue;
+        const blockContent = block.content as unknown;
         const text =
-          typeof block.content === 'string'
-            ? block.content
-            : Array.isArray(block.content)
-              ? block.content.map((c) => (c.type === 'text' ? c.text : '')).join('\n')
+          typeof blockContent === 'string'
+            ? blockContent
+            : Array.isArray(blockContent)
+              ? (blockContent as Array<Record<string, unknown>>)
+                  .map((c) => (c?.type === 'text' && typeof c.text === 'string' ? c.text : ''))
+                  .join('\n')
               : '';
         await emitEvent(runId, 'tool_result', truncate(text, 4000), {
-          is_error: block.is_error ?? false,
+          is_error: (block.is_error as boolean | undefined) ?? false,
         });
       }
       break;
@@ -1476,6 +1441,17 @@ async function markCompleted(runId: string, resultText: string, costUsd: number,
   if (row?.kind === 'apply' && row.scopeEntityKind === 'todo' && row.scopeEntityId) {
     await markTodoApplyAwaitingReview(row.scopeEntityId, runId, resultText);
   }
+  // Classify-on-planning emits `KIND: todo|experiment`. The runner converts
+  // the entity if the verdict disagrees with its current kind, then queues
+  // the proper downstream planner. Owner sees one classifier run + one plan
+  // run; conversion is silent.
+  if (
+    row?.kind === 'classify' &&
+    (row.scopeEntityKind === 'todo' || row.scopeEntityKind === 'experiment') &&
+    row.scopeEntityId
+  ) {
+    await handleClassifyComplete(row, resultText);
+  }
   await recordTrail({
     action: `Run ${runId.slice(0, 8)} completed`,
     why: row?.request.slice(0, 500) ?? 'Agent run finished.',
@@ -1524,6 +1500,100 @@ async function markTodoApplyAwaitingReview(todoId: string, runId: string, result
   await emitEvent(runId, 'todo_apply_awaiting_review', todoId, {
     prevStatus: todo.status,
     prUrl,
+  });
+}
+
+function parseClassifyVerdict(resultText: string): 'todo' | 'experiment' | null {
+  const match = resultText.match(/^\s*KIND:\s*(todo|experiment)\b/im);
+  if (!match) return null;
+  return match[1]!.toLowerCase() as 'todo' | 'experiment';
+}
+
+async function handleClassifyComplete(row: AgentRunRow, resultText: string) {
+  const runId = row.id;
+  const entityId = row.scopeEntityId!;
+  const currentKind = row.scopeEntityKind as 'todo' | 'experiment';
+  const currentAsClassifierKind: 'todo' | 'experiment' = currentKind;
+
+  const verdict = parseClassifyVerdict(resultText);
+
+  if (!verdict) {
+    await emitEvent(
+      runId,
+      'classify_malformed',
+      'No `KIND: todo|experiment` line in classifier output; falling back to current kind.',
+      { currentKind },
+    );
+    await dispatchPostClassifyPlan(currentAsClassifierKind, entityId);
+    return;
+  }
+
+  if (verdict === currentAsClassifierKind) {
+    await emitEvent(runId, 'classify_verdict', `KIND: ${verdict} (no conversion)`, {
+      verdict,
+      converted: false,
+    });
+    await dispatchPostClassifyPlan(currentAsClassifierKind, entityId);
+    return;
+  }
+
+  // Verdict disagrees with current kind — convert.
+  let result: ConvertResult | null = null;
+  if (currentAsClassifierKind === 'todo' && verdict === 'experiment') {
+    result = await convertTodoToExperiment(entityId);
+  } else if (currentAsClassifierKind === 'experiment' && verdict === 'todo') {
+    result = await convertExperimentToTodo(entityId);
+  }
+
+  if (!result) {
+    await emitEvent(
+      runId,
+      'classify_conversion_failed',
+      `Verdict ${verdict} differs from ${currentAsClassifierKind} but conversion was refused; planning against current kind.`,
+      { verdict, currentKind },
+    );
+    await dispatchPostClassifyPlan(currentAsClassifierKind, entityId);
+    return;
+  }
+
+  await emitEvent(runId, 'classify_verdict', `KIND: ${verdict} (converted)`, {
+    verdict,
+    converted: true,
+    newKind: result.newKind,
+    newId: result.newId,
+  });
+  await dispatchPostClassifyPlan(result.newKind, result.newId);
+}
+
+async function dispatchPostClassifyPlan(
+  kind: 'todo' | 'experiment',
+  entityId: string,
+) {
+  const title = (await loadEntityTitle(kind, entityId)) ?? '(untitled)';
+  const request =
+    kind === 'todo'
+      ? `Moved from planning (after classifier) on the Pipeline board.\n\nPlan or review the next step for this task: "${title}". Use the scoped task context and keep the result directly actionable.`
+      : `Moved from planning (after classifier) on the Pipeline board.\n\nDraft the next experiment plan for the scoped experiment. Use the scoped experiment record as the source of truth for title and scope, and produce a plan that can be reviewed and approved. Do not rename, retitle, or otherwise mutate the scoped issue/experiment.`;
+
+  const inserted = await db()
+    .insert(schema.agentRuns)
+    .values({
+      kind: kind === 'todo' ? 'plan' : 'experiment',
+      provider: 'claude_code',
+      request,
+      scopeEntityKind: kind,
+      scopeEntityId: entityId,
+      approvalRequired: true,
+    })
+    .returning({ id: schema.agentRuns.id });
+  const newRunId = inserted[0]!.id;
+  await db().execute(sql`SELECT pg_notify(${QUEUED_CHANNEL}, ${newRunId})`);
+  await recordTrail({
+    action: `Queued ${kind === 'todo' ? 'plan' : 'experiment'} agent run ${newRunId.slice(0, 8)}`,
+    why: 'Dispatched after planning-stage classifier verdict.',
+    entityKind: kind,
+    entityId,
+    agentRunId: newRunId,
   });
 }
 

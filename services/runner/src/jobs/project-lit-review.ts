@@ -13,7 +13,7 @@
  *      view surfaces it for review.
  */
 import { eq } from 'drizzle-orm';
-import { type Options } from '@anthropic-ai/claude-agent-sdk';
+import type { RunAgentOptions } from '../lib/run-agent.js';
 import { dailyLogEntries, jobRuns, projectNarratives, projects } from '@sagan/db/schema';
 import { db } from '../db.js';
 import { env, requireEnv } from '../env.js';
@@ -141,20 +141,16 @@ no postscript. The final assistant message must be the report itself.`;
 async function runDeepResearch(prompt: string): Promise<string> {
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), CLAUDE_TIMEOUT_MS);
-  const options: Options = {
+  const options: RunAgentOptions = {
     cwd: '/tmp',
     env: process.env as Record<string, string>,
     pathToClaudeCodeExecutable: env.CLAUDE_CLI_PATH,
     abortController,
-    permissionMode: 'dontAsk',
-    tools: ['Bash', 'WebSearch', 'WebFetch'],
     allowedTools: ['Bash', 'WebSearch', 'WebFetch'],
     disallowedTools: ['Read', 'Grep', 'Glob', 'Edit', 'Write'],
-    mcpServers: {},
-    strictMcpConfig: true,
-    settingSources: [],
     model: 'claude-sonnet-4-6',
-    persistSession: false,
+    // Hermetic: skip hooks, plugin sync, CLAUDE.md auto-discovery, MCP load.
+    bare: true,
   };
 
   try {

@@ -16,7 +16,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.137",
     "@anthropic-ai/sdk": "^0.81.0",
     "@sagan/agent-protocol": "workspace:*",
     "@sagan/api": "workspace:*",

@@ -10,8 +10,11 @@
  */
 import { XMLParser } from 'fast-xml-parser';
 import Anthropic from '@anthropic-ai/sdk';
-import { type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import { runAgentWithContinuation } from '../lib/run-agent.js';
+import {
+  runAgentWithContinuation,
+  type RunAgentOptions,
+  type SDKMessage,
+} from '../lib/run-agent.js';
 import { z } from 'zod';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { beliefs, cleanResults, edges, experiments, litInbox, litItems, litSources } from '@sagan/db/schema';
@@ -379,20 +382,16 @@ async function discoverWithClaudeCode(contexts: ResearchContext[]): Promise<Rank
   const prompt = buildDiscoveryPrompt(contexts);
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), CLAUDE_DISCOVERY_TIMEOUT_MS);
-  const options: Options = {
+  const options: RunAgentOptions = {
     cwd: '/tmp',
     env: process.env as Record<string, string>,
     pathToClaudeCodeExecutable: env.CLAUDE_CLI_PATH,
     abortController,
-    permissionMode: 'dontAsk',
-    tools: ['Bash'],
     allowedTools: ['Bash'],
     disallowedTools: ['Read', 'Grep', 'Glob', 'Edit', 'Write'],
-    mcpServers: {},
-    strictMcpConfig: true,
-    settingSources: [],
     model: 'claude-sonnet-4-6',
-    persistSession: false,
+    // Hermetic: skip hooks, plugin sync, CLAUDE.md auto-discovery, MCP load.
+    bare: true,
   };
 
   try {
@@ -494,8 +493,11 @@ Score 0-100, where 70+ means read soon. Return at most 24 items.`;
 
 function lastAssistantTextFromMessage(message: SDKMessage) {
   if (message.type !== 'assistant') return '';
-  return (message.message?.content ?? [])
-    .map((block) => (block.type === 'text' ? block.text : ''))
+  const content = Array.isArray(message.message?.content)
+    ? (message.message?.content as Array<Record<string, unknown>>)
+    : [];
+  return content
+    .map((block) => (block?.type === 'text' && typeof block.text === 'string' ? block.text : ''))
     .filter(Boolean)
     .join('\n')
     .trim();

@@ -53,11 +53,7 @@ export function ImproveNarrativeButton({ narrativeId }: { narrativeId: string })
   const disabled = submitting || pending || count === 0;
 
   return (
-    <div className="flex items-center gap-3">
-      {error ? <span className="text-xs text-[--color-danger]">{error}</span> : null}
-      {pending ? (
-        <span className="text-xs text-[--color-muted]">Claude is addressing comments…</span>
-      ) : null}
+    <div className="flex flex-col items-end gap-1">
       <button
         type="button"
         onClick={onClick}
@@ -71,11 +67,12 @@ export function ImproveNarrativeButton({ narrativeId }: { narrativeId: string })
         {submitting
           ? 'Queueing…'
           : pending
-            ? 'Improving…'
+            ? 'Addressing comments…'
             : count > 0
               ? `Improve (${count} comment${count === 1 ? '' : 's'})`
               : 'Improve'}
       </button>
+      {error ? <span className="text-xs text-[--color-danger]">{error}</span> : null}
     </div>
   );
 }

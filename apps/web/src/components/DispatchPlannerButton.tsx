@@ -7,7 +7,7 @@ import { cn } from '@/lib/cn';
 
 export function DispatchPlannerButton({
   experimentId,
-  label = 'Dispatch planner',
+  label = 'Submit answers',
   size = 'md',
   className,
   onDispatched,

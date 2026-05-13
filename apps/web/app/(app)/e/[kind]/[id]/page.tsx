@@ -20,7 +20,6 @@ import { NarrativePublishControl } from '@/components/NarrativePublishControl';
 import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
 import { isIdeationSourceKind } from '@/lib/ideation';
-import { StatusBadge } from '@/components/ui';
 import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
 import { ProcessStateBadge } from '@/components/ProcessStateBadge';
 import { db } from '@/lib/db';
@@ -129,7 +128,6 @@ export default async function EntityPage({
             <h1 className="text-2xl font-semibold tracking-tight">{entity.title}</h1>
           )}
           <p className="flex flex-wrap items-center justify-center gap-2 text-sm">
-            {entity.status ? <StatusBadge status={entity.status} /> : null}
             <ProcessStateBadge state={processState} />
             {owner && kind === 'project_narrative' && entity.status ? (
               <NarrativePublishControl

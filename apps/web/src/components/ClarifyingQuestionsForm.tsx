@@ -15,28 +15,28 @@ const MODE_LABELS: Record<Mode, { title: string; intro: string; dispatchLabel: s
   active: {
     title: 'Clarifying questions',
     intro:
-      'Sagan paused to ask the questions below. Answer each one in its textbox, then dispatch the planner — it will read your answers and either ask follow-ups or move on to drafting a plan.',
-    dispatchLabel: 'Dispatch planner with answers',
+      'Sagan paused to ask the questions below. Answer each one in its textbox, then submit — Sagan will read your answers and either ask follow-ups or move on to drafting a plan.',
+    dispatchLabel: 'Submit answers',
     canDispatch: true,
   },
   pending: {
     title: 'Clarifying questions',
     intro:
-      'Sagan is reading your answers and deciding whether to ask more questions or draft a plan. Your answers stay editable; dispatch is paused until Claude returns.',
-    dispatchLabel: 'Dispatch planner with answers',
+      'Sagan is reading your answers and deciding whether to ask more questions or draft a plan. Your answers stay editable; submit is paused until Sagan returns.',
+    dispatchLabel: 'Submit answers',
     canDispatch: false,
   },
   feedback: {
     title: 'Plan awaiting approval',
     intro:
-      'Sagan drafted a plan and is waiting for approval. Approve from the dashboard, or note any feedback in the textboxes below and re-dispatch the planner.',
-    dispatchLabel: 'Re-dispatch planner with feedback',
+      'Sagan drafted a plan and is waiting for approval. Approve from the plan panel, or note any feedback in the textboxes below and submit.',
+    dispatchLabel: 'Submit answers',
     canDispatch: true,
   },
   readonly: {
     title: 'Clarifying questions (history)',
     intro: 'The most recent clarifying-questions round and the answers you gave.',
-    dispatchLabel: 'Dispatch planner',
+    dispatchLabel: 'Submit answers',
     canDispatch: false,
   },
 };

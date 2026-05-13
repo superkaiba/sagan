@@ -52,17 +52,17 @@ export function deriveProcessState(input: {
     if (run.kind === 'qa' && active) return state(input.entityKind === 'experiment' ? 'Analyzing' : 'Code reviewer', run.status, 'info');
     if (run.kind === 'experiment' && active) return state('Experiment planning', run.status, 'info');
     if (run.kind === 'plan' && active) return state('Planning + critic', run.status, 'info');
-    if (reviewing) return state('Owner review', run.kind.replaceAll('_', ' '), 'approval');
+    if (reviewing) return state('Awaiting approval', run.kind.replaceAll('_', ' '), 'approval');
   }
 
   if (!status) return state('Untracked', null, 'neutral');
   if (['blocked', 'failed', 'rejected'].includes(status)) return state('Blocked', status, 'danger');
   if (['cancelled', 'archived'].includes(status)) return state(status === 'archived' ? 'Archived' : 'Cancelled', status, 'warning');
   if (['completed', 'done', 'shared', 'approved'].includes(status)) return state(status === 'approved' ? 'Approved' : 'Done', status, 'success');
-  if (['awaiting_approval', 'gate_pending', 'plan_pending'].includes(status)) return state('Owner review', status, 'approval');
+  if (['awaiting_approval', 'gate_pending', 'plan_pending'].includes(status)) return state('Awaiting approval', status, 'approval');
   if (['proposed', 'inbox', 'open', 'scoped'].includes(status)) return state('Scoping', status, 'neutral');
   if (['clarifying'].includes(status)) return state('Clarifying', status, 'info');
-  if (['awaiting_clarifications'].includes(status)) return state('Owner: answer questions', status, 'approval');
+  if (['awaiting_clarifications'].includes(status)) return state('Awaiting clarifications', status, 'approval');
   if (['planning'].includes(status)) return state('Planning + critic', status, 'info');
   if (['queued'].includes(status)) return state('Queued', status, 'info');
   if (['implementing', 'code_reviewing', 'testing', 'running', 'uploading', 'in_progress'].includes(status)) {

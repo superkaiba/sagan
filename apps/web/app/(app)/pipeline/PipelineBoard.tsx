@@ -14,12 +14,11 @@ import {
   type MouseEvent,
 } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Archive, CheckCircle2, ExternalLink, GripVertical, Loader2, RotateCcw, Server } from 'lucide-react';
+import { AlertTriangle, Archive, ExternalLink, GripVertical, Loader2, RotateCcw, Server } from 'lucide-react';
 import { Panel } from '@/components/ui';
-import { DispatchPlannerButton } from '@/components/DispatchPlannerButton';
-import { ProcessStateBadge } from '@/components/ProcessStateBadge';
 import { cn } from '@/lib/cn';
-import { formatRelativeTime, statusTone } from '@/lib/status';
+import { statusTone } from '@/lib/status';
+import { runStatusLabel } from '@/lib/agent-stage';
 import {
   effectiveRunPodRate,
   estimateRunPodRemainingCostUsd,
@@ -170,24 +169,6 @@ function writeStoredCardOrder(cards: DashboardPipelineCard[]) {
   }
 }
 
-function timestampTitle(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
-const RUN_LABEL: Record<PipelineRunStatus, string> = {
-  queued: 'queued',
-  running: 'running',
-  awaiting_approval: 'awaiting approval',
-  approved: 'approved',
-  deploying: 'deploying',
-  blocked: 'blocked',
-  failed: 'failed',
-  cancelled: 'cancelled',
-  rejected: 'rejected',
-  completed: 'completed',
-};
-
 const RUN_FAILED_STATUSES: PipelineRunStatus[] = ['failed', 'blocked', 'cancelled', 'rejected'];
 const RUN_ACTIVE_STATUSES: PipelineRunStatus[] = ['queued', 'running', 'approved', 'deploying'];
 
@@ -252,10 +233,9 @@ function SessionStrip({
 }) {
   const failed = RUN_FAILED_STATUSES.includes(run.status);
   const active = RUN_ACTIVE_STATUSES.includes(run.status);
-  const stage = run.currentStage;
-  const stageLabel = stage ? stage.label : null;
-  const stageDetail = stage?.detail ?? null;
-  const stageTitle = stage && stageDetail ? `${stageLabel}: ${stageDetail}` : stageLabel ?? undefined;
+  const label = runStatusLabel({ status: run.status, currentStage: run.currentStage });
+  const stageDetail = run.currentStage?.detail ?? null;
+  const tooltip = stageDetail ? `${label}: ${stageDetail}` : label;
   return (
     <div
       className={cn(
@@ -272,24 +252,16 @@ function SessionStrip({
       onMouseDown={(event) => event.stopPropagation()}
     >
       {failed ? <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
-      <span className="font-medium capitalize">{RUN_LABEL[run.status]}</span>
-      {stageLabel && stageLabel.toLowerCase() !== RUN_LABEL[run.status].toLowerCase() ? (
-        <span
-          className="inline-flex max-w-full items-center gap-1 rounded border border-current/40 px-1.5 py-0 font-medium normal-case"
-          title={stageTitle}
-        >
-          <span className="truncate">{stageLabel}</span>
-        </span>
-      ) : null}
       <Link
         href={run.href}
-        className="ml-1 inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+        className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
         title="View Claude Code session"
         draggable={false}
       >
         <span className="font-mono">{run.id.slice(0, 8)}</span>
         <ExternalLink className="h-3 w-3" aria-hidden="true" />
       </Link>
+      <span className="font-medium" title={tooltip}>{label}</span>
       {run.canRetry ? (
         <button
           type="button"
@@ -369,7 +341,6 @@ function PipelineCard({
   onDragEnd,
   onRetry,
   onArchive,
-  onApprove,
 }: {
   card: DashboardPipelineCard;
   pending: boolean;
@@ -379,19 +350,12 @@ function PipelineCard({
   onDragEnd: () => void;
   onRetry: (card: DashboardPipelineCard) => void;
   onArchive: (card: DashboardPipelineCard) => void;
-  onApprove: (card: DashboardPipelineCard) => void;
 }) {
   const router = useRouter();
   const suppressClick = useRef(false);
   const attentionColumn =
     card.stage === 'approval' || card.stage === 'review' || card.stage === 'awaiting_clarifications';
   const needsOwner = Boolean(card.ownerAction) && attentionColumn;
-  const approvalLabel = card.stage === 'approval' ? 'Approve & dispatch' : card.stage === 'review' ? 'Approve' : null;
-  const showDispatchPlanner =
-    card.kind === 'experiment' &&
-    (card.stage === 'awaiting_clarifications' || card.stage === 'approval');
-  const dispatchLabel =
-    card.stage === 'awaiting_clarifications' ? 'Dispatch planner with answers' : 'Re-dispatch planner';
   const runActive = card.run ? RUN_ACTIVE_STATUSES.includes(card.run.status) : false;
   const runFailed = card.run ? RUN_FAILED_STATUSES.includes(card.run.status) : false;
   const cardBlocked = !needsOwner && (card.stage === 'blocked' || runFailed);
@@ -465,47 +429,9 @@ function PipelineCard({
             </span>
           ) : null}
           <span>{KIND_LABELS[card.kind]}</span>
-          <ProcessStateBadge state={card.processState} compact />
-          <time dateTime={card.createdAt} title={timestampTitle(card.createdAt)}>
-            Created {formatRelativeTime(card.createdAt)}
-          </time>
-          <time dateTime={card.updatedAt} title={timestampTitle(card.updatedAt)}>
-            Updated {formatRelativeTime(card.updatedAt)}
-          </time>
         </div>
-        {needsOwner && card.ownerAction ? (
-          <p className="mt-2 text-xs font-semibold leading-4 text-[--color-attention]">{card.ownerAction}</p>
-        ) : null}
         {card.project ? <p className="mt-2 truncate text-xs text-[--color-muted]">{card.project}</p> : null}
       </div>
-      {needsOwner && approvalLabel ? (
-        <div className="relative z-20 mt-3 pr-8">
-          <button
-            type="button"
-            draggable={false}
-            disabled={pending}
-            data-card-control="true"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onApprove(card);
-            }}
-            className="sagan-card-approve-button inline-flex w-full items-center justify-center gap-1.5 border border-[--color-attention] bg-[--color-attention] px-2.5 py-1.5 text-xs font-semibold text-[--color-attention-fg] shadow-[var(--shadow-lift)] hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-[--color-focus] disabled:cursor-wait disabled:opacity-60"
-          >
-            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />}
-            {approvalLabel}
-          </button>
-        </div>
-      ) : null}
-      {showDispatchPlanner ? (
-        <div
-          className="relative z-20 mt-2 pr-8"
-          data-card-control="true"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <DispatchPlannerButton experimentId={card.id} label={dispatchLabel} size="sm" />
-        </div>
-      ) : null}
       {card.run ? (
         <div className="relative z-20">
           <SessionStrip run={card.run} retrying={retrying} onRetry={() => onRetry(card)} />
@@ -564,12 +490,6 @@ export function PipelineBoard({
 
   function handleArchive(card: DashboardPipelineCard) {
     void moveCard(card, { stage: 'archived', beforeKey: null });
-  }
-
-  function handleApprove(card: DashboardPipelineCard) {
-    const targetStage = card.stage === 'approval' ? 'queued' : card.stage === 'review' ? 'done' : null;
-    if (!targetStage) return;
-    void moveCard(card, { stage: targetStage, beforeKey: null });
   }
 
   async function handleCreateIssue(stage: PipelineStageKey, event: FormEvent<HTMLFormElement>) {
@@ -879,7 +799,6 @@ export function PipelineBoard({
                             }}
                             onRetry={handleRetry}
                             onArchive={handleArchive}
-                            onApprove={handleApprove}
                           />
                         </Fragment>
                       ))}

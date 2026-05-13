@@ -16,7 +16,7 @@ export function ApprovalDispatchButton({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const label = action.kind === 'clean_result' ? 'Approve' : 'Approve & dispatch';
+  const label = 'Approve';
 
   async function approve() {
     setBusy(true);

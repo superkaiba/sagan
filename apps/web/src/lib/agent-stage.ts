@@ -247,6 +247,16 @@ function planAwaitingDetail(rounds: RoundInfo): string | null {
   return `after ${rounds.round} critic round${rounds.round === 1 ? '' : 's'}`;
 }
 
+// Single source of truth for the one status tag rendered next to a run's
+// 8-char ID (card SessionStrip, AgentActivityPanel rows, etc.). Prefers the
+// detailed `currentStage.label` ("Critic round 2", "RunPod running",
+// "Awaiting clarifications"); falls back to the plain run.status when no
+// stage has been derived.
+export function runStatusLabel(input: { status: string; currentStage?: AgentStage | null }): string {
+  if (input.currentStage?.label) return input.currentStage.label;
+  return input.status.replaceAll('_', ' ');
+}
+
 function crashedAtLabel(sortedAsc: AgentStageEvent[], rounds: RoundInfo): string | null {
   // Look backwards for the last activity hint before the failure.
   for (let i = sortedAsc.length - 1; i >= 0; i -= 1) {

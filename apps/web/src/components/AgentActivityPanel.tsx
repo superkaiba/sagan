@@ -5,7 +5,7 @@ import { Markdown } from '@/components/Markdown';
 import type { EntityKind } from '@/lib/entity';
 import { db } from '@/lib/db';
 import { effectiveRunPodRate, estimateRunPodSpendUsd, formatUsd, formatUsdPerHour } from '@/lib/runpod-cost';
-import { deriveAgentStage, type AgentStage, type AgentStageTone } from '@/lib/agent-stage';
+import { deriveAgentStage, runStatusLabel, type AgentStage, type AgentStageTone } from '@/lib/agent-stage';
 import { cn } from '@/lib/cn';
 import { ResumeAgentButton } from './ResumeAgentButton';
 
@@ -33,20 +33,6 @@ function stageBadgeClass(tone: AgentStageTone): string {
     default:
       return 'border-[--color-border] bg-[--color-muted-bg] text-[--color-muted]';
   }
-}
-
-function StageBadge({ stage }: { stage: AgentStage }) {
-  return (
-    <span
-      className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium', stageBadgeClass(stage.tone))}
-      title={stage.detail ?? undefined}
-    >
-      {stage.label}
-      {stage.detail ? (
-        <span className="hidden font-normal text-[--color-muted] sm:inline">— {stage.detail}</span>
-      ) : null}
-    </span>
-  );
 }
 
 function formatDate(value: Date | string | null) {
@@ -238,11 +224,15 @@ export async function AgentActivityPanel({
                     <Link href={`/agent/${run.id}`} className="font-mono text-xs text-[--color-accent] hover:underline">
                       {run.id.slice(0, 8)}
                     </Link>
-                    <span className="text-xs text-[--color-muted]">{run.kind}</span>
-                    <span className="rounded-md border border-[--color-border] px-1.5 py-0.5 text-xs">
-                      {run.status.replaceAll('_', ' ')}
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium',
+                        stageBadgeClass(stage?.tone ?? 'neutral'),
+                      )}
+                      title={stage?.detail ?? undefined}
+                    >
+                      {runStatusLabel({ status: run.status, currentStage: stage })}
                     </span>
-                    {stage ? <StageBadge stage={stage} /> : null}
                     {isActive ? (
                       <span className="inline-flex items-center gap-1 rounded-md border border-[--color-running-border] bg-[--color-running-bg] px-1.5 py-0.5 text-xs text-[--color-running]">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[--color-running]" aria-hidden="true" />

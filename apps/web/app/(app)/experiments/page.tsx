@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { desc, inArray, sql } from 'drizzle-orm';
 import { approvalRequests, experiments, workflowEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { experimentTurn } from '@/lib/workflow';
 import { StatusBadge } from '@/components/ui';
 import { ExperimentProposalForm } from './ExperimentProposalForm';
 import { ExperimentStatusButton } from './ExperimentStatusButton';
@@ -101,7 +100,6 @@ export default async function ExperimentsPage() {
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge status={experiment.status} />
-                      <span className="text-xs text-[--color-muted]">{experimentTurn(experiment.status)}</span>
                     </div>
                     <Link href={`/e/experiment/${experiment.id}`} className="block truncate text-sm font-medium hover:underline">
                       {experiment.title}

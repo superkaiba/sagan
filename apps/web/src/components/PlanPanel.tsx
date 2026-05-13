@@ -3,7 +3,6 @@ import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { agentRuns, experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { MarkdownWithTextboxes } from '@/components/MarkdownWithTextboxes';
-import { StatusBadge } from '@/components/ui';
 
 /**
  * Persistent "Plan" section for the entity page. Sits in the main column
@@ -23,7 +22,6 @@ export async function PlanPanel({
   let planMd: string | null = null;
   let runId: string | null = null;
   let runStatus: string | null = null;
-  let runKind: string | null = null;
 
   if (entityKind === 'experiment') {
     // Experiment plan lives on the experiment row (since 0029). The agent_run
@@ -53,7 +51,6 @@ export async function PlanPanel({
     if (run) {
       runId = run.id;
       runStatus = run.status;
-      runKind = run.kind;
     }
   } else {
     // Todos still keep plan_md on the agent_run row.
@@ -79,7 +76,6 @@ export async function PlanPanel({
     if (run) {
       runId = run.id;
       runStatus = run.status;
-      runKind = run.kind;
       planMd = run.planMd;
     }
   }
@@ -92,12 +88,6 @@ export async function PlanPanel({
     <section className="rounded-lg border border-[--color-border] bg-[--color-panel]">
       <header className="flex flex-wrap items-center gap-3 border-b border-[--color-border] px-4 py-2">
         <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">Plan</h2>
-        {runStatus ? <StatusBadge status={runStatus} /> : null}
-        {runKind ? (
-          <span className="text-[10px] uppercase tracking-wide text-[--color-muted]">
-            via {runKind} run
-          </span>
-        ) : null}
         {awaitingApproval && runId ? (
           <Link
             href={`/agent/${runId}`}

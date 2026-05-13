@@ -4,10 +4,14 @@
  *   pnpm --filter @sagan/runner runpod list [--account=personal|team]
  *   pnpm --filter @sagan/runner runpod get <podId> [--account=personal]
  *   pnpm --filter @sagan/runner runpod terminate <podId> [--account=personal]
+ *   pnpm --filter @sagan/runner runpod volumes [--account=...]
+ *   pnpm --filter @sagan/runner runpod create-volume --name=<n> --size=<gb> --dc=<dataCenterId> [--account=...]
  */
 import '../src/env.js';
 import {
+  createNetworkVolume,
   getPod,
+  listNetworkVolumes,
   listPods,
   terminatePod,
   type RunpodAccount,
@@ -52,12 +56,41 @@ async function main() {
       console.log(ok ? `terminated ${id}` : `terminate returned non-truthy for ${id}`);
       return;
     }
+    case 'volumes': {
+      const vols = await listNetworkVolumes(account);
+      if (vols.length === 0) {
+        console.log(`(no network volumes in ${account} scope)`);
+        return;
+      }
+      console.log(`network volumes in ${account} scope:`);
+      for (const v of vols) {
+        console.log(`  ${v.id}  ${v.size}GB  ${v.dataCenterId}  ${v.name}`);
+      }
+      return;
+    }
+    case 'create-volume': {
+      const name = rest.find((a) => a.startsWith('--name='))?.split('=').slice(1).join('=');
+      const sizeRaw = rest.find((a) => a.startsWith('--size='))?.split('=')[1];
+      const dc = rest.find((a) => a.startsWith('--dc='))?.split('=').slice(1).join('=');
+      if (!name || !sizeRaw || !dc) {
+        throw new Error('usage: runpod create-volume --name=<n> --size=<gb> --dc=<dataCenterId> [--account=...]');
+      }
+      const size = Number.parseInt(sizeRaw, 10);
+      if (!Number.isFinite(size) || size < 1) {
+        throw new Error(`--size must be a positive integer GB; got ${sizeRaw}`);
+      }
+      const created = await createNetworkVolume({ name, size, dataCenterId: dc }, account);
+      console.log(JSON.stringify(created, null, 2));
+      return;
+    }
     default:
       console.error(
         'usage:\n' +
           '  runpod list [--account=personal|team]\n' +
           '  runpod get <podId> [--account=...]\n' +
-          '  runpod terminate <podId> [--account=...]',
+          '  runpod terminate <podId> [--account=...]\n' +
+          '  runpod volumes [--account=...]\n' +
+          '  runpod create-volume --name=<n> --size=<gb> --dc=<dataCenterId> [--account=...]',
       );
       process.exit(2);
   }

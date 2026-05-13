@@ -157,6 +157,7 @@ async function cmdAttempt(args: string[]) {
     containerDiskGb: spec.containerDiskGb,
     cloudType: spec.cloudType,
     dataCenterId: spec.dataCenterId,
+    networkVolumeId: spec.networkVolumeId,
     dockerArgs: spec.dockerArgs,
     env: buildPodEnv({
       agentRunId: run.id,

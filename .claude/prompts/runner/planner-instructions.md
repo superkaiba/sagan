@@ -121,6 +121,7 @@ After those sections, include a fenced ```runpod-spec block containing valid JSO
   "cloudType": "SECURE",
   "estimatedMinutes": 180,
   "dockerArgs": "bash -lc 'cd /workspace/explore-persona-space && uv run python scripts/run_experiment_<N>.py'",
+  "networkVolumeId": "<optional: existing RunPod network volume id>",
   "config": {
     "command": "short description or exact command the pod should run",
     "artifacts": ["expected artifact paths or URLs"]
@@ -140,6 +141,8 @@ After those sections, include a fenced ```runpod-spec block containing valid JSO
   }
 }
 ```
+
+**`networkVolumeId` (warm-cache shortcut).** Attach an existing RunPod network volume at `/workspace` instead of provisioning a fresh per-pod volume. The bootstrap already redirects `UV_CACHE_DIR`, `HF_HOME`, `WANDB_CACHE_DIR`, and `TRITON_CACHE_DIR` under `/workspace/.cache/*`, and clones the EPS repo to `/workspace/explore-persona-space`, so a shared volume preserves uv's wheel cache, HuggingFace model weights, and (with luck) the `.venv` across runs. Cold first run on the volume is still 5–15 min; every subsequent run drops `uv sync --locked` to ~30s of verification and skips the multi-GB Qwen weight download entirely. Region-locked: the volume lives in a specific DC, so when you set `networkVolumeId` also pin `dataCenterId` to that volume's DC and tighten `substitution_policy.dataCenterId.allowed` to that DC alone — otherwise the pod-provisioner can land in a different DC where the volume is invisible and you silently lose the cache. Omit `networkVolumeId` for experiments that need their own isolated workspace (e.g. cache-correctness tests, simultaneous parallel runs where lock contention would corrupt the venv).
 
 The `substitution_policy` and `consolidation` blocks tell the `pod-provisioner` sub-agent what it is allowed to vary when RunPod returns `SUPPLY_CONSTRAINT`. The provisioner walks a ladder: consolidate sibling pods → swap cloudType/region → swap GPU family within `gpuType.allowed` (respecting `min_vram_gb`) → swap account → (only if you explicitly relax `gpuCount.min`) lower count. If you omit both blocks, the runner falls back to the legacy one-shot dispatcher with no substitutions — for non-experimental sanity checks that's fine, but for real runs always emit a policy so capacity tightness does not block the experiment unnecessarily. The defaults shown above are sensible for most LoRA SFT runs on a single 80GB-class GPU; tighten `gpuType.min_vram_gb` if you genuinely need >80GB or set `gpuCount.min` higher than `gpuCount` if you forbid scaling down.
 

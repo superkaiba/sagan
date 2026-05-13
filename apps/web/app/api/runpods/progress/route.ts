@@ -15,13 +15,23 @@ const progressSchema = z
     progressPct: z.number().min(0).max(100).nullable().optional(),
     status: z.string().max(80).optional(),
     message: z.string().max(2_000).optional(),
+    /**
+     * Tail of the user-cmd's stderr (or stdout fallback) when the experiment
+     * exits non-zero. The pod's bootstrap captures up to ~15.5KB; we cap at
+     * 16KB defensively. Surfaced via runpod_progress event metadata and
+     * pod_lifecycle.metadata.saganProgress so the orchestrator and the
+     * dashboard can see the actual failure reason instead of only an exit
+     * code. Optional — omitted on success.
+     */
+    errorTail: z.string().max(16_384).optional(),
   })
   .refine(
     (value) =>
       value.estimatedRemainingMinutes !== undefined ||
       value.progressPct !== undefined ||
       value.status !== undefined ||
-      value.message !== undefined,
+      value.message !== undefined ||
+      value.errorTail !== undefined,
     { message: 'at least one progress field is required' },
   );
 
@@ -59,6 +69,7 @@ export async function POST(req: Request) {
     progressPct: parsed.data.progressPct,
     status: parsed.data.status,
     message: parsed.data.message,
+    errorTail: parsed.data.errorTail,
   });
 
   await db()
@@ -105,6 +116,7 @@ export async function POST(req: Request) {
         estimatedRemainingMinutes: parsed.data.estimatedRemainingMinutes ?? null,
         progressPct: parsed.data.progressPct ?? null,
         status: parsed.data.status ?? null,
+        errorTail: parsed.data.errorTail ?? null,
       },
     });
   }
@@ -119,6 +131,7 @@ export async function POST(req: Request) {
         estimatedRemainingMinutes: parsed.data.estimatedRemainingMinutes ?? null,
         progressPct: parsed.data.progressPct ?? null,
         status: parsed.data.status ?? null,
+        errorTail: parsed.data.errorTail ?? null,
       },
     });
   }
@@ -138,6 +151,16 @@ function progressBody(progress: z.infer<typeof progressSchema>) {
   if (progress.estimatedRemainingMinutes != null) parts.push(`${progress.estimatedRemainingMinutes}m remaining`);
   if (progress.status) parts.push(progress.status);
   if (progress.message) parts.push(progress.message);
+  if (progress.errorTail) {
+    // Surface a short, single-line tail of the failure so the dashboard's
+    // event timeline shows useful information without needing to dig into
+    // metadata. The full tail (up to 16KB) is preserved in event metadata.
+    const lastLine = progress.errorTail
+      .split('\n')
+      .reverse()
+      .find((line) => line.trim().length > 0);
+    if (lastLine) parts.push(`err: ${lastLine.slice(0, 200)}`);
+  }
   return parts.join(' · ') || 'pod progress update';
 }
 

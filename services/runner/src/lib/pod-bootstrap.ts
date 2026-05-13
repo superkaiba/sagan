@@ -136,32 +136,64 @@ fi
 # ─── Install Python deps (bootstrap_pod.sh step 5) ─────────────────────────
 uv sync --locked
 
-# ─── POST bootstrap-done progress ──────────────────────────────────────────
+# ─── POST progress ─────────────────────────────────────────────────────────
+# Always send {progressPct, message}; optionally include an errorTail field
+# (tail of stderr) on failure so dashboards / the orchestrator see the actual
+# failure reason instead of a bare exit code.
 post_progress() {
-  local pct="$1"; local msg="$2"
-  if [ -n "\${SAGAN_PROGRESS_URL:-}" ] && [ -n "\${SAGAN_POD_PROGRESS_TOKEN:-}" ]; then
-    curl -sS -X POST "$SAGAN_PROGRESS_URL" \\
-      -H "authorization: Bearer $SAGAN_POD_PROGRESS_TOKEN" \\
-      -H "content-type: application/json" \\
-      -d "{\\"progressPct\\":$pct,\\"message\\":\\"$msg\\"}" || true
+  local pct="$1"; local msg="$2"; local error_tail="\${3:-}"
+  if [ -z "\${SAGAN_PROGRESS_URL:-}" ] || [ -z "\${SAGAN_POD_PROGRESS_TOKEN:-}" ]; then
+    return 0
   fi
+  python3 - "$pct" "$msg" "$error_tail" <<'PY' || true
+import json, os, sys, urllib.request
+pct = float(sys.argv[1])
+msg = sys.argv[2]
+err = sys.argv[3]
+body = {"progressPct": pct, "message": msg}
+if err:
+    body["errorTail"] = err[-15500:]
+req = urllib.request.Request(
+    os.environ["SAGAN_PROGRESS_URL"],
+    data=json.dumps(body).encode("utf-8"),
+    headers={
+        "authorization": "Bearer " + os.environ["SAGAN_POD_PROGRESS_TOKEN"],
+        "content-type": "application/json",
+    },
+    method="POST",
+)
+try:
+    urllib.request.urlopen(req, timeout=15).read()
+except Exception as exc:
+    sys.stderr.write("sagan-progress post failed: " + str(exc))
+PY
 }
 post_progress 5 "bootstrap complete on branch $SAGAN_EPS_BRANCH"
 
 # ─── Decode and run the planner's command ──────────────────────────────────
-# Trapping ensures we report the exit code to Sagan even on failure.
+# Capture stdout to /tmp/sagan_user.out and stderr to /tmp/sagan_user.err so
+# we can tail the actual failure into the progress webhook on non-zero exit.
 echo "$SAGAN_USER_CMD_B64" | base64 -d > /tmp/sagan_user_cmd.sh
 chmod +x /tmp/sagan_user_cmd.sh
 
 set +e
-bash /tmp/sagan_user_cmd.sh
+bash /tmp/sagan_user_cmd.sh > >(tee /tmp/sagan_user.out) 2> >(tee /tmp/sagan_user.err >&2)
 EXIT_CODE=$?
 set -e
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   post_progress 100 "experiment completed"
 else
-  post_progress 0 "experiment exited with code $EXIT_CODE"
+  # Capture the last 15.5KB of stderr. If stderr is empty, fall back to the
+  # last 15.5KB of stdout (some scripts print errors to stdout).
+  ERROR_TAIL=""
+  if [ -s /tmp/sagan_user.err ]; then
+    ERROR_TAIL="$(tail -c 15500 /tmp/sagan_user.err 2>/dev/null || true)"
+  fi
+  if [ -z "$ERROR_TAIL" ] && [ -s /tmp/sagan_user.out ]; then
+    ERROR_TAIL="$(tail -c 15500 /tmp/sagan_user.out 2>/dev/null || true)"
+  fi
+  post_progress 0 "experiment exited with code $EXIT_CODE" "$ERROR_TAIL"
 fi
 
 exit $EXIT_CODE

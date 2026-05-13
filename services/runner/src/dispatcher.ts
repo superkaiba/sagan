@@ -37,6 +37,12 @@ export interface ParsedSpec {
   containerDiskGb?: number;
   cloudType?: 'ALL' | 'SECURE' | 'COMMUNITY';
   dataCenterId?: string;
+  /** Optional: attach an existing RunPod network volume at /workspace so the
+   * uv / HF / venv caches survive across pods. See DispatchPodSpec for full
+   * semantics. When set, the pod-provisioner should pin dataCenterId to the
+   * volume's DC; otherwise scheduling in other DCs will silently miss the
+   * cache. */
+  networkVolumeId?: string;
   dryRun?: boolean;
   /** Optional config payload that the pod's bootstrap will read. Stored on
    * the resulting `runs` row as configYaml (YAML-serialized) or as a free
@@ -86,6 +92,9 @@ function validateSpec(raw: unknown, index: number): ParsedSpec {
         ? r.cloudType
         : undefined,
     dataCenterId: typeof r.dataCenterId === 'string' ? r.dataCenterId : undefined,
+    networkVolumeId: typeof r.networkVolumeId === 'string' && r.networkVolumeId.trim()
+      ? r.networkVolumeId
+      : undefined,
     dryRun: r.dryRun === true,
     config: typeof r.config === 'object' || typeof r.config === 'string' ? (r.config as ParsedSpec['config']) : undefined,
     dockerArgs: typeof r.dockerArgs === 'string' && r.dockerArgs.trim() ? r.dockerArgs : undefined,

@@ -220,6 +220,21 @@ export interface DispatchPodSpec {
   dockerArgs?: string;
   env?: Record<string, string>;
   dryRun?: boolean;
+  /**
+   * Attach an existing RunPod network volume to this pod. When set, the
+   * volume is mounted at `volumeMountPath` (`/workspace`) INSTEAD of
+   * creating a fresh per-pod volume. Use this to share
+   * `/workspace/.cache/uv`, `/workspace/.cache/huggingface`, and
+   * `/workspace/explore-persona-space/.venv` across runs — cold `uv sync`
+   * drops from 5-15 min to ~30s of verification.
+   *
+   * Region-locked: the network volume lives in a specific RunPod data
+   * center. The pod-provisioner must request capacity in that DC, so the
+   * planner should also set `dataCenterId` to the volume's DC (or accept
+   * that scheduling will fail in other DCs and the substitution_policy
+   * will not retry there).
+   */
+  networkVolumeId?: string;
 }
 
 export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
@@ -247,6 +262,10 @@ export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
     ports: '8888/http,22/tcp',
   };
   if (spec.dataCenterId) inputs.dataCenterId = spec.dataCenterId;
+  // networkVolumeId attaches a persistent shared volume at /workspace
+  // instead of provisioning a fresh per-pod volume. See DispatchPodSpec
+  // docstring for the warm-cache rationale and region-lock implications.
+  if (spec.networkVolumeId) inputs.networkVolumeId = spec.networkVolumeId;
   if (finalDockerArgs) inputs.dockerArgs = finalDockerArgs;
   const env = Object.entries(finalEnv)
     .filter(([key]) => key.trim())
@@ -382,6 +401,70 @@ export async function terminatePod(
     { id: podId },
   );
   return data.podTerminate === null || data.podTerminate === true;
+}
+
+export interface NetworkVolumeInfo {
+  id: string;
+  name: string;
+  size: number; // GB
+  dataCenterId: string;
+}
+
+interface RawNetworkVolume {
+  id?: string | null;
+  name?: string | null;
+  size?: number | null;
+  dataCenterId?: string | null;
+}
+
+function parseNetworkVolume(raw: RawNetworkVolume): NetworkVolumeInfo {
+  return {
+    id: raw.id ?? '',
+    name: raw.name ?? '',
+    size: raw.size ?? 0,
+    dataCenterId: raw.dataCenterId ?? '',
+  };
+}
+
+export async function listNetworkVolumes(
+  account: RunpodAccount = 'personal',
+): Promise<NetworkVolumeInfo[]> {
+  if (isDryRun()) return [];
+  const data = await graphql<{ myself: { networkVolumes?: RawNetworkVolume[] } | null }>(
+    account,
+    `{
+      myself {
+        networkVolumes {
+          id name size dataCenterId
+        }
+      }
+    }`,
+  );
+  return (data.myself?.networkVolumes ?? []).map(parseNetworkVolume);
+}
+
+export async function createNetworkVolume(
+  input: { name: string; size: number; dataCenterId: string },
+  account: RunpodAccount = 'personal',
+): Promise<NetworkVolumeInfo> {
+  if (isDryRun()) {
+    return { id: 'dry-run-volume', name: input.name, size: input.size, dataCenterId: input.dataCenterId };
+  }
+  const data = await graphql<{ saveNetworkVolume: RawNetworkVolume | null }>(
+    account,
+    `mutation CreateVolume($name: String!, $size: Int!, $dc: String!) {
+      saveNetworkVolume(input: { name: $name, size: $size, dataCenterId: $dc }) {
+        id name size dataCenterId
+      }
+    }`,
+    { name: input.name, size: input.size, dc: input.dataCenterId },
+  );
+  if (!data.saveNetworkVolume) {
+    throw new RunPodError(
+      `saveNetworkVolume returned null for ${input.name} (size=${input.size}GB dc=${input.dataCenterId})`,
+    );
+  }
+  return parseNetworkVolume(data.saveNetworkVolume);
 }
 
 export async function stopPod(

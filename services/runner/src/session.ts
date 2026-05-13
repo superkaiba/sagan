@@ -883,6 +883,46 @@ async function buildScopedEntityContext(row: AgentRunRow): Promise<string> {
 async function markAwaitingApproval(runId: string, planMd: string) {
   const row = await loadRun(runId);
   const planJson = parseStructuredPlan(planMd);
+
+  // A full experiment plan needs both a runpod-spec fenced block and an
+  // ## Approval Checklist section. If either is missing on an experiment run,
+  // Claude produced clarifying questions rather than an approvable plan —
+  // route the experiment to `awaiting_clarifications` so the owner sees a
+  // distinct column instead of a misleading "Awaiting approval" card.
+  const isExperimentClarification =
+    row?.kind === 'experiment' &&
+    row.scopeEntityKind === 'experiment' &&
+    !!row.scopeEntityId &&
+    isClarificationOutput(planMd, planJson);
+
+  if (isExperimentClarification) {
+    await db()
+      .update(schema.agentRuns)
+      .set({ status: 'completed', planMd, planJson, completedAt: new Date(), updatedAt: new Date() })
+      .where(eq(schema.agentRuns.id, runId));
+    await emitEvent(runId, 'awaiting_clarifications', 'Claude produced clarifying questions instead of a full plan.', {
+      plan_len: planMd.length,
+      structured_sections: planJson.sections.length,
+    });
+    await notifyPipelineChanged(runId);
+    await markExperimentAwaitingClarifications(row!.scopeEntityId!, runId, planMd, planJson);
+    await recordTrail({
+      action: `Run ${runId.slice(0, 8)} has clarifying questions`,
+      why: 'Claude produced clarifying questions for the owner before drafting a plan.',
+      entityKind: row?.scopeEntityKind,
+      entityId: row?.scopeEntityId,
+      agentRunId: runId,
+      detail: planMd.slice(0, 500),
+    });
+    await pushForUsers({
+      title: 'Sagan has clarifying questions',
+      body: `Run ${runId.slice(0, 8)} — answer to advance to planning`,
+      url: `/agent/${runId}`,
+      data: { kind: 'awaiting_clarifications', runId },
+    });
+    return;
+  }
+
   await db()
     .update(schema.agentRuns)
     .set({ status: 'awaiting_approval', planMd, planJson, updatedAt: new Date() })
@@ -909,6 +949,51 @@ async function markAwaitingApproval(runId: string, planMd: string) {
     url: `/agent/${runId}`,
     data: { kind: 'awaiting_approval', runId },
   });
+}
+
+function isClarificationOutput(planMd: string, planJson: StructuredPlan): boolean {
+  const hasRunpodSpec = planMd.includes('```runpod-spec');
+  const hasApprovalChecklist = planJson.sections.some(
+    (section) => normalizeHeading(section.title) === 'approval checklist',
+  );
+  return !(hasRunpodSpec && hasApprovalChecklist);
+}
+
+async function markExperimentAwaitingClarifications(
+  experimentId: string,
+  runId: string,
+  planMd: string,
+  planJson: StructuredPlan,
+) {
+  const current = await db()
+    .select({ status: schema.experiments.status })
+    .from(schema.experiments)
+    .where(eq(schema.experiments.id, experimentId))
+    .limit(1);
+  const experiment = current[0];
+  if (!experiment) return;
+
+  if (experiment.status !== 'awaiting_clarifications') {
+    await db()
+      .update(schema.experiments)
+      .set({ status: 'awaiting_clarifications', planJson, updatedAt: new Date() })
+      .where(eq(schema.experiments.id, experimentId));
+    await db().insert(schema.workflowEvents).values({
+      entityKind: 'experiment',
+      entityId: experimentId,
+      eventType: 'state_changed',
+      fromStatus: experiment.status,
+      toStatus: 'awaiting_clarifications',
+      actorKind: 'runner',
+      note: 'Claude produced clarifying questions; awaiting owner answers.',
+      metadata: { agentRunId: runId, planLen: planMd.length, sections: planJson.sections.length },
+    });
+  } else {
+    await db()
+      .update(schema.experiments)
+      .set({ planJson, updatedAt: new Date() })
+      .where(eq(schema.experiments.id, experimentId));
+  }
 }
 
 function experimentPlanningInstructions() {

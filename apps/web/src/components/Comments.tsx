@@ -114,6 +114,17 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     writePopOutState(next);
   }
 
+  // Auto-dock when the user leaves the entity page that opened the pop-out.
+  // Reads the latest state from localStorage so the user-resized position
+  // survives; only the `popped` flag flips off.
+  useEffect(() => {
+    if (!popout.popped) return;
+    return () => {
+      const latest = readPopOutState();
+      writePopOutState({ ...latest, popped: false });
+    };
+  }, [popout.popped]);
+
   async function load() {
     const res = await fetch(
       `/api/comments?entityKind=${encodeURIComponent(entityKind)}&entityId=${encodeURIComponent(entityId)}`,
@@ -685,7 +696,18 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
                 minHeight={240}
                 bounds="window"
                 dragHandleClassName="popout-drag-handle"
+                cancel="button, a, input, textarea, select, [data-popout-no-drag]"
+                onDrag={(_, d) => setPopout((prev) => ({ ...prev, x: d.x, y: d.y }))}
                 onDragStop={(_, d) => persistPopout({ ...popout, x: d.x, y: d.y })}
+                onResize={(_, _direction, ref, _delta, position) =>
+                  setPopout((prev) => ({
+                    ...prev,
+                    width: parseInt(ref.style.width, 10) || prev.width,
+                    height: parseInt(ref.style.height, 10) || prev.height,
+                    x: position.x,
+                    y: position.y,
+                  }))
+                }
                 onResizeStop={(_, _direction, ref, _delta, position) =>
                   persistPopout({
                     ...popout,
@@ -695,7 +717,11 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
                     y: position.y,
                   })
                 }
-                className="z-40 flex flex-col rounded-lg border border-[--color-border] bg-[--color-panel] shadow-2xl"
+                style={{
+                  zIndex: 60,
+                  backgroundColor: 'var(--color-panel)',
+                }}
+                className="flex flex-col rounded-lg border border-[--color-border] shadow-2xl"
               >
                 <div className="popout-drag-handle flex shrink-0 cursor-move items-center justify-between gap-2 rounded-t-lg border-b border-[--color-border] bg-[--color-muted-bg] px-3 py-2">
                   {headerStatus}

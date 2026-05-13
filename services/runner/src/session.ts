@@ -12,6 +12,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { runAgentWithContinuation, stripSentinel } from './lib/run-agent.js';
 import { loadAgentsFromProject } from './lib/agent-loader.js';
+import { loadPlannerSubagents, loadPromptText } from './lib/prompt-loader.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db, schema } from './db.js';
@@ -94,58 +95,10 @@ const EXPERIMENT_ORCHESTRATOR_TOOLS = [
   'Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write', 'Agent', 'TaskOutput', 'TaskStop',
 ] as const;
 export const EXPERIMENT_ORCHESTRATOR_PREFIX = 'experiment-orchestrator-for:';
-const EXPERIMENT_PLANNING_AGENTS: NonNullable<Options['agents']> = {
-  critic: {
-    description: 'Claude experiment-plan critic for one specified lens.',
-    tools: ['Read', 'Grep', 'Glob'],
-    prompt: `You are a Sagan experiment-plan critic. You review a draft plan for exactly the lens named in the prompt and ignore other lenses.
-
-Verdict definitions:
-- pass: the plan will produce interpretable data on the research question. Real experiments have diagnostics, confounds, and alternative explanations; do not require a pre-registered gate for every concern when the plan reports the diagnostic the analyzer can weigh.
-- needs_targeted_fix: the plan is missing data, a condition, a metric, or an infrastructure prerequisite that the analyzer cannot recover from. This means add missing information or a missing comparison, not add a pass/fail rule about an existing diagnostic.
-- blocked_needs_user_decision: the plan needs owner input before it can be made testable or safe.
-- fail_not_worth_continuing: the design cannot answer the research question even after targeted revisions.
-
-Classify each finding as blocker, important, follow-up, or nit. Also mark whether it is scope-preserving or scope-expanding. Bias toward pass when the plan is recoverable through analyzer judgment. Put scope-expanding ideas under follow-up unless the current experiment would be uninterpretable without them. Do not invent extra approval gates, stop conditions, or confirmation conjunctions.`,
-  },
-  'codex-critic': {
-    description: 'Thin Claude wrapper that forwards one experiment-plan critique lens to Codex.',
-    tools: ['Bash'],
-    prompt: `You are a thin wrapper around the Codex companion task runtime for Sagan experiment-plan critique.
-
-Do not critique the plan yourself. Invoke Codex exactly once with Bash and return Codex's stdout verbatim. Use:
-
-node "\${SAGAN_CODEX_PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" task --model gpt-5.5 --effort high "<prompt>"
-
-The forwarded prompt must tell Codex:
-- It is read-only and must not edit files.
-- It is critiquing only the requested lens.
-- It must return Verdict: pass, needs_targeted_fix, blocked_needs_user_decision, or fail_not_worth_continuing.
-- It must classify findings as blocker, important, follow-up, or nit.
-- It must mark each finding as scope-preserving or scope-expanding.
-- It must avoid adding approval gates or confirmation conjunctions unless missing data would make the experiment uninterpretable.
-
-If the Codex companion cannot be invoked, return one line beginning with BLOCKER: and explain the invocation failure.`,
-  },
-  reconciler: {
-    description: 'Tie-breaker for one Claude/Codex critic-lens disagreement.',
-    tools: ['Read', 'Grep', 'Glob'],
-    prompt: `You reconcile one disagreement between a Claude critic and a Codex critic on a Sagan experiment plan.
-
-Read only the plan and the two critic reports supplied in the prompt. Do not review from scratch. Do not add new findings. Decide whether the failing side's finding is valid under this contract:
-- pass means diagnostics are sufficient for the analyzer to weigh the concern.
-- needs_targeted_fix means missing data, a missing condition, a missing metric, or wrong infrastructure would make the experiment uninterpretable.
-- blocked_needs_user_decision means owner input is required before the plan can become testable or safe.
-- fail_not_worth_continuing means the design cannot answer the question.
-
-Return a binding Verdict, then a short adjudication table for the existing findings only. Reconciler suggestions do not count as a critique loop. After round 3, disagreement alone cannot block; choose the minimal necessary fix and continue unless a true user-decision blocker remains.`,
-  },
-  'consistency-checker': {
-    description: 'Verifies the plan matches related prior experiments on baseline / eval suite / seeds / data version, and flags resource anti-patterns.',
-    tools: ['Read', 'Grep', 'Glob', 'Bash'],
-    prompt: `You independently verify that a new experiment plan is consistent with related prior experiments. See .claude/agents/consistency-checker.md for the full contract. Return verdict PASS / WARN / BLOCK and an enumeration of what differs from the parent — but treat multi-variable changes as expected, not as a default BLOCK. Real experiments often vary several things at once (e.g. switching SFT→DPO changes both method and loss). The blocking checks are: base model / checkpoint mismatch when the plan claims to compare against prior results, eval-suite mismatch when claiming comparable metrics, and the parallel-seed anti-pattern (N single-GPU pods proposed where one multi-GPU pod with CUDA_VISIBLE_DEVICES sharding would dispatch more reliably). Differences in seeds and data version are WARNs, not blocks.`,
-  },
-};
+// Planner sub-agent prompts (critic / codex-critic / reconciler /
+// consistency-checker) are loaded from `.claude/prompts/runner/planner-subagents/`
+// at session start so prompt edits land via a web deploy without a runner
+// restart. See services/runner/src/lib/prompt-loader.ts.
 
 function toolPolicyForRunKind(row: AgentRunRow): Pick<Options, 'tools' | 'canUseTool' | 'agents'> {
   const kind = row.kind;
@@ -153,7 +106,7 @@ function toolPolicyForRunKind(row: AgentRunRow): Pick<Options, 'tools' | 'canUse
     return {
       tools: [...EXPERIMENT_PLANNING_TOOLS],
       canUseTool: experimentPlanningToolGuard(kind),
-      agents: EXPERIMENT_PLANNING_AGENTS,
+      agents: loadPlannerSubagents(),
     };
   }
   if (kind === 'apply' && row.request.startsWith(EXPERIMENT_ORCHESTRATOR_PREFIX)) {
@@ -660,48 +613,28 @@ async function buildExperimentOrchestratorPrompt(
   }
   const clientRepoPath = resolveClientRepoPath(projectSlug);
 
-  return `${header}${scope}
+  const experimentLabel =
+    experimentNumber !== null
+      ? `#${experimentNumber}`
+      : `(scope: experiment ${row.scopeEntityId ?? 'unknown'})`;
+  const projectSlugSuffix = projectSlug ? ` (project \`${projectSlug}\`)` : '';
+  const parentRunIdOrPlaceholder = parentRunId || '<parent_run_id>';
+  const parentRunIdLabel = parentRunId || '<unknown>';
+  const parentPlanBlock = parentPlan
+    ? parentPlan
+    : '(plan_md not loaded — abort with epm:failure citing missing plan_md)';
 
-You are the Sagan experiment orchestrator. The plan for experiment ${
-    experimentNumber !== null ? `#${experimentNumber}` : '(scope: experiment ' + (row.scopeEntityId ?? 'unknown') + ')'
-  } has just been approved by the owner. Walk the experiment through the EPS /issue workflow end to end, the same way the explore-persona-space /issue skill does.
-
-Treat Sagan as the only workflow control plane. Use \`python scripts/sagan_state.py …\` for every workflow mutation (status transitions, markers, clean-result, promotion). Do not modify GitHub issues, labels, or comments — they are historical evidence only.
-
-Workflow stages and the sub-agents to invoke at each one (use the Agent tool with the matching \`subagent_type\`; each agent is loaded from .claude/agents/<name>.md):
-
-1. **implementing** — set status \`implementing\` and post \`epm:experiment-implementation\`. Spawn \`experiment-implementer\` (subagent_type: experiment-implementer) with the approved plan and a per-experiment branch on the client repo at \`${clientRepoPath}\`${projectSlug ? ` (project \`${projectSlug}\`)` : ''}. The implementer writes the experiment-specific code, commits, and returns the branch name + commit hash. If \`${clientRepoPath}\` is the unconfigured placeholder, abort with \`epm:failure\` citing missing SAGAN_CLIENT_REPOS configuration for this project.
-2. **code_reviewing** — set status \`code_reviewing\`. Spawn \`code-reviewer\` and \`codex-code-reviewer\` in parallel (run_in_background=true) for round 1. Merge with \`reconciler\` if they disagree. Re-spawn the implementer with the agreed targeted fixes if needed. Cap at 3 rounds; round-3 reviewer disagreement alone does not block — the reconciler picks the minimal necessary fix and you continue. Post \`epm:code-review\`, \`epm:code-review-codex\`, and \`epm:review-reconcile\` markers as you go.
-3. **testing** — the code-reviewer pair runs lint + unit tests as Step 4 of its review (see .claude/agents/code-reviewer.md). Don't re-run them. Forward the reviewer's test outcome by posting \`epm:test-verdict\`. If reviewer said tests failed, you'd already be looping back to implementing — you shouldn't reach this status with broken tests.
-4. **running** — once the EPS branch has the code and tests pass, push the branch and ask Sagan to launch the pods by running:
-   \`\`\`
-   python scripts/sagan_state.py launch-pod ${parentRunId || '<parent_run_id>'}
-   \`\`\`
-   This triggers the runner's dispatcher against the approved \`runpod-spec\` in the parent plan. The runner transitions status from \`running\` to terminal automatically.
-5. **uploading** — when the pod reports completion (\`runpod_status = STOPPED\` or \`COMPLETED\`), set status \`uploading\` and spawn \`uploader\` (subagent_type: uploader) to push artifacts to HF Hub / W&B / Sagan figures.
-6. **verifying** — set status \`verifying\` and spawn \`upload-verifier\` (subagent_type: upload-verifier) to confirm every artifact has a permanent URL. Hard gate: do not advance until verifier passes.
-7. **interpreting** — set status \`interpreting\` and spawn \`analyzer\` (subagent_type: analyzer) to produce the interpretation draft. Post \`epm:interpretation\`.
-8. **reviewing** — set status \`reviewing\`. Spawn \`interpretation-critic\` + \`codex-interpretation-critic\` for round 1, reconcile if needed. Same 3-round cap + round-3 rule. Then spawn \`clean-result-critic\` + \`codex-clean-result-critic\` for the clean-result write-up, same cap.
-9. **follow-ups** — once the critic pairs pass, spawn \`follow-up-proposer\` to draft follow-up experiments. Instruct it to emit two separate lists in its output:
-   - \`auto_run\`: small, well-defined follow-ups that don't need owner sign-off — one extra seed, one extra eval condition, a smoke check, a scaling sanity check. Each must fit in <=2 GPU-hours of the same hardware class as the parent. The orchestrator auto-queues each as a child experiment in status \`followups_running\` (linked to the parent via \`metadata.parent_experiment_id\`) by POSTing to \`/api/experiments\` then approving its plan on the owner's behalf. These show up in the dashboard's "Follow-ups running" column.
-   - \`proposed\`: broader ideas — new directions, design extensions, follow-on questions. Do NOT auto-queue. Post each as its own comment on the parent experiment via POST /api/comments with \`kind: 'todo'\`, \`entityKind: 'experiment'\`, \`entityId: <parent_id>\`, \`body\` containing the title + rationale + size tag. The dashboard renders kind='todo' comments in a "Proposed follow-ups" section with a "Move to todo" button that POSTs to /api/todos with \`fromCommentId\` and auto-resolves the source comment on success.
-   Post a single \`epm:follow-ups\` marker summarising both lists. If follow-up-proposer returns nothing useful, post \`epm:follow-ups\` with an empty payload and move on — do not block on follow-ups.
-10. **awaiting_promotion** — set status \`awaiting_promotion\` and post \`epm:awaiting-promotion\`. Stop. The parent experiment can sit here while auto-queued follow-ups still run (they have their own \`followups_running\` cards in the pipeline; the parent doesn't wait on them). Promotion is owner-driven and happens via the dashboard's Promote button (or \`python scripts/sagan_state.py promote <N> useful\`).
-
-Marker discipline: every stage transition and every reviewer verdict goes into Sagan \`workflow_events\` via \`sagan_state.py marker <N> <epm:name> --note "..."\`. The reviewer-loop helpers in \`apps/web/src/lib/reviewer-loops.ts\` define the verdict + metadata shape — match it.
-
-Reviewer-pair contract (\`code-review\`, \`interpretation\`, \`clean-result\`):
-- Allowed verdicts: \`pass\`, \`needs_targeted_fix\`, \`blocked_needs_user_decision\`, \`fail_not_worth_continuing\`.
-- Up to 3 rounds per pair. After round 3, lack of consensus alone is not enough to block; the reconciler records the final critique, picks the minimal necessary fix, and the workflow continues unless there is a true user-decision blocker (missing owner input, unsafe execution, invalid artifacts, untestable hypothesis).
-
-Failure handling: on any unrecoverable error, post \`epm:failure\` with the diagnosis and set status to \`blocked\`. Do not silently retry. If the failure is transient (e.g. transient pod allocator error), the runner's recovery loop will queue a follow-up automatically.
-
-Working directory: \`${clientRepoPath}\` for experiment-specific code edits${projectSlug ? ` (project \`${projectSlug}\`)` : ''}. The Sagan repo at \`/home/thomasjiralerspong/sagan\` already contains \`scripts/sagan_state.py\` and is your call-control surface — do not edit Sagan code from this orchestrator unless the failure is explicitly an infrastructure bug.
-
-Approved plan (from parent agent_run ${parentRunId || '<unknown>'}):
-
-${parentPlan ? parentPlan : '(plan_md not loaded — abort with epm:failure citing missing plan_md)'}
-`;
+  // Body lives in `.claude/prompts/runner/orchestrator-brief.md` so prompt
+  // edits ship via a web deploy without restarting the runner.
+  const body = loadPromptText('orchestrator-brief.md', {
+    experimentLabel,
+    clientRepoPath,
+    projectSlugSuffix,
+    parentRunIdOrPlaceholder,
+    parentRunIdLabel,
+    parentPlanBlock,
+  });
+  return `${header}${scope}\n\n${body}\n`;
 }
 
 /**
@@ -1217,146 +1150,9 @@ async function markExperimentAwaitingClarifications(
 }
 
 function experimentPlanningInstructions() {
-  return `You are drafting an adversarial experiment plan for Sagan.
-
-Do not launch experiment compute or RunPods. Do not edit files. Produce one approval-ready markdown plan.
-Use the provided scoped experiment record as the source of truth for the
-experiment title and scope. Do not rename, retitle, or otherwise mutate the
-scoped issue/experiment. Keep the run request as instructions, not as a title.
-Claude is always the drafter and reviser. Do not delegate plan writing to
-Codex or to a critic. Use critics only to review a complete draft.
-
-Before drafting a full plan, check whether the scoped record establishes the
-specific hypothesis, expected information gain, what result would change the
-next action or belief, and any missing constraint that would make planning
-invalid. If those points are unclear, produce only the few targeted clarifying
-questions needed and do not add broad literature work, unrelated methodology
-gates, or nice-to-have controls. If they are clear, continue to planning.
-
-When you want the owner to fill in an answer — anywhere in clarifications,
-plan TBDs, or a section that depends on owner input — insert a literal
-\`[TEXTBOX]\` token on its own line where the answer should go. The
-dashboard replaces each token with an auto-saving textarea, indexed by
-position in document order. If you need an identifier (so a downstream
-re-read pairs the answer with the right slot), use \`[TEXTBOX:short-label]\`.
-Never instruct the user to "reply with…" or "answer here:" — just drop a
-\`[TEXTBOX]\` and the UI handles the rest.
-
-To read prior textbox answers for this experiment, fetch the latest
-\`workflow_events\` row with \`metadata->>'marker_type' = 'epm:textbox-answers'\`
-on this entity — its \`metadata.answers\` map is keyed by either the
-\`label\` from \`[TEXTBOX:label]\` or the 1-based positional index for
-plain \`[TEXTBOX]\` tokens.
-
-Before finalizing, use this bounded review workflow:
-
-1. Draft the plan in the main Claude session.
-2. Fact-check concrete assumptions with repo reads/searches available to you.
-3. Run up to three critique loops. Stop early once the merged critique has no
-   blocker and no cheap, scope-preserving important issue.
-4. In each critique loop, spawn paired Claude + Codex critics for these lenses:
-   methodology, statistics/measurement, and alternative explanations. Use the
-   Claude critic agent and the codex-critic agent for each lens. Spawn all six
-   critic agents in one message with run_in_background=true so they run in
-   parallel. The critics must see the draft plan only, not your private
-   reasoning or each other's outputs.
-5. Merge critiques per lens:
-   - pass + pass: accept the lens.
-   - needs_targeted_fix / blocked_needs_user_decision / fail_not_worth_continuing on both sides: union the blocker sets for that lens.
-   - pass vs non-pass: use the reconciler agent for that lens. The
-     reconciler may adjudicate only existing findings and may not add new ones.
-   - Codex no-show or malformed output: fall back to the Claude critic for
-     that lens and record the fallback in the critique notes.
-6. Merge across lenses into one issue ledger. Classify every item as blocker,
-   important, follow-up, or nit, and mark it scope-preserving or scope-expanding.
-7. Revise only for blockers and cheap, scope-preserving important items.
-   Scope-expanding suggestions, extra diagnostics, and speculative controls go
-   into follow-ups unless the current plan would be uninterpretable without
-   them.
-8. Do not let critics add new approval gates by default. Missing data,
-   missing controls, wrong metrics, or wrong infrastructure can require a
-   revision. Concerns about diagnostics that are already reported should be
-   surfaced for interpretation, not turned into pass/fail gates.
-9. After round 3, unresolved disagreement alone is not enough to block. The
-   reconciler records the final critique, chooses the minimal necessary fix,
-   and you continue after that fix unless a real user-decision blocker remains.
-10. After the last loop, run a consistency check yourself: ensure the goal,
-   hypothesis, prediction, kill criterion, compute, artifacts, verification,
-   risks, likely clean-result shape, and runpod-spec all agree.
-11. Spawn the \`consistency-checker\` sub-agent once before producing the
-   final plan. It checks that the new design matches related prior
-   experiments on baseline / eval suite / seeds / data version when the
-   plan claims comparability, and flags the "N single-GPU pods instead of
-   one multi-GPU pod" anti-pattern. Multi-variable changes are fine if the
-   plan justifies them. If it returns BLOCK, fold the targeted fix in and
-   re-run it; a WARN you can accept with explicit justification in the
-   plan body.
-
-In ## Risks and Red Team, include a compact "Critique loop notes" subsection
-with the number of loops run, the final merged verdict, any Codex fallback,
-and any follow-up/nit items intentionally not folded into this run. Do not add
-new top-level markdown headings beyond the required headings below.
-
-The final answer must use these exact markdown headings:
-
-## Goal
-## Hypothesis
-## Prediction
-## Kill Criterion
-## Experimental Setup
-## Compute and Hardware
-## Artifacts
-## Verification
-## Risks and Red Team
-## Likely Clean Result
-## Approval Checklist
-
-After those sections, include a fenced \`\`\`runpod-spec block containing valid JSON for the pod(s) to dispatch after approval. This block is required because the runner reads it automatically. Use either one object or an array of objects with this shape:
-
-\`\`\`runpod-spec
-{
-  "name": "short-descriptive-name",
-  "gpuType": "H100",
-  "gpuCount": 1,
-  "volumeGb": 100,
-  "containerDiskGb": 100,
-  "cloudType": "SECURE",
-  "estimatedMinutes": 180,
-  "dockerArgs": "bash -lc 'python run_experiment.py'",
-  "config": {
-    "command": "short description or exact command the pod should run",
-    "artifacts": ["expected artifact paths or URLs"]
-  }
+  return loadPromptText('planner-instructions.md');
 }
-\`\`\`
 
-Choose the smallest GPU type/count that can plausibly run the approved experiment. If the experiment truly should not launch compute, do not use kind=experiment; write a blocker explaining that it should be handled as a planning/QA run instead.
-
-When multiple GPUs are needed, default to **one pod with \`gpuCount: N\`** rather than an array of N specs each with \`gpuCount: 1\`. RunPod's on-demand allocator frequently has capacity for one larger pod when it lacks capacity for many smaller ones, and a single multi-GPU pod is cheaper to dispatch, easier to monitor, and avoids partial-dispatch failures. Use multi-pod arrays only when the work is genuinely partitioned across machines (data-parallel sharded over disjoint hosts, per-source independence with no shared memory, or the experiment design intentionally relies on per-pod state); state the reason in ## Compute and Hardware and in the Approval Checklist. If you do request multiple pods, the runner will treat partial dispatch (e.g. 3 of 4 pods came up) as a hard failure, stop the survivors, and block the run.
-
-The ## Compute and Hardware section must include a USD cost estimate alongside GPU-hours, computed from RunPod Secure Cloud on-demand rates. Use these reference prices (per GPU per hour, last checked May 2026; treat as guidance — note in the section that they may drift):
-
-| GPU                | USD/hr |
-| H100 80GB SXM      | $2.69  |
-| H100 80GB PCIe     | $2.39  |
-| A100 80GB SXM      | $1.49  |
-| A100 80GB PCIe     | $1.39  |
-| L40S 48GB          | $0.86  |
-| RTX 4090 24GB      | $0.59  |
-
-Format: \`GPU-hours × rate × gpuCount × pods = $X (compute) + ~$Y (storage at $0.10/GB-month for the run window) = ~$Z total\`. Round to two significant figures. State the rate you used so the estimate is auditable. If the experiment runs in parallel across multiple pods, multiply through accordingly.
-
-If the experiment should run automatically on pod boot, set dockerArgs to the exact shell command. The dispatcher injects SAGAN_PROGRESS_URL, SAGAN_POD_PROGRESS_TOKEN, SAGAN_AGENT_RUN_ID, SAGAN_EXPERIMENT_ID, and SAGAN_RUN_INDEX into the pod. The experimenter command should POST progress updates as it runs:
-
-\`\`\`bash
-curl -sS -X POST "$SAGAN_PROGRESS_URL" \
-  -H "authorization: Bearer $SAGAN_POD_PROGRESS_TOKEN" \
-  -H "content-type: application/json" \
-  -d '{"estimatedRemainingMinutes": 90, "progressPct": 50, "message": "training halfway through"}'
-\`\`\`
-
-The Approval Checklist must explicitly cover goal, hypothesis, prediction, kill criterion, compute/hardware (including the USD cost estimate), artifacts, verification, risks, likely clean-result shape, and whether the runpod-spec matches the plan.`;
-}
 
 export function parseStructuredPlan(planMd: string): StructuredPlan {
   const sections: Array<{ title: string; body: string }> = [];

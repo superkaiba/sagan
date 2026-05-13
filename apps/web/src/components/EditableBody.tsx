@@ -64,15 +64,20 @@ export function EditableBody({ kind, id, initialBody, endpoint, field }: Props) 
   }
 
   if (!editing) {
+    const isEmpty = !initialBody?.trim();
     return (
       <section className="group rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="float-right text-xs text-[--color-muted] opacity-0 transition group-hover:opacity-100 hover:text-[--color-fg]"
-      >
-        Edit
-      </button>
+          className={
+            isEmpty
+              ? 'float-right text-xs text-[--color-accent] hover:underline'
+              : 'float-right text-xs text-[--color-muted] opacity-0 transition group-hover:opacity-100 hover:text-[--color-fg]'
+          }
+        >
+          {isEmpty ? 'Add description' : 'Edit'}
+        </button>
         <CommentableBody body={initialBody} />
       </section>
     );

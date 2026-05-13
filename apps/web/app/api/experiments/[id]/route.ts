@@ -5,6 +5,7 @@ import { approvalRequests, experiments, runs, workflowEvents } from '@sagan/db/s
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
+import { mergeExperimentEstimate } from '@/lib/experiment-estimate';
 import { EXPERIMENT_STATUSES, experimentTurn, setExperimentStatus } from '@/lib/workflow';
 
 const EXPERIMENT_KINDS = ['experiment', 'infra', 'survey'] as const;
@@ -25,6 +26,7 @@ const patchSchema = z.object({
   tags: z.array(z.string().max(80)).max(50).optional(),
   hasCleanResult: z.boolean().optional(),
   runpodAccount: z.enum(['team', 'personal']).optional(),
+  estimatedRemainingMinutes: z.number().int().min(0).max(60 * 24 * 30).nullable().optional(),
   note: z.string().max(2_000).optional(),
 });
 
@@ -71,10 +73,20 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!parsed.success) {
     return NextResponse.json({ error: 'invalid_input', detail: z.treeifyError(parsed.error) }, { status: 400 });
   }
-  const { status, note, ...metadataUpdates } = parsed.data;
+  const { status, note, estimatedRemainingMinutes, ...metadataUpdates } = parsed.data;
+  const updateValues: Partial<typeof experiments.$inferInsert> = { ...metadataUpdates, updatedAt: new Date() };
+  if ('estimatedRemainingMinutes' in parsed.data) {
+    const existing = await db()
+      .select({ planJson: experiments.planJson })
+      .from(experiments)
+      .where(eq(experiments.id, id))
+      .limit(1);
+    if (!existing[0]) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    updateValues.planJson = mergeExperimentEstimate(existing[0].planJson, estimatedRemainingMinutes ?? null, { source: 'manual' });
+  }
   const updated = await db()
     .update(experiments)
-    .set({ ...metadataUpdates, updatedAt: new Date() })
+    .set(updateValues)
     .where(eq(experiments.id, id))
     .returning({ id: experiments.id, title: experiments.title, status: experiments.status });
   if (!updated[0]) return NextResponse.json({ error: 'not_found' }, { status: 404 });

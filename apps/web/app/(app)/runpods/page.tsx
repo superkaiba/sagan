@@ -4,6 +4,7 @@ import { loadActiveRunPods } from '@/lib/dashboard';
 import { loadRunPodAccountSummaries, type RunPodAccountSummary } from '@/lib/runpod-api';
 import {
   effectiveRunPodRate,
+  estimateRunPodRemainingCostUsd,
   estimateRunPodSpendUsd,
   estimateRunPodUptimeSeconds,
   formatDuration,
@@ -42,6 +43,11 @@ export default async function RunPodsPage() {
     .map((pod) => estimateRunPodSpendUsd(pod))
     .filter((spend): spend is number => spend != null)
     .reduce((sum, spend) => sum + spend, 0);
+  const estimatedRemaining = pods
+    .map((pod) => estimateRunPodRemainingCostUsd(effectiveRunPodRate(pod), pod.experimentEstimatedRemainingMinutes))
+    .filter((spend): spend is number => spend != null)
+    .reduce((sum, spend) => sum + spend, 0);
+  const hasEstimatedRemaining = pods.some((pod) => pod.experimentEstimatedRemainingMinutes != null);
 
   return (
     <div className="space-y-5">
@@ -50,6 +56,7 @@ export default async function RunPodsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">RunPods</h1>
           <p className="mt-1 text-sm text-[--color-muted]">
             {pods.length} active pod{pods.length === 1 ? '' : 's'} · {formatUsdPerHour(activeRate)} active rate · {formatUsd(activeSpend)} tracked spend
+            {hasEstimatedRemaining ? ` · ${formatUsd(estimatedRemaining)} est remaining` : ''}
           </p>
         </div>
         <a
@@ -110,6 +117,7 @@ export default async function RunPodsPage() {
                   <th className="px-4 py-2 font-medium">Experiment</th>
                   <th className="px-4 py-2 font-medium">GPU</th>
                   <th className="px-4 py-2 font-medium">Cost</th>
+                  <th className="px-4 py-2 font-medium">Estimate</th>
                   <th className="px-4 py-2 font-medium">Runway</th>
                   <th className="px-4 py-2 font-medium">Updated</th>
                 </tr>
@@ -119,6 +127,7 @@ export default async function RunPodsPage() {
                   const rate = effectiveRunPodRate(pod);
                   const spend = estimateRunPodSpendUsd(pod);
                   const uptime = estimateRunPodUptimeSeconds(pod);
+                  const remainingCost = estimateRunPodRemainingCostUsd(rate, pod.experimentEstimatedRemainingMinutes);
                   const account = accountByKey.get(pod.account as 'team' | 'personal');
                   return (
                     <tr key={pod.id} className="hover:bg-[--color-hover]">
@@ -144,6 +153,16 @@ export default async function RunPodsPage() {
                       <td className="px-4 py-3 align-top">
                         <div className="font-mono">{formatUsdPerHour(rate)}</div>
                         <div className="mt-1 text-xs text-[--color-muted]">{formatUsd(spend)} · {formatDuration(uptime)}</div>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        {pod.experimentEstimatedRemainingMinutes == null ? (
+                          <span className="text-xs text-[--color-muted]">No estimate</span>
+                        ) : (
+                          <>
+                            <div className="font-mono">{formatDuration(pod.experimentEstimatedRemainingMinutes * 60)} left</div>
+                            <div className="mt-1 text-xs text-[--color-muted]">{formatUsd(remainingCost)} remaining</div>
+                          </>
+                        )}
                       </td>
                       <td className="px-4 py-3 align-top font-mono">
                         {formatRunway(account?.clientBalance ?? null, rate)}

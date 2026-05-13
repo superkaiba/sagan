@@ -15,6 +15,7 @@
  * separate watcher (services/runner/src/watcher.ts, Phase 2 follow-up).
  */
 import { and, eq } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
 import { db, schema } from './db.js';
 import { emitEvent } from './queue.js';
 import { dispatchBatch, type DispatchPodSpec, type RunpodAccount } from './tools/runpod.js';
@@ -38,6 +39,12 @@ interface ParsedSpec {
    * the resulting `runs` row as configYaml (YAML-serialized) or as a free
    * text blob if it's already a string. */
   config?: Record<string, unknown> | string;
+  /** Exact container start command. When supplied, RunPod runs it at boot. */
+  dockerArgs?: string;
+  /** Extra container environment variables. */
+  env?: Record<string, string>;
+  /** Optional initial estimate; live pod reports supersede it. */
+  estimatedMinutes?: number;
   /** Optional W&B project pre-assignment for the resulting run. */
   wandbProject?: string;
 }
@@ -86,8 +93,25 @@ function validateSpec(raw: unknown, index: number): ParsedSpec {
     dataCenterId: typeof r.dataCenterId === 'string' ? r.dataCenterId : undefined,
     dryRun: r.dryRun === true,
     config: typeof r.config === 'object' || typeof r.config === 'string' ? (r.config as ParsedSpec['config']) : undefined,
+    dockerArgs: typeof r.dockerArgs === 'string' && r.dockerArgs.trim() ? r.dockerArgs : undefined,
+    env: parseEnv(r.env),
+    estimatedMinutes: typeof r.estimatedMinutes === 'number' && Number.isFinite(r.estimatedMinutes) && r.estimatedMinutes >= 0
+      ? Math.floor(r.estimatedMinutes)
+      : undefined,
     wandbProject: typeof r.wandbProject === 'string' ? r.wandbProject : undefined,
   };
+}
+
+function parseEnv(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!key.trim()) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      out[key] = String(value);
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -179,7 +203,16 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
     detail: `Dispatching ${specs.length} pod(s) via account=${run.runpodAccount}`,
   });
 
+  // Find the experiment this run is scoped to so we can attach `runs` rows and
+  // issue pod-side progress credentials before dispatch.
+  let experimentId: string | null = null;
+  if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
+    experimentId = run.scopeEntityId;
+  }
+
   const account: RunpodAccount = run.runpodAccount;
+  const progressUrl = `${siteUrl()}/api/runpods/progress`;
+  const progressTokens = specs.map(() => randomProgressToken());
   const dispatchSpecs: DispatchPodSpec[] = specs.map((s, i) => ({
     account,
     name: s.name ?? `${run.id.slice(0, 8)}-${i}`,
@@ -190,6 +223,15 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
     containerDiskGb: s.containerDiskGb,
     cloudType: s.cloudType,
     dataCenterId: s.dataCenterId,
+    dockerArgs: s.dockerArgs,
+    env: {
+      ...(s.env ?? {}),
+      SAGAN_PROGRESS_URL: progressUrl,
+      SAGAN_POD_PROGRESS_TOKEN: progressTokens[i]!,
+      SAGAN_AGENT_RUN_ID: run.id,
+      SAGAN_EXPERIMENT_ID: experimentId ?? '',
+      SAGAN_RUN_INDEX: String(i),
+    },
     dryRun: s.dryRun,
   }));
 
@@ -199,12 +241,6 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
   let succeeded = 0;
   let failed = 0;
   const failures: string[] = [];
-
-  // Find the experiment this run is scoped to so we can attach `runs` rows.
-  let experimentId: string | null = null;
-  if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
-    experimentId = run.scopeEntityId;
-  }
 
   for (let i = 0; i < results.length; i++) {
     const r = results[i]!;
@@ -251,6 +287,12 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
           spec: dispatchSpecs[i],
           planSpec: spec,
           dryRun: spec.dryRun === true || process.env.RUNPOD_DRY_RUN === '1',
+          saganProgress: {
+            token: progressTokens[i],
+            url: progressUrl,
+            source: 'pending',
+            estimatedMinutes: spec.estimatedMinutes ?? null,
+          },
         },
       }).returning({ id: schema.podLifecycle.id });
       await db().insert(schema.runArtifacts).values({
@@ -311,6 +353,14 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
   });
 
   log.info('dispatch finished', { runId, succeeded, failed, podIds });
+}
+
+function randomProgressToken() {
+  return randomBytes(32).toString('base64url');
+}
+
+function siteUrl() {
+  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://sagan.superkaiba.com').replace(/\/+$/, '');
 }
 
 function parseRunpodDate(value: string | null): Date | undefined {

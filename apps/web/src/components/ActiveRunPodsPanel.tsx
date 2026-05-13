@@ -5,7 +5,15 @@ import { Cloud, ExternalLink, Server } from 'lucide-react';
 import type { DashboardRunPod } from '@/lib/dashboard';
 import type { RunPodAccountSummary } from '@/lib/runpod-api';
 import { cn } from '@/lib/cn';
-import { estimateRunPodSpendUsd, effectiveRunPodRate, formatRunway, formatUsd, formatUsdPerHour } from '@/lib/runpod-cost';
+import {
+  estimateRunPodRemainingCostUsd,
+  estimateRunPodSpendUsd,
+  effectiveRunPodRate,
+  formatDuration,
+  formatRunway,
+  formatUsd,
+  formatUsdPerHour,
+} from '@/lib/runpod-cost';
 import { formatRelativeTime } from '@/lib/status';
 
 function podStatusClass(status: string) {
@@ -89,6 +97,7 @@ export function ActiveRunPodsPanel({
             const gpu = podGpu(pod);
             const spend = estimateRunPodSpendUsd(pod);
             const rate = effectiveRunPodRate(pod);
+            const remainingCost = estimateRunPodRemainingCostUsd(rate, pod.experimentEstimatedRemainingMinutes);
             return (
               <li key={pod.id} className="border-b border-[--color-border] last:border-b-0">
                 <Link href={pod.href} className="block px-3 py-2 hover:bg-[--color-hover]">
@@ -102,6 +111,12 @@ export function ActiveRunPodsPanel({
                         {gpu ? <span>{gpu}</span> : null}
                         <span>{spend == null ? 'spend pending' : `${formatUsd(spend)} spent`}</span>
                         <span>{formatUsdPerHour(rate)}</span>
+                        {pod.experimentEstimatedRemainingMinutes == null ? null : (
+                          <span>
+                            {formatDuration(pod.experimentEstimatedRemainingMinutes * 60)} left
+                            {remainingCost == null ? '' : ` · ${formatUsd(remainingCost)}`}
+                          </span>
+                        )}
                         <span>{formatRelativeTime(pod.updatedAt)}</span>
                       </span>
                     </span>

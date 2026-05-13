@@ -9,7 +9,7 @@ import { type CanUseTool, type Options, type SDKMessage } from '@anthropic-ai/cl
 import { readFile } from 'node:fs/promises';
 import { runAgentWithContinuation } from './lib/run-agent.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
-import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { db, schema } from './db.js';
 import { emitEvent, notifyPipelineChanged } from './queue.js';
 import { env, requireEnv } from './env.js';
@@ -114,7 +114,7 @@ function readOnlyToolGuard(kind: AgentRunRow['kind']): CanUseTool {
       behavior: 'deny',
       toolUseID: options.toolUseID,
       message:
-        `${kind} runs are read-only. Use the scoped record and repo reads only; do not spawn agents, run shell commands, edit files, or mutate issue titles.` +
+        `${kind} runs are read-only. Use the scoped Sagan record and repo reads only; do not spawn agents, run shell commands, edit files, or mutate records.` +
         suffix,
     };
   };
@@ -799,6 +799,8 @@ After those sections, include a fenced \`\`\`runpod-spec block containing valid 
   "volumeGb": 100,
   "containerDiskGb": 100,
   "cloudType": "SECURE",
+  "estimatedMinutes": 180,
+  "dockerArgs": "bash -lc 'python run_experiment.py'",
   "config": {
     "command": "short description or exact command the pod should run",
     "artifacts": ["expected artifact paths or URLs"]
@@ -807,6 +809,15 @@ After those sections, include a fenced \`\`\`runpod-spec block containing valid 
 \`\`\`
 
 Choose the smallest GPU type/count that can plausibly run the approved experiment. If the experiment truly should not launch compute, do not use kind=experiment; write a blocker explaining that it should be handled as a planning/QA run instead.
+
+If the experiment should run automatically on pod boot, set dockerArgs to the exact shell command. The dispatcher injects SAGAN_PROGRESS_URL, SAGAN_POD_PROGRESS_TOKEN, SAGAN_AGENT_RUN_ID, SAGAN_EXPERIMENT_ID, and SAGAN_RUN_INDEX into the pod. The experimenter command should POST progress updates as it runs:
+
+\`\`\`bash
+curl -sS -X POST "$SAGAN_PROGRESS_URL" \
+  -H "authorization: Bearer $SAGAN_POD_PROGRESS_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"estimatedRemainingMinutes": 90, "progressPct": 50, "message": "training halfway through"}'
+\`\`\`
 
 The Approval Checklist must explicitly cover goal, hypothesis, prediction, kill criterion, compute/hardware, artifacts, verification, risks, likely clean-result shape, and whether the runpod-spec matches the plan.`;
 }
@@ -981,7 +992,6 @@ async function maybePostCommentReply(runId: string, resultText: string) {
   const sourceRun = await loadRun(runId);
   const replyAgentName = inferCommentAgentName(`${triggerComment.body}\n${sourceRun?.request ?? ''}`);
   const replyText = resultText.trim() || '(no response)';
-  const storedReplyBody = replyAgentName === 'Codex' ? `${CODEX_REPLY_MARKER}\n${replyText}` : replyText;
   // Reply lands as a sibling of the trigger when the trigger is itself a
   // reply, otherwise as a child of the trigger (top-level → its first reply).
   const replyParentId = triggerComment.parentCommentId ?? triggerComment.id;
@@ -992,7 +1002,7 @@ async function maybePostCommentReply(runId: string, resultText: string) {
     .where(
       and(
         eq(schema.comments.agentRunId, runId),
-        eq(schema.comments.authorKind, 'claude'),
+        inArray(schema.comments.authorKind, ['claude', 'codex']),
       ),
     )
     .limit(1);
@@ -1015,9 +1025,9 @@ async function maybePostCommentReply(runId: string, resultText: string) {
       entityKind: triggerComment.entityKind,
       entityId: triggerComment.entityId,
       parentCommentId: replyParentId,
-      authorKind: 'claude',
+      authorKind: replyAgentName === 'Codex' ? 'codex' : 'claude',
       kind: 'discussion',
-      body: storedReplyBody,
+      body: replyText,
       agentRunId: runId,
       autoContinueClaude: triggerComment.autoContinueClaude,
     })

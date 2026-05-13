@@ -18,6 +18,7 @@ interface RunEvent {
   id: string;
   eventType: string;
   body: string | null;
+  metadata: Record<string, unknown> | null;
   createdAt: string;
 }
 
@@ -86,6 +87,16 @@ interface Props {
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'rejected', 'blocked']);
 const METERING_POD_STATUSES = new Set(['deploying', 'running', 'retrying', 'stop_requested']);
 const ACTIVE_STALE_AFTER_MS = 10 * 60 * 1000;
+type EventFilter = 'all' | 'agent' | 'tools' | 'logs' | 'runpod' | 'artifacts' | 'errors';
+const EVENT_FILTERS: Array<{ key: EventFilter; label: string }> = [
+  { key: 'all', label: 'All' },
+  { key: 'agent', label: 'Agent' },
+  { key: 'tools', label: 'Tools' },
+  { key: 'logs', label: 'Logs' },
+  { key: 'runpod', label: 'RunPod' },
+  { key: 'artifacts', label: 'Artifacts' },
+  { key: 'errors', label: 'Errors' },
+];
 
 function formatAge(ms: number) {
   const minutes = Math.max(0, Math.floor(ms / 60_000));
@@ -97,6 +108,54 @@ function formatAge(ms: number) {
 
 function continuationSource(request: string) {
   return request.match(/\[auto-(?:continuation|recovery)-for:([^\]]+)\]/)?.[1] ?? null;
+}
+
+function isErrorEvent(ev: RunEvent) {
+  const type = ev.eventType.toLowerCase();
+  return (
+    type === 'failed' ||
+    type.endsWith('_failed') ||
+    type.endsWith('_blocked') ||
+    type.includes('error') ||
+    ev.metadata?.is_error === true ||
+    ev.metadata?.level === 'error'
+  );
+}
+
+function primaryEventGroup(ev: RunEvent): Exclude<EventFilter, 'all' | 'errors'> {
+  const type = ev.eventType.toLowerCase();
+  if (type === 'log') return 'logs';
+  if (type.startsWith('runpod_') || type.startsWith('deploy_')) return 'runpod';
+  if (type.includes('artifact') || type.includes('upload')) return 'artifacts';
+  if (type === 'tool_call' || type === 'tool_result' || type === 'file_change') return 'tools';
+  return 'agent';
+}
+
+function eventMatchesFilter(ev: RunEvent, filter: EventFilter) {
+  if (filter === 'all') return true;
+  if (filter === 'errors') return isErrorEvent(ev);
+  return primaryEventGroup(ev) === filter;
+}
+
+function formatMetadataValue(value: unknown) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object') {
+    return JSON.stringify(value).slice(0, 180);
+  }
+  return String(value).slice(0, 180);
+}
+
+function eventSummary(ev: RunEvent) {
+  const metadata = ev.metadata;
+  if (!metadata) return null;
+  const keys = ['tool', 'tool_name', 'command', 'exit_code', 'status', 'phase', 'podId', 'pod_id', 'stream', 'level'];
+  const parts = keys
+    .map((key) => {
+      const value = formatMetadataValue(metadata[key]);
+      return value ? `${key}=${value}` : null;
+    })
+    .filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 export function RunStream({
@@ -120,6 +179,7 @@ export function RunStream({
   const [planJson, setPlanJson] = useState<StructuredPlan | null>(() => coerceStructuredPlan(initialPlanJson));
   const [error, setError] = useState<string | null>(null);
   const [reviewPrompt, setReviewPrompt] = useState<string | null>(null);
+  const [eventFilter, setEventFilter] = useState<EventFilter>('all');
   const [copiedReview, setCopiedReview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -274,6 +334,11 @@ export function RunStream({
     .reduce((sum, value) => sum + value, 0);
   const runpodAccountByKey = new Map(runpodAccounts.map((account) => [account.account, account]));
   const primaryRunpodAccount = pods[0] ? runpodAccountByKey.get(pods[0].account as 'team' | 'personal') : null;
+  const filteredEvents = events.filter((ev) => eventMatchesFilter(ev, eventFilter));
+  const eventFilterCounts = EVENT_FILTERS.map((filter) => ({
+    ...filter,
+    count: events.filter((ev) => eventMatchesFilter(ev, filter.key)).length,
+  }));
 
   return (
     <div className="space-y-4">
@@ -528,18 +593,42 @@ export function RunStream({
         </section>
       ) : null}
 
-      <section className="space-y-1">
-        <h2 className="text-sm font-medium text-[--color-muted]">Events</h2>
+      <section className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium text-[--color-muted]">Events</h2>
+          <div className="flex flex-wrap gap-1">
+            {eventFilterCounts.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => setEventFilter(filter.key)}
+                className={`rounded-md border px-2 py-1 text-xs ${
+                  eventFilter === filter.key
+                    ? 'border-[--color-accent] bg-[--color-accent] text-[--color-accent-fg]'
+                    : 'border-[--color-border] text-[--color-muted] hover:border-[--color-fg] hover:text-[--color-fg]'
+                }`}
+              >
+                {filter.label} {filter.count}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-[--color-border] divide-y divide-[--color-border] font-mono text-xs">
           {events.length === 0 ? (
             <p className="p-3 text-[--color-muted]">No events yet.</p>
+          ) : filteredEvents.length === 0 ? (
+            <p className="p-3 text-[--color-muted]">No matching events.</p>
           ) : (
-            events.map((ev) => (
-              <div key={ev.id} className="p-3">
+            filteredEvents.map((ev) => (
+              <div key={ev.id} className={`p-3 ${isErrorEvent(ev) ? 'bg-[--color-danger-bg]' : ''}`}>
                 <div className="flex items-baseline gap-3 text-[--color-muted]">
                   <span>{new Date(ev.createdAt).toLocaleTimeString()}</span>
                   <span className="text-[--color-fg]">{ev.eventType}</span>
+                  <span>{primaryEventGroup(ev)}</span>
                 </div>
+                {eventSummary(ev) ? (
+                  <p className="mt-1 whitespace-pre-wrap break-words text-[--color-muted]">{eventSummary(ev)}</p>
+                ) : null}
                 {ev.body ? (
                   <pre className="mt-1 whitespace-pre-wrap break-words text-[--color-fg]">{ev.body}</pre>
                 ) : null}

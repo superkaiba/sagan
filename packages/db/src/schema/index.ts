@@ -233,6 +233,7 @@ export const chatRoleEnum = pgEnum('chat_role', ['user', 'assistant', 'tool', 's
 export const commentAuthorKindEnum = pgEnum('comment_author_kind', [
   'human',
   'claude',
+  'codex',
   'system',
 ]);
 

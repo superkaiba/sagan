@@ -64,6 +64,7 @@ export async function GET(req: Request) {
       authorDisplayName: users.displayName,
       agentRunStatus: agentRuns.status,
       agentRunKind: agentRuns.kind,
+      agentRunRequest: agentRuns.request,
     })
     .from(comments)
     .leftJoin(users, eq(comments.authorUserId, users.id))
@@ -92,7 +93,7 @@ const createSchema = z.object({
   ]),
   entityId: z.string().uuid(),
   body: z.string().min(1).max(10_000),
-  askAgent: z.enum(['Claude']).optional(),
+  askAgent: z.enum(['Claude', 'Codex']).optional(),
   parentCommentId: z.string().uuid().optional(),
   // Google-Docs-style anchor: the selected text snippet the comment targets.
   // Only set on root comments; replies inherit the root's anchor visually.
@@ -105,10 +106,30 @@ const CODEX_REPLY_MARKER = '<!-- agent:codex -->';
 
 type CommentAgentName = 'Claude' | 'Codex';
 
+function agentMention(agent: CommentAgentName) {
+  return `agent:${agent}`;
+}
+
+function mentionsForAgent(agent: CommentAgentName | null) {
+  return agent ? [agentMention(agent)] : undefined;
+}
+
+function agentFromMentions(mentions: string[] | null | undefined): CommentAgentName | null {
+  if (!mentions) return null;
+  if (mentions.some((mention) => mention.toLowerCase() === 'agent:codex')) return 'Codex';
+  if (mentions.some((mention) => mention.toLowerCase() === 'agent:claude')) return 'Claude';
+  return null;
+}
+
 function requestedCommentAgent(body: string): CommentAgentName | null {
   if (ASK_CODEX_RE.test(body)) return 'Codex';
   if (ASK_CLAUDE_RE.test(body)) return 'Claude';
   return null;
+}
+
+function commentAgentIdentity(row: { authorKind?: string | null; mentions?: string[] | null; body: string }) {
+  if (row.authorKind === 'codex') return 'Codex';
+  return agentFromMentions(row.mentions) ?? requestedCommentAgent(row.body);
 }
 
 function stripLeadingAgentMention(body: string) {
@@ -177,6 +198,7 @@ export async function POST(req: Request) {
       authorKind: 'human',
       kind: requestedAgent ? 'ask_claude' : 'discussion',
       body: parsed.data.body,
+      mentions: mentionsForAgent(requestedAgent),
       anchoredQuote:
         normalizedParentCommentId ? null : parsed.data.anchoredQuote?.trim() || null,
       autoContinueClaude,
@@ -184,10 +206,10 @@ export async function POST(req: Request) {
     .returning();
   const comment = inserted[0]!;
   const rootCommentId = normalizedParentCommentId ?? comment.id;
-  if (requestedAgent && normalizedParentCommentId && !parentInfo?.autoContinueClaude) {
+  if (requestedAgent && normalizedParentCommentId) {
     await db()
       .update(comments)
-      .set({ autoContinueClaude: true, updatedAt: new Date() })
+      .set({ autoContinueClaude: true, mentions: mentionsForAgent(requestedAgent), updatedAt: new Date() })
       .where(eq(comments.id, normalizedParentCommentId));
   }
   await subscribeToCommentThread({
@@ -195,7 +217,7 @@ export async function POST(req: Request) {
     entityKind: parsed.data.entityKind,
     entityId: parsed.data.entityId,
     rootCommentId,
-    reason: requestedAgent ? 'asked_claude' : 'commented',
+    reason: requestedAgent ? 'asked_agent' : 'commented',
   });
   await subscribeMentionedUsers({
     body: parsed.data.body,
@@ -351,6 +373,7 @@ async function resolveParentComment(input: {
       entityId: comments.entityId,
       parentCommentId: comments.parentCommentId,
       autoContinueClaude: comments.autoContinueClaude,
+      mentions: comments.mentions,
       body: comments.body,
     })
     .from(comments)
@@ -368,7 +391,7 @@ async function resolveParentComment(input: {
       parent: {
         rootCommentId,
         autoContinueClaude: parent.autoContinueClaude,
-        autoContinueAgent: requestedCommentAgent(parent.body) ?? 'Claude',
+        autoContinueAgent: commentAgentIdentity(parent) ?? 'Claude',
       },
     };
   }
@@ -379,6 +402,7 @@ async function resolveParentComment(input: {
       entityKind: comments.entityKind,
       entityId: comments.entityId,
       autoContinueClaude: comments.autoContinueClaude,
+      mentions: comments.mentions,
       body: comments.body,
     })
     .from(comments)
@@ -392,7 +416,7 @@ async function resolveParentComment(input: {
     parent: {
       rootCommentId: root.id,
       autoContinueClaude: root.autoContinueClaude,
-      autoContinueAgent: requestedCommentAgent(parent.body) ?? requestedCommentAgent(root.body) ?? 'Claude',
+      autoContinueAgent: commentAgentIdentity(parent) ?? commentAgentIdentity(root) ?? 'Claude',
     },
   };
 }
@@ -400,7 +424,7 @@ async function resolveParentComment(input: {
 type CommentContextRow = {
   id: string;
   parentCommentId: string | null;
-  authorKind: 'human' | 'claude' | 'system';
+  authorKind: 'human' | 'claude' | 'codex' | 'system';
   body: string;
   createdAt: Date;
 };
@@ -449,7 +473,7 @@ function mentorSnapshotContext(input: { entityKind: EntityKind; entityId: string
   if (!result) return '';
   const sourceLine =
     result.number && result.url
-      ? `- GitHub issue: #${result.number} (${result.url})`
+      ? `- Source record: #${result.number} (${result.url})`
       : result.sourceLabel
         ? `- Source: ${result.sourceLabel}`
         : null;
@@ -479,10 +503,10 @@ function formatCommentContext(title: string, rows: CommentContextRow[]) {
 function formatCommentContextRow(row: CommentContextRow) {
   const body = stripCodexReplyMarker(row.body);
   const author =
-    row.authorKind === 'claude'
-      ? row.body.startsWith(CODEX_REPLY_MARKER)
-        ? 'Codex'
-        : 'Claude'
+    row.authorKind === 'codex' || row.body.startsWith(CODEX_REPLY_MARKER)
+      ? 'Codex'
+      : row.authorKind === 'claude'
+        ? 'Claude'
       : row.authorKind === 'system'
         ? 'System'
         : 'User';

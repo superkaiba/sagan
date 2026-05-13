@@ -207,6 +207,8 @@ export interface DispatchPodSpec {
   containerDiskGb?: number;
   cloudType?: 'ALL' | 'SECURE' | 'COMMUNITY';
   dataCenterId?: string;
+  dockerArgs?: string;
+  env?: Record<string, string>;
   dryRun?: boolean;
 }
 
@@ -215,7 +217,7 @@ export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
 
   const account = spec.account ?? 'team';
   const gpuTypeId = GPU_TYPE_IDS[spec.gpuType] ?? spec.gpuType;
-  const inputs: Record<string, string | number | boolean> = {
+  const inputs: Record<string, string | number | boolean | Array<{ key: string; value: string }>> = {
     name: spec.name,
     gpuTypeId,
     gpuCount: spec.gpuCount,
@@ -228,14 +230,17 @@ export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
     ports: '8888/http,22/tcp',
   };
   if (spec.dataCenterId) inputs.dataCenterId = spec.dataCenterId;
+  if (spec.dockerArgs) inputs.dockerArgs = spec.dockerArgs;
+  const env = Object.entries(spec.env ?? {})
+    .filter(([key]) => key.trim())
+    .map(([key, value]) => ({ key, value }));
+  if (env.length > 0) inputs.env = env;
 
   // RunPod GraphQL inputs use unquoted keys; bool/int/enum bare, strings quoted.
   const enumFields = new Set(['cloudType']);
   const fields: string[] = [];
   for (const [k, v] of Object.entries(inputs)) {
-    if (typeof v === 'boolean') fields.push(`${k}: ${v ? 'true' : 'false'}`);
-    else if (typeof v === 'number' || enumFields.has(k)) fields.push(`${k}: ${v}`);
-    else fields.push(`${k}: "${v}"`);
+    fields.push(`${k}: ${graphqlInputValue(v, enumFields.has(k))}`);
   }
   const inputsBlock = fields.join(', ');
   const query = `
@@ -254,6 +259,17 @@ export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
     );
   }
   return parsePod(data.podFindAndDeployOnDemand);
+}
+
+function graphqlInputValue(value: string | number | boolean | Array<{ key: string; value: string }>, isEnum = false): string {
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number' || isEnum) return String(value);
+  if (Array.isArray(value)) {
+    return `[${value
+      .map((item) => `{ key: ${JSON.stringify(item.key)}, value: ${JSON.stringify(item.value)} }`)
+      .join(', ')}]`;
+  }
+  return JSON.stringify(value);
 }
 
 /** Dispatch many pods concurrently. Use for hyperparameter sweeps etc. */

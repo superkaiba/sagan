@@ -54,6 +54,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
           id: e.id,
           eventType: e.eventType,
           body: e.body,
+          metadata: e.metadata as Record<string, unknown> | null,
           createdAt: e.createdAt.toISOString(),
         }))}
         initialPods={pods.map((pod) => ({

@@ -15,6 +15,8 @@ import {
   weeklyDigests,
 } from '@sagan/db/schema';
 import { db } from './db';
+import { getExperimentEstimate } from './experiment-estimate';
+import { formatDuration } from './runpod-cost';
 
 export type EntityKind =
   | 'project'
@@ -117,6 +119,7 @@ export async function loadEntity(kind: EntityKind, id: string): Promise<EntityRo
       const r = await db().select().from(experiments).where(eq(experiments.id, id)).limit(1);
       const row = r[0];
       if (!row) return null;
+      const estimate = getExperimentEstimate(row.planJson);
       return {
         id: row.id,
         title: row.title,
@@ -126,6 +129,7 @@ export async function loadEntity(kind: EntityKind, id: string): Promise<EntityRo
           row.number != null ? { label: '#', value: String(row.number) } : null,
           { label: 'kind', value: row.kind },
           { label: 'runpod', value: row.runpodAccount },
+          estimate.remainingMinutes != null ? { label: 'time left', value: formatDuration(estimate.remainingMinutes * 60) } : null,
         ].filter((m): m is { label: string; value: string } => Boolean(m)),
         raw: row,
       };

@@ -11,6 +11,10 @@ export const ENTITY_KINDS = [
   'project_narrative',
   'daily_log_entry',
   'weekly_digest',
+  'agent_run',
+  'chat_session',
+  'html_artifact',
+  'figure',
 ] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
 export const entityKindSchema = z.enum(ENTITY_KINDS);
@@ -63,6 +67,7 @@ export const runEventSchema = z.object({
     'deploy_pod_failed',
     'deploy_completed',
     'runpod_status',
+    'runpod_progress',
     'runpod_retry',
     'runpod_blocked',
     'runpod_stop_requested',

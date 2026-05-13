@@ -7,6 +7,7 @@ import { Markdown } from './Markdown';
 import { useAnchoredComments } from './AnchoredCommentsContext';
 
 const CODEX_REPLY_MARKER = '<!-- agent:codex -->';
+type CommentAgentName = 'Claude' | 'Codex';
 
 interface Comment {
   id: string;
@@ -14,13 +15,15 @@ interface Comment {
   entityId: string;
   parentCommentId: string | null;
   authorUserId: string | null;
-  authorKind: 'human' | 'claude' | 'system';
+  authorKind: 'human' | 'claude' | 'codex' | 'system';
   kind: 'discussion' | 'ask_claude' | 'todo';
   body: string;
   anchoredQuote: string | null;
+  mentions: string[] | null;
   agentRunId: string | null;
   agentRunStatus: string | null;
   agentRunKind: string | null;
+  agentRunRequest: string | null;
   autoContinueClaude: boolean;
   resolvedAt: string | null;
   resolvedSummaryMd: string | null;
@@ -79,7 +82,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     text: string,
     parentCommentId?: string | null,
     anchoredQuote?: string | null,
-    askAgent?: 'Claude',
+    askAgent?: CommentAgentName,
   ) {
     // The API's zod schema marks both fields .optional() — that means undefined
     // or absent, NOT null. Building the payload conditionally keeps null out.
@@ -95,7 +98,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     return res.ok;
   }
 
-  async function submitTopLevel(askAgent?: 'Claude') {
+  async function submitTopLevel(askAgent?: CommentAgentName) {
     const text = body.trim();
     if (!text || submitting) return;
     setSubmitting(true);
@@ -118,7 +121,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     await submitTopLevel();
   }
 
-  async function submitReply(parentId: string, askAgent?: 'Claude') {
+  async function submitReply(parentId: string, askAgent?: CommentAgentName) {
     const text = replyBody.trim();
     if (!text || submitting) return;
     setSubmitting(true);
@@ -212,21 +215,31 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   }
 
   function authorLabel(c: Comment) {
-    if (c.authorKind === 'claude') return c.body.startsWith(CODEX_REPLY_MARKER) ? 'Codex' : 'Claude';
+    if (c.authorKind === 'codex' || c.body.startsWith(CODEX_REPLY_MARKER)) return 'Codex';
+    if (c.authorKind === 'claude') return 'Claude';
     if (c.authorKind === 'system') return 'System';
     if (viewerUserId && c.authorUserId === viewerUserId) return 'You';
     return c.authorDisplayName || c.authorEmail || 'Commenter';
   }
 
+  function commentAgentName(c: Comment): CommentAgentName {
+    if (c.authorKind === 'codex' || c.body.startsWith(CODEX_REPLY_MARKER)) return 'Codex';
+    if (c.mentions?.some((mention) => mention.toLowerCase() === 'agent:codex')) return 'Codex';
+    if (c.mentions?.some((mention) => mention.toLowerCase() === 'agent:claude')) return 'Claude';
+    if (c.agentRunRequest && /^Comment responder:\s*Codex\b/im.test(c.agentRunRequest)) return 'Codex';
+    if (/(^|\s)@codex\b/i.test(c.body)) return 'Codex';
+    return 'Claude';
+  }
+
   function autoContinueLabel(c: Comment) {
-    return 'Claude auto-continues';
+    return `${commentAgentName(c)} auto-continues`;
   }
 
   function agentStatusLabel(c: Comment) {
     if (!c.agentRunId) return null;
     const status = c.agentRunStatus ?? 'queued';
     if (c.agentRunKind === 'apply') return `Revision ${status.replace(/_/g, ' ')}`;
-    return `Claude ${status.replace(/_/g, ' ')}`;
+    return `${commentAgentName(c)} ${status.replace(/_/g, ' ')}`;
   }
 
   function summarizeComment(c: Comment) {
@@ -244,7 +257,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   }
 
   function renderComment(c: Comment, isReply = false, replyCount = 0) {
-    const isAgent = c.authorKind === 'claude';
+    const isAgent = c.authorKind === 'claude' || c.authorKind === 'codex';
     const collapsed = collapsedIds.has(c.id);
     const displayBody = visibleBody(c);
     const hoverable = !isReply && !!c.anchoredQuote && !!anchorCtx;
@@ -353,6 +366,14 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
                     </button>
                     <button
                       type="button"
+                      onClick={() => void submitReply(c.id, 'Codex')}
+                      disabled={submitting || !replyBody.trim()}
+                      className="text-[--color-muted] hover:text-[--color-fg]"
+                    >
+                      ask Codex
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         setReplyTo(null);
                         setReplyBody('');
@@ -394,7 +415,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
           {activeAgentCount > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-[--color-info-border] bg-[--color-info-bg] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[--color-info]">
               <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              Claude running
+              Agent running
             </span>
           ) : null}
           {reviseRunId ? (
@@ -486,6 +507,14 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
               className="rounded-md border border-[--color-border] px-3 py-1.5 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
             >
               Ask Claude
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitTopLevel('Codex')}
+              disabled={submitting || !body.trim()}
+              className="rounded-md border border-[--color-border] px-3 py-1.5 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+            >
+              Ask Codex
             </button>
             <button
               type="submit"

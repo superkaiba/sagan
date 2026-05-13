@@ -19,7 +19,14 @@ import { Panel } from '@/components/ui';
 import { ProcessStateBadge } from '@/components/ProcessStateBadge';
 import { cn } from '@/lib/cn';
 import { formatRelativeTime, statusTone } from '@/lib/status';
-import { effectiveRunPodRate, estimateRunPodSpendUsd, formatUsd, formatUsdPerHour } from '@/lib/runpod-cost';
+import {
+  effectiveRunPodRate,
+  estimateRunPodRemainingCostUsd,
+  estimateRunPodSpendUsd,
+  formatDuration,
+  formatUsd,
+  formatUsdPerHour,
+} from '@/lib/runpod-cost';
 import type { DashboardPipelineCard, PipelineCardPod, PipelineCardRun, PipelineRunStatus, PipelineStageKey } from '@/lib/dashboard';
 
 type PipelineStage = { key: PipelineStageKey; title: string };
@@ -212,6 +219,31 @@ function podStripLabel(pods: PipelineCardPod[], status: string) {
   return `${noun} starting`;
 }
 
+function totalRunPodRate(pods: PipelineCardPod[]) {
+  const rates = pods.map((pod) => effectiveRunPodRate(pod)).filter((rate): rate is number => rate != null);
+  return rates.length > 0 ? rates.reduce((sum, rate) => sum + rate, 0) : null;
+}
+
+function estimateLabel(minutes: number | null | undefined) {
+  return minutes == null ? null : `${formatDuration(minutes * 60)} left`;
+}
+
+function estimateCostLabel(rate: number | null, minutes: number | null | undefined) {
+  return estimateRunPodRemainingCostUsd(rate, minutes ?? null);
+}
+
+function stageColumnClass(stage: PipelineStageKey) {
+  if (stage === 'running') return 'border-[--color-running-border] bg-[--color-running-bg]';
+  if (stage === 'blocked') return 'border-[--color-danger-border] bg-[--color-danger-bg]';
+  return null;
+}
+
+function stageHeaderClass(stage: PipelineStageKey) {
+  if (stage === 'running') return 'border-[--color-running-border] text-[--color-running]';
+  if (stage === 'blocked') return 'border-[--color-danger-border] text-[--color-danger]';
+  return null;
+}
+
 function SessionStrip({
   run,
   onRetry,
@@ -271,12 +303,20 @@ function SessionStrip({
   );
 }
 
-function RunPodStrip({ pods }: { pods: PipelineCardPod[] }) {
+function RunPodStrip({
+  pods,
+  estimatedRemainingMinutes,
+}: {
+  pods: PipelineCardPod[];
+  estimatedRemainingMinutes?: number | null;
+}) {
   if (pods.length === 0) return null;
   const primary = pods.find((pod) => pod.status === 'running') ?? pods[0]!;
   const gpu = primary.gpuTypeId ? `${primary.gpuCount ?? '-'}x ${primary.gpuTypeId}` : null;
   const spend = estimateRunPodSpendUsd(primary);
   const rate = effectiveRunPodRate(primary);
+  const remainingCost = estimateCostLabel(totalRunPodRate(pods), estimatedRemainingMinutes);
+  const remainingLabel = estimateLabel(estimatedRemainingMinutes);
 
   return (
     <div
@@ -292,6 +332,8 @@ function RunPodStrip({ pods }: { pods: PipelineCardPod[] }) {
       {gpu ? <span className="truncate">{gpu}</span> : null}
       {spend == null ? null : <span className="font-mono">{formatUsd(spend)}</span>}
       {rate == null ? null : <span className="truncate">{formatUsdPerHour(rate)}</span>}
+      {remainingLabel ? <span className="font-mono">{remainingLabel}</span> : null}
+      {remainingCost == null ? null : <span className="font-mono">{formatUsd(remainingCost)} left</span>}
       <Link
         href={`/runpods?pod=${encodeURIComponent(primary.podId)}`}
         className="ml-auto inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
@@ -438,7 +480,7 @@ function PipelineCard({
       ) : null}
       {card.pods?.length ? (
         <div className="relative z-20">
-          <RunPodStrip pods={card.pods} />
+          <RunPodStrip pods={card.pods} estimatedRemainingMinutes={card.estimatedRemainingMinutes} />
         </div>
       ) : null}
       {card.stage !== 'archived' ? (
@@ -747,6 +789,7 @@ export function PipelineBoard({
                 onDrop={(event) => handleDrop(stage.key, event)}
                 className={cn(
                   'flex w-[18rem] shrink-0 flex-col overflow-hidden transition-[background-color,border-color,box-shadow]',
+                  stageColumnClass(stage.key),
                   dropActive &&
                     validDrop &&
                     'border-[--color-accent] bg-[color-mix(in_srgb,var(--color-accent)_6%,var(--color-panel))] shadow-[var(--shadow-lift)] ring-2 ring-[--color-accent] ring-offset-2 ring-offset-[--color-bg]',
@@ -756,7 +799,7 @@ export function PipelineBoard({
                     'border-[--color-danger-border] bg-[--color-danger-bg] shadow-[var(--shadow-lift)] ring-2 ring-[--color-danger-border] ring-offset-2 ring-offset-[--color-bg]',
                 )}
               >
-                <div className="flex min-h-12 items-center justify-between gap-2 border-b border-[--color-border] px-3 py-3">
+                <div className={cn('flex min-h-12 items-center justify-between gap-2 border-b border-[--color-border] px-3 py-3', stageHeaderClass(stage.key))}>
                   <h2 className="text-sm font-semibold tracking-tight">{stage.title}</h2>
                   <span className="font-mono text-xs text-[--color-muted]">{stageCards.length}</span>
                 </div>

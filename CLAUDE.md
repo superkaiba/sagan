@@ -114,6 +114,29 @@ can tap from a phone or browser:
   never hard-code the value. Revoke and re-mint from `/api-tokens` if
   it leaks.
 
+## Projects
+
+A research project is a row in the `projects` table (`slug`, `title`,
+`summary_md`, `status`, `public`, `share_token`, `embedding`). The
+dashboard view is `/p/<slug>`.
+
+Create one by POSTing to `/api/projects` with the VM-side API token:
+
+```bash
+set -a; . /home/thomasjiralerspong/sagan/.env; set +a
+curl -sS -X POST "$NEXT_PUBLIC_SITE_URL/api/projects" \
+  -H "Authorization: Bearer $SAGAN_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "...", "summaryMd": "..."}'
+```
+
+Body schema (Zod-validated): `title` (required, ≤200 chars), `slug`
+(optional, `[a-z0-9-]+`, ≤120 chars — auto-derived from title and
+numeric-suffixed for uniqueness if omitted), `summaryMd` (optional,
+≤20k chars). The handler also writes a daily-log trail entry and
+enqueues a `project_lit_review` job via `pg_notify`; the runner picks
+it up and writes a draft row into `project_narratives`.
+
 ## Agent Run Tracking
 
 The runner records every action it takes. Useful tables:

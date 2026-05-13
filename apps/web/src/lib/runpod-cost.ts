@@ -46,6 +46,11 @@ export function estimateRunPodSpendUsd(pod: RunPodCostFields, nowMs?: number) {
   return rate * (seconds / 3600);
 }
 
+export function estimateRunPodRemainingCostUsd(spendPerHr: number | null, remainingMinutes: number | null) {
+  if (spendPerHr == null || remainingMinutes == null || remainingMinutes < 0) return null;
+  return spendPerHr * (remainingMinutes / 60);
+}
+
 export function formatUsd(value: number | null) {
   if (value == null) return 'rate pending';
   return new Intl.NumberFormat('en-US', {

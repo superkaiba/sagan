@@ -16,6 +16,7 @@ import { experimentTurn } from './workflow';
 import { statusTone, type StatusTone } from './status';
 import { deriveProcessState, type ProcessState } from './process-state';
 import { loadRunPodAccountSummaries, type RunPodAccountSummary } from './runpod-api';
+import { getExperimentEstimate } from './experiment-estimate';
 
 export type ApprovalAction =
   | { kind: 'experiment'; id: string; status: string }
@@ -115,6 +116,11 @@ export interface DashboardPipelineCard {
   tone: StatusTone;
   run?: PipelineCardRun | null;
   pods?: PipelineCardPod[];
+  estimatedRemainingMinutes?: number | null;
+  estimatedRemainingUpdatedAt?: string | null;
+  estimatedRemainingSource?: string | null;
+  estimatedRemainingMessage?: string | null;
+  progressPct?: number | null;
 }
 
 export interface DashboardRunPod {
@@ -133,6 +139,11 @@ export interface DashboardRunPod {
   experimentId: string | null;
   experimentMarker: string | null;
   experimentTitle: string | null;
+  experimentEstimatedRemainingMinutes: number | null;
+  experimentEstimatedRemainingUpdatedAt: string | null;
+  experimentEstimatedRemainingSource: string | null;
+  experimentEstimatedRemainingMessage: string | null;
+  experimentProgressPct: number | null;
   updatedAt: string;
   lastCheckedAt: string | null;
   lastStartedAt: string | null;
@@ -232,7 +243,7 @@ export async function loadActiveRunPods(limit = 20): Promise<DashboardRunPod[]> 
   const experimentRows =
     experimentIds.length > 0
       ? await db()
-          .select({ id: experiments.id, number: experiments.number, title: experiments.title })
+          .select({ id: experiments.id, number: experiments.number, title: experiments.title, planJson: experiments.planJson })
           .from(experiments)
           .where(inArray(experiments.id, experimentIds))
       : [];
@@ -240,6 +251,7 @@ export async function loadActiveRunPods(limit = 20): Promise<DashboardRunPod[]> 
 
   return podRows.map((pod) => {
     const experiment = pod.experimentId ? experimentById.get(pod.experimentId) : null;
+    const estimate = getExperimentEstimate(experiment?.planJson);
     return {
       id: pod.id,
       podId: pod.podId,
@@ -256,6 +268,11 @@ export async function loadActiveRunPods(limit = 20): Promise<DashboardRunPod[]> 
       experimentId: pod.experimentId,
       experimentMarker: experimentMarker(experiment?.number),
       experimentTitle: experiment?.title ?? null,
+      experimentEstimatedRemainingMinutes: estimate.remainingMinutes,
+      experimentEstimatedRemainingUpdatedAt: estimate.updatedAt,
+      experimentEstimatedRemainingSource: estimate.source,
+      experimentEstimatedRemainingMessage: estimate.message,
+      experimentProgressPct: estimate.progressPct,
       createdAt: iso(pod.createdAt),
       updatedAt: iso(pod.updatedAt),
       lastCheckedAt: pod.lastCheckedAt ? iso(pod.lastCheckedAt) : null,
@@ -767,6 +784,7 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
         hypothesis: sql<string>`left(coalesce(${experiments.hypothesis}, ''), 220)`,
         status: experiments.status,
         priority: experiments.priority,
+        planJson: experiments.planJson,
         projectId: experiments.projectId,
         createdAt: experiments.createdAt,
         updatedAt: experiments.updatedAt,
@@ -958,6 +976,7 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
     ...experimentRows.map((experiment) => {
       const run = runForScope('experiment', experiment.id);
       const pods = podsForCard({ run, experimentId: experiment.id });
+      const estimate = getExperimentEstimate(experiment.planJson);
       return {
         key: `experiment-${experiment.id}`,
         id: experiment.id,
@@ -978,6 +997,11 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
         tone: statusTone(experiment.status),
         run,
         pods,
+        estimatedRemainingMinutes: estimate.remainingMinutes,
+        estimatedRemainingUpdatedAt: estimate.updatedAt,
+        estimatedRemainingSource: estimate.source,
+        estimatedRemainingMessage: estimate.message,
+        progressPct: estimate.progressPct,
       };
     }),
     ...cleanResultRows.map((result) => {

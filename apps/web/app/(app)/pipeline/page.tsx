@@ -49,7 +49,7 @@ export default async function PipelinePage({
 
       <section className="grid gap-3 md:grid-cols-3">
         <MetricTile label="Owner action" value={ownerActionCount} tone={ownerActionCount > 0 ? 'approval' : 'neutral'} />
-        <MetricTile label="Running" value={runningCount} tone={runningCount > 0 ? 'info' : 'neutral'} />
+        <MetricTile label="Running" value={runningCount} tone={runningCount > 0 ? 'success' : 'neutral'} />
         <MetricTile label="Blocked" value={blockedCount} tone={blockedCount > 0 ? 'danger' : 'neutral'} />
       </section>
 

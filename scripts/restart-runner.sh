@@ -73,13 +73,17 @@ if [[ "$needs_restart" -eq 1 && "$FORCE" -ne 1 ]]; then
     echo "DATABASE_URL[_DIRECT] not set; cannot check active runs. Use --force to override." >&2
     exit 3
   fi
-  active_count="$(psql "$conn" -At -c "SELECT count(*) FROM agent_runs WHERE status IN ('queued','running','awaiting_approval','approved','deploying');" 2>/dev/null || echo "")"
+  # Only `running` (a live Claude SDK session) and `deploying` (mid-pod
+  # dispatch) are real SIGTERM-mid-flight risks. `queued` / `approved` get
+  # picked back up after restart; `awaiting_approval` is just waiting on
+  # human input. Don't treat those as blockers.
+  active_count="$(psql "$conn" -At -c "SELECT count(*) FROM agent_runs WHERE status IN ('running','deploying');" 2>/dev/null || echo "")"
   if [[ -z "$active_count" ]]; then
     echo "failed to query active runs; refusing without --force" >&2
     exit 3
   fi
   if [[ "$active_count" -gt 0 ]]; then
-    echo "REFUSING restart: $active_count agent run(s) active (queued/running/awaiting_approval/approved/deploying)." >&2
+    echo "REFUSING restart: $active_count agent run(s) in flight (running/deploying)." >&2
     echo "Wait for them to finish, or pass --force to restart anyway (will SIGTERM in-flight Claude subprocesses)." >&2
     exit 4
   fi

@@ -13,12 +13,29 @@ import { log } from './log.js';
 import { recordTrail } from './trail.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 import { queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
+import { readCgroupMemory } from './lib/cgroup.js';
 
 export const QUEUED_CHANNEL = 'agent_run_queued';
 export const APPROVED_CHANNEL = 'agent_run_approved';
 export const PIPELINE_CHANNEL = 'pipeline_changed';
 
 const DEFAULT_STALE_RUNNING_MINUTES = 15;
+
+// Hard cap on concurrent in-flight agent_run claims. Protects against
+// OOM-kill cascades (each Claude Code subprocess can hold 250-750 MB RSS) and
+// against API rate-limit storms when many runs start tool-calling at once.
+const MAX_CONCURRENT_RUNS = (() => {
+  const raw = Number.parseInt(process.env.RUNNER_MAX_CONCURRENT_RUNS ?? '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 20;
+})();
+
+// When the runner's cgroup memory usage crosses this fraction of MemoryMax,
+// refuse to claim new runs until usage drops. The deferred row stays queued
+// and gets retried on the next pg_notify or 60s sweep.
+const MEMORY_BACKPRESSURE_FRACTION = (() => {
+  const raw = Number.parseFloat(process.env.RUNNER_MEMORY_BACKPRESSURE_FRACTION ?? '');
+  return Number.isFinite(raw) && raw > 0 && raw < 1 ? raw : 0.7;
+})();
 
 export interface QueueHandlers {
   onQueued: (runId: string) => Promise<void>;
@@ -40,7 +57,10 @@ export async function startQueue(handlers: QueueHandlers, signal: AbortSignal): 
     log.debug('queue notify (approved)', { runId });
     handle(runId, 'approved', handlers);
   });
-  log.info(`subscribed to ${QUEUED_CHANNEL} and ${APPROVED_CHANNEL}`);
+  log.info(`subscribed to ${QUEUED_CHANNEL} and ${APPROVED_CHANNEL}`, {
+    maxConcurrentRuns: MAX_CONCURRENT_RUNS,
+    memoryBackpressureFraction: MEMORY_BACKPRESSURE_FRACTION,
+  });
 
   // Sweep on startup for any rows we missed while down.
   await sweep(handlers);
@@ -135,10 +155,40 @@ const inflight = new Set<string>();
 function handle(runId: string, kind: 'queued' | 'approved', handlers: QueueHandlers) {
   const tag = `${runId}:${kind}`;
   if (inflight.has(tag)) return;
+  // Reserve the slot synchronously before the async memory read — otherwise
+  // two concurrent notifies could both see size 19 of 20 and slip past the
+  // cap. If the memory check then refuses, we release the slot below.
+  if (inflight.size >= MAX_CONCURRENT_RUNS) {
+    log.info('backpressuring claim: concurrency cap reached', {
+      runId,
+      kind,
+      inflight: inflight.size,
+      cap: MAX_CONCURRENT_RUNS,
+    });
+    return;
+  }
   inflight.add(tag);
-  claim(runId, kind, handlers)
-    .catch((err) => log.error('run failed', { runId, kind, err: String(err) }))
-    .finally(() => inflight.delete(tag));
+  void (async () => {
+    try {
+      const mem = await readCgroupMemory();
+      if (mem && mem.fraction !== null && mem.fraction >= MEMORY_BACKPRESSURE_FRACTION) {
+        log.warn('backpressuring claim: cgroup memory over threshold', {
+          runId,
+          kind,
+          currentBytes: mem.current,
+          maxBytes: mem.max,
+          fraction: Number(mem.fraction.toFixed(3)),
+          threshold: MEMORY_BACKPRESSURE_FRACTION,
+        });
+        return;
+      }
+      await claim(runId, kind, handlers);
+    } catch (err) {
+      log.error('run failed', { runId, kind, err: String(err) });
+    } finally {
+      inflight.delete(tag);
+    }
+  })();
 }
 
 async function claim(runId: string, kind: 'queued' | 'approved', handlers: QueueHandlers) {

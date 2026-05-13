@@ -63,6 +63,9 @@ export async function GET(req: Request) {
               COALESCE((SELECT MAX(updated_at) FROM approval_requests), 'epoch'::timestamptz),
               COALESCE((SELECT MAX(updated_at) FROM daily_log_entries), 'epoch'::timestamptz),
               COALESCE((SELECT MAX(created_at) FROM workflow_events), 'epoch'::timestamptz),
+              COALESCE((SELECT MAX(updated_at) FROM comments), 'epoch'::timestamptz),
+              COALESCE((SELECT MAX(last_message_at) FROM chat_sessions), 'epoch'::timestamptz),
+              COALESCE((SELECT MAX(created_at) FROM chat_messages), 'epoch'::timestamptz),
               COALESCE(
                 (
                   SELECT MAX(

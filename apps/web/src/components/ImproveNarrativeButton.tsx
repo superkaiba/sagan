@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useDashboardLiveSignal } from '@/lib/use-dashboard-live-signal';
 
 interface Status {
   unresolvedCommentCount: number;
@@ -29,9 +30,11 @@ export function ImproveNarrativeButton({ narrativeId }: { narrativeId: string })
 
   useEffect(() => {
     void load();
-    const t = setInterval(load, 4000);
-    return () => clearInterval(t);
   }, [narrativeId]);
+
+  useDashboardLiveSignal(() => {
+    void load();
+  });
 
   async function onClick() {
     setSubmitting(true);

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Markdown } from './Markdown';
+import { useDashboardLiveSignal } from '@/lib/use-dashboard-live-signal';
 
 interface ProposedFollowUpComment {
   id: string;
@@ -43,9 +44,11 @@ export function ProposedFollowUps({ experimentId }: { experimentId: string }) {
 
   useEffect(() => {
     void load();
-    const t = setInterval(load, 6000);
-    return () => clearInterval(t);
   }, [load]);
+
+  useDashboardLiveSignal(() => {
+    void load();
+  });
 
   async function promote(comment: ProposedFollowUpComment) {
     setPromotingId(comment.id);

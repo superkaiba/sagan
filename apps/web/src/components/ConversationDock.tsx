@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Archive, MessageSquare, Plus, RotateCcw, Send, Wrench, X } from 'lucide-react';
 import { Markdown } from '@/components/Markdown';
 import { cn } from '@/lib/cn';
+import { useDashboardLiveSignal } from '@/lib/use-dashboard-live-signal';
 import styles from './ConversationDock.module.css';
 
 type ConversationKind = 'chat' | 'improve';
@@ -169,14 +170,11 @@ export function ConversationDock() {
     void loadSessions({ showLoading: true });
   }, [loadSessions, mounted]);
 
-  useEffect(() => {
+  useDashboardLiveSignal(() => {
     if (!mounted) return;
-    const timer = window.setInterval(() => {
-      void loadSessions();
-      if (open && activeSid) void loadMessages(activeSid);
-    }, 5_000);
-    return () => window.clearInterval(timer);
-  }, [activeSid, loadMessages, loadSessions, mounted, open]);
+    void loadSessions();
+    if (open && activeSid) void loadMessages(activeSid);
+  });
 
   useEffect(() => {
     if (composingNew) return;

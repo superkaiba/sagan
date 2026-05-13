@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Markdown } from './Markdown';
+import { useDashboardLiveSignal } from '@/lib/use-dashboard-live-signal';
 
 type ExperimentReviewStatus = 'reviewing' | 'followups_running';
 
@@ -88,12 +89,12 @@ export function ExperimentReviewPanel({
   useEffect(() => {
     void loadFollowups();
     void loadImproveStatus();
-    const t = setInterval(() => {
-      void loadFollowups();
-      void loadImproveStatus();
-    }, 5000);
-    return () => clearInterval(t);
   }, [loadFollowups, loadImproveStatus]);
+
+  useDashboardLiveSignal(() => {
+    void loadFollowups();
+    void loadImproveStatus();
+  });
 
   const selectedQuickIds = useMemo(
     () => Object.entries(selection).filter(([, s]) => s.quick).map(([id]) => id),

@@ -7,6 +7,7 @@ import { Loader2, Maximize2, Minimize2, X } from 'lucide-react';
 import { Rnd } from 'react-rnd';
 import { Markdown } from './Markdown';
 import { useAnchoredComments } from './AnchoredCommentsContext';
+import { useDashboardLiveSignal } from '@/lib/use-dashboard-live-signal';
 
 const POPOUT_STORAGE_KEY = 'sagan:comments-popout';
 const POPOUT_DEFAULT = { popped: false, x: 0, y: 0, width: 720, height: 600 } as const;
@@ -137,10 +138,14 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
 
   useEffect(() => {
     void load();
-    const t = setInterval(load, 4000);
-    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityKind, entityId]);
+
+  // Refetch on SSE signal instead of a fixed 4s poll. The shared EventSource
+  // fires `changed` only when something in the dashboard actually moved.
+  useDashboardLiveSignal(() => {
+    void load();
+  });
 
   // Publish anchor list (root-level comments with quotes) into the shared
   // context so NarrativeBody can paint <mark> wraps. Replies aren't wrapped

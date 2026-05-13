@@ -1,12 +1,13 @@
 import { notFound } from 'next/navigation';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { agentRuns, podLifecycle, projectNarratives, projects } from '@sagan/db/schema';
+import { agentRuns, experiments, podLifecycle, projectNarratives, projects } from '@sagan/db/schema';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { ClarifyingQuestionsPanel } from '@/components/ClarifyingQuestionsPanel';
 import { Comments } from '@/components/Comments';
 import { PlanPanel } from '@/components/PlanPanel';
 import { PlanHistory } from '@/components/PlanHistory';
 import { ProposedFollowUps } from '@/components/ProposedFollowUps';
+import { ExperimentReviewPanel } from '@/components/ExperimentReviewPanel';
 import { EditableBody } from '@/components/EditableBody';
 import { CommentableBody } from '@/components/CommentableBody';
 import { EditableTitle } from '@/components/EditableTitle';
@@ -112,6 +113,19 @@ export default async function EntityPage({
     if (rows[0]) narrativeProject = { slug: rows[0].slug, isPublic: rows[0].isPublic };
   }
 
+  // When the experiment has a plan, PlanWithComments hosts the only Comments
+  // section (scoped to the plan version). Skip the page-level sidebar Comments
+  // in that case so the owner doesn't see two parallel comment threads.
+  let experimentHasPlan = false;
+  if (kind === 'experiment') {
+    const planRows = await db()
+      .select({ planMd: experiments.planMd })
+      .from(experiments)
+      .where(eq(experiments.id, entity.id))
+      .limit(1);
+    experimentHasPlan = Boolean(planRows[0]?.planMd?.trim());
+  }
+
   return (
     <AnchoredCommentsProvider>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -174,6 +188,13 @@ export default async function EntityPage({
           </section>
         )}
 
+        {owner && kind === 'experiment' && (entity.status === 'reviewing' || entity.status === 'followups_running') ? (
+          <ExperimentReviewPanel
+            experimentId={entity.id}
+            status={entity.status as 'reviewing' | 'followups_running'}
+          />
+        ) : null}
+
         {kind === 'belief' ? <BeliefHistoryLink beliefId={entity.id} /> : null}
         {kind === 'project' ? (
           <>
@@ -193,11 +214,15 @@ export default async function EntityPage({
           showWhenEmpty={kind === 'experiment' || kind === 'todo'}
         />
 
-        {kind === 'experiment' ? (
+        {/* ProposedFollowUps (sidebar "Move to todo") is superseded by
+            ExperimentReviewPanel in the main column for experiments in
+            `reviewing`/`followups_running`. Keep it around only outside those
+            states so legacy kind='todo' comments stay actionable. */}
+        {kind === 'experiment' && entity.status !== 'reviewing' && entity.status !== 'followups_running' ? (
           <ProposedFollowUps experimentId={entity.id} />
         ) : null}
 
-        <Comments entityKind={kind} entityId={entity.id} />
+        {experimentHasPlan ? null : <Comments entityKind={kind} entityId={entity.id} />}
 
         {entity.meta && entity.meta.length > 0 ? (
           <details className="rounded-lg border border-[--color-border] bg-[--color-panel]">

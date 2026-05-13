@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ExternalLink, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import type { DashboardSuggestedLitItem } from '@/lib/dashboard';
+import { PriorityPill, type LitPriority } from './LitPriorityControl';
 
 const TOPIC_LABELS: Record<string, string> = {
   current_project: 'Current project',
@@ -34,7 +35,10 @@ export function SuggestedPaper({ suggestion }: { suggestion: DashboardSuggestedL
         <span id="suggested-paper-heading" className="font-semibold">
           Read next
         </span>
-        <span className="ml-auto font-mono text-[10px] text-[--color-muted]">{topicLabel}</span>
+        <span className="ml-auto inline-flex items-center gap-1.5">
+          <PriorityPill priority={(suggestion.priority ?? 'normal') as LitPriority} />
+          <span className="font-mono text-[10px] text-[--color-muted]">{topicLabel}</span>
+        </span>
       </div>
       <Link
         href={`/e/lit_item/${suggestion.id}`}

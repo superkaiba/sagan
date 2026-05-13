@@ -23,6 +23,7 @@ import {
   type LitPaperFields,
 } from '@/components/LiteraturePaperView';
 import { LitReadStateControl, type LitReadState } from '@/components/LitReadStateControl';
+import { LitPriorityControl, type LitPriority } from '@/components/LitPriorityControl';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { AgentActivityPanel } from '@/components/AgentActivityPanel';
 import { NarrativePublishControl } from '@/components/NarrativePublishControl';
@@ -208,6 +209,10 @@ export default async function EntityPage({
             <LitReadStateControl
               litItemId={entity.id}
               initialState={(entity.raw as unknown as { readState: LitReadState }).readState}
+            />
+            <LitPriorityControl
+              litItemId={entity.id}
+              initialPriority={(entity.raw as unknown as { priority?: LitPriority }).priority ?? 'normal'}
             />
             <LiteraturePaperSide paper={entity.raw as unknown as LitPaperFields} />
           </>

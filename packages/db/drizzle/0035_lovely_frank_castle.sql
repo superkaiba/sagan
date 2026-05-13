@@ -1,0 +1,1 @@
+ALTER TABLE "lit_items" ADD COLUMN "priority" "priority" DEFAULT 'normal' NOT NULL;

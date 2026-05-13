@@ -663,6 +663,7 @@ export const litItems = pgTable(
     tags: jsonb('tags'),
     topic: litTopicEnum('topic').notNull().default('other'),
     readState: litReadStateEnum('read_state').notNull().default('unread'),
+    priority: priorityEnum('priority').notNull().default('normal'),
     queuePosition: integer('queue_position'),
     lastRankedAt: timestamp('last_ranked_at', { withTimezone: true }),
     public: boolean('public').notNull().default(false),

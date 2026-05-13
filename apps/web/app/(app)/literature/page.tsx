@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { desc } from 'drizzle-orm';
+import { desc, sql } from 'drizzle-orm';
 import { BookOpen, ExternalLink, Library, Sparkles } from 'lucide-react';
 import { litItems } from '@sagan/db/schema';
 import { EmptyState, MetricTile, PageHeader, Panel, StatusBadge, buttonClassName } from '@/components/ui';
+import { PriorityPill, type LitPriority } from '@/components/LitPriorityControl';
 import { db } from '@/lib/db';
 import { cn } from '@/lib/cn';
 import { NewLitItemForm } from '../library/NewLitItemForm';
@@ -58,7 +59,18 @@ export default async function LiteraturePage() {
   const rows = await db()
     .select()
     .from(litItems)
-    .orderBy(desc(litItems.releasedOn), desc(litItems.updatedAt))
+    .orderBy(
+      // Priority first so urgent/high float to the top of each topic bucket,
+      // then recency, then last-touched.
+      sql`CASE ${litItems.priority}
+            WHEN 'urgent' THEN 3
+            WHEN 'high'   THEN 2
+            WHEN 'normal' THEN 1
+            WHEN 'low'    THEN 0
+          END DESC`,
+      desc(litItems.releasedOn),
+      desc(litItems.updatedAt),
+    )
     .limit(1000);
 
   const activeCount = rows.filter((item) =>
@@ -146,6 +158,7 @@ export default async function LiteraturePage() {
                             </a>
                           ) : null}
                           <span className="ml-auto inline-flex flex-wrap items-center gap-2 text-xs text-[--color-muted]">
+                            <PriorityPill priority={(item.priority ?? 'normal') as LitPriority} />
                             <StatusBadge status={item.readState} />
                             <span>{recencyLabel(item.releasedOn)}</span>
                             {item.arxivId ? <span className="font-mono">{item.arxivId}</span> : null}

@@ -38,6 +38,7 @@ const createSchema = z.object({
   topic: z
     .enum(['current_project', 'general_safety', 'general_ai', 'cognitive_science', 'neuroscience', 'other'])
     .optional(),
+  priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
 });
 
 const ARXIV_RE = /(?:arxiv\.org\/abs\/|arxiv\.org\/pdf\/)([0-9]{4}\.[0-9]+)/i;
@@ -77,6 +78,7 @@ export async function POST(req: Request) {
       relevanceReasonMd: parsed.data.relevanceReasonMd,
       threatReasonMd: parsed.data.threatReasonMd,
       topic: parsed.data.topic ?? 'other',
+      priority: parsed.data.priority ?? 'normal',
       readState: 'unread',
     })
     .returning();

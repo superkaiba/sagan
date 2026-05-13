@@ -10,6 +10,7 @@ const patchSchema = z.object({
   readState: z
     .enum(['unread', 'summary_read', 'saved_for_later', 'reading', 'read', 'read_deeply'])
     .optional(),
+  priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
   queuePosition: z.number().int().optional(),
   title: z.string().min(1).max(500).optional(),
   authors: z.array(z.string().min(1).max(200)).max(100).optional(),

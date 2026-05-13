@@ -137,12 +137,89 @@ Rules inside the dropdown:
 - **Sample outputs inline** at the eval-narrative point, not in a separate
   section. Use a `<pre>` block, three representative completions, one per
   training condition. Link to the full output set immediately above the
-  `<pre>` ("full completion sets in `eval_results/issue_311/`").
+  `<pre>` ("full completion sets in `eval_results/issue_311/`"). Label the
+  block as **"cherry-picked for illustration"** in the prose immediately
+  preceding it whenever the samples were selected (not random-sampled) —
+  prevents readers over-generalizing from three cases. If samples are
+  random-drawn instead, say so explicitly ("first three of 400 completions").
 - **Statistical-test rationale**: include a "Why this test" paragraph. Why
   Spearman not Pearson, why partial, what's being controlled for, etc.
+- **Confidence-rationale sentence** near the end of the design block (right
+  before the parameters table). One line, in this exact shape:
+  *"Confidence: LOW | MODERATE | HIGH — &lt;one sentence naming the binding
+  constraint (LOW/MODERATE) or the evidence that survives scrutiny (HIGH)&gt;."*
+  The HIGH/MODERATE/LOW value MUST match the `(... confidence)` marker in
+  the title. The sentence makes the binding constraint scannable — readers
+  shouldn't have to reverse-engineer the confidence label from prose
+  scattered through the design block.
 - **Parameters table at the bottom**, never in a separate top-level section.
   Cell padding around `.5rem .8rem`, header column with a light background and
   right border for readability.
+
+## Reproducibility appendix (agent-facing, collapsible)
+
+A second `<details>` block at the very bottom of the body, AFTER the
+"Experimental design" block. Holds the artifact URLs, compute footprint,
+and code/config pointers an agent (or future-you) needs to reproduce or
+build on the result, but that a human reader glancing at the page does
+not need to see. This is the one place where "machine-parseable
+provenance" overrides "human-narrative voice".
+
+```html
+<details id="repro">
+<summary>Reproducibility (agent-facing)</summary>
+<div>
+  <p><strong>Artifacts.</strong></p>
+  <ul>
+    <li><strong>Model / adapters:</strong> <code><a href="https://huggingface.co/superkaiba1/explore-persona-space/tree/issue311-joint">superkaiba1/explore-persona-space @ issue311-joint</a></code></li>
+    <li><strong>Training dataset:</strong> <code><a href="...">superkaiba1/explore-persona-space-data @ issue311_joint_sources</a></code></li>
+    <li><strong>Raw completions:</strong> <code><a href="...">superkaiba1/explore-persona-space-data @ issue311_raw_completions/</a></code></li>
+    <li><strong>WandB run(s):</strong> <code><a href="https://wandb.ai/.../runs/abc123">issue311-joint</a></code>, <code><a href="...">issue311-paramedic-only</a></code>, <code><a href="...">issue311-comedian-only</a></code></li>
+    <li><strong>Eval JSON in repo:</strong> <code>eval_results/issue_311/run_result.json</code></li>
+    <li><strong>Hero figure data:</strong> <code>figures/issue_311/joint_leakage_scatter.json</code></li>
+  </ul>
+  <p><strong>Compute.</strong></p>
+  <ul>
+    <li><strong>Wall time:</strong> ~45 min training + ~15 min eval per condition</li>
+    <li><strong>GPU:</strong> 1× H100 SXM</li>
+    <li><strong>Pod:</strong> <code>epm-issue-311</code> (ephemeral, terminated after upload PASS)</li>
+  </ul>
+  <p><strong>Code.</strong></p>
+  <ul>
+    <li><strong>Entry scripts:</strong> <code><a href="...">scripts/train.py</a></code>, <code><a href="...">scripts/eval.py</a></code></li>
+    <li><strong>Git commit:</strong> <code>921b304d</code></li>
+    <li><strong>Hydra configs:</strong> <code>configs/training/lora_joint.yaml</code>, <code>configs/eval/zlt_leakage.yaml</code></li>
+    <li><strong>Reproduce:</strong> <pre>git clone ... &amp;&amp; git checkout 921b304d &amp;&amp; uv run python scripts/train.py condition=joint_paramedic_comedian seed=137</pre></li>
+  </ul>
+</div>
+</details>
+```
+
+Rules:
+
+- **Every URL is permanent.** HF Hub revisions (`@<branch-or-tag>` or
+  `tree/<commit>`), WandB run URLs (not project URLs), git commits (not
+  branches). An agent rerunning 6 months from now must hit the same
+  artifact.
+- **Every path is repo-relative** (`eval_results/issue_311/...`), not
+  absolute pod paths. The agent reading this is on a fresh checkout.
+- **No prose, no narrative** — bullets and code blocks only. If you
+  catch yourself explaining what something is, it belongs in the
+  Experimental design block instead.
+- **Empty cells are FAILs.** No `{{`, `TBD`, `see config`, `default`.
+  If a field doesn't apply (e.g. no LoRA adapters for a pure eval
+  experiment), write `n/a` explicitly.
+- **One block per experiment.** Follow-up experiments that fold into
+  the same body (per CLAUDE.md's follow-up exception) append their own
+  `<details>` sub-block per follow-up, labelled with the follow-up
+  identifier.
+- **At the bottom of the body**, after the Experimental design block.
+  Not above, not in the middle. Readers should never have to scroll
+  past it on their way to content.
+
+The mechanical verifier (`scripts/verify_sagan_card.py` in the EPS repo)
+checks this block's presence + URL permanence + sentinel scrub before
+the clean-result-critic agent runs.
 
 ## Sections to avoid
 

@@ -327,7 +327,8 @@ async function runWithStreaming(
         if (message.subtype === 'success') {
           costUsd = message.total_cost_usd ?? 0;
           numTurns = message.num_turns ?? 0;
-          const finalText = (message.result?.trim()) || lastAssistantText;
+          const rawFinal = (message.result?.trim()) || lastAssistantText;
+          const finalText = stripSentinel(rawFinal).trim();
           if (row.kind === 'plan' || row.kind === 'experiment') {
             const plan = planMd?.trim() || finalText.trim() || '(empty plan)';
             await markAwaitingApproval(runId, plan);

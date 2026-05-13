@@ -504,14 +504,6 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
                   <div className="flex justify-end gap-2 text-xs">
                     <button
                       type="button"
-                      onClick={() => void submitReply(c.id, 'Claude')}
-                      disabled={submitting || !replyBody.trim()}
-                      className="text-[--color-muted] hover:text-[--color-fg]"
-                    >
-                      ask Claude
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => {
                         setReplyTo(null);
                         setReplyBody('');
@@ -607,24 +599,14 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
             className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-[--color-muted]">Enter posts. Shift-Enter adds a line.</p>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void submitTopLevel('Claude')}
-                disabled={submitting || !body.trim()}
-                className="rounded-md border border-[--color-border] px-3 py-1.5 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
-              >
-                @claude
-              </button>
-              <button
-                type="submit"
-                disabled={submitting || !body.trim()}
-                className="rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg] disabled:opacity-50"
-              >
-                {submitting ? 'Posting…' : 'Comment'}
-              </button>
-            </div>
+            <p className="text-xs text-[--color-muted]">Enter posts · Shift-Enter for a newline · mention @claude to invoke the agent</p>
+            <button
+              type="submit"
+              disabled={submitting || !body.trim()}
+              className="rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg] disabled:opacity-50"
+            >
+              {submitting ? 'Posting…' : 'Comment'}
+            </button>
           </div>
         </form>
       </>

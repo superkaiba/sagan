@@ -239,6 +239,13 @@
       "when": 1778710644768,
       "tag": "0033_far_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1778711840150,
+      "tag": "0034_nifty_shard",
+      "breakpoints": true
     }
   ]
 }

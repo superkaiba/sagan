@@ -156,10 +156,11 @@ export const litItemTypeEnum = pgEnum('lit_item_type', [
 
 export const litReadStateEnum = pgEnum('lit_read_state', [
   'unread',
-  'queued',
+  'summary_read',
+  'saved_for_later',
   'reading',
   'read',
-  'archived',
+  'read_deeply',
 ]);
 
 export const litSourceKindEnum = pgEnum('lit_source_kind', [

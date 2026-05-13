@@ -14,6 +14,10 @@ const LABELS: Record<string, string> = {
   queue_launch: 'queue launch',
   in_progress: 'in progress',
   not_useful: 'not useful',
+  // lit_read_state
+  summary_read: 'summary read',
+  saved_for_later: 'saved for later',
+  read_deeply: 'read deeply',
 };
 
 export function statusLabel(status: string | null | undefined) {
@@ -28,11 +32,11 @@ export function statusTone(status: string | null | undefined): StatusTone {
   }
   if (['blocked', 'failed', 'rejected', 'falsified'].includes(normalized)) return 'danger';
   if (['running', 'deploying', 'queued', 'implementing', 'testing', 'uploading', 'verifying', 'followups_running', 'clean_result_drafting', 'reading', 'in_progress'].includes(normalized)) return 'running';
-  if (['approved', 'completed', 'shared', 'done', 'done_experiment', 'done_impl', 'read', 'published', 'supported', 'active', 'useful', 'resolved'].includes(normalized)) {
+  if (['approved', 'completed', 'shared', 'done', 'done_experiment', 'done_impl', 'read', 'read_deeply', 'published', 'supported', 'active', 'useful', 'resolved'].includes(normalized)) {
     return 'success';
   }
-  if (['planning', 'clarifying', 'awaiting_clarifications', 'proposed', 'draft', 'deferred', 'paused', 'gate_pending'].includes(normalized)) return 'warning';
-  if (['info', 'note', 'decision', 'clean_result'].includes(normalized)) return 'info';
+  if (['planning', 'clarifying', 'awaiting_clarifications', 'proposed', 'draft', 'deferred', 'paused', 'gate_pending', 'saved_for_later'].includes(normalized)) return 'warning';
+  if (['info', 'note', 'decision', 'clean_result', 'summary_read'].includes(normalized)) return 'info';
   return 'neutral';
 }
 

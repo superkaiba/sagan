@@ -22,6 +22,7 @@ import {
   LiteraturePaperSide,
   type LitPaperFields,
 } from '@/components/LiteraturePaperView';
+import { LitReadStateControl, type LitReadState } from '@/components/LitReadStateControl';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { AgentActivityPanel } from '@/components/AgentActivityPanel';
 import { NarrativePublishControl } from '@/components/NarrativePublishControl';
@@ -203,7 +204,13 @@ export default async function EntityPage({
 
       <aside className="min-w-0 space-y-4 xl:border-l xl:border-[--color-border] xl:pl-5">
         {kind === 'lit_item' ? (
-          <LiteraturePaperSide paper={entity.raw as unknown as LitPaperFields} />
+          <>
+            <LitReadStateControl
+              litItemId={entity.id}
+              initialState={(entity.raw as unknown as { readState: LitReadState }).readState}
+            />
+            <LiteraturePaperSide paper={entity.raw as unknown as LitPaperFields} />
+          </>
         ) : null}
         <AgentActivityPanel
           entityKind={kind}

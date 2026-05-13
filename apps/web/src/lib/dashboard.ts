@@ -273,7 +273,7 @@ async function loadShellCounts(): Promise<ShellCounts> {
       (SELECT count(*)::int FROM clean_results WHERE status IN ('draft','reviewing','blocked')) AS active_clean_results,
       (SELECT count(*)::int FROM todos WHERE status <> 'archived') AS active_todos,
       (SELECT count(*)::int FROM agent_runs WHERE status IN (${agentStatusList})) AS active_agents,
-      (SELECT count(*)::int FROM lit_items WHERE read_state IN ('queued','reading','unread')) AS literature_queue,
+      (SELECT count(*)::int FROM lit_items WHERE read_state IN ('unread','summary_read','saved_for_later','reading')) AS literature_queue,
       (SELECT count(*)::int FROM workflow_events WHERE created_at > now() - interval '7 days') AS recent_log
   `)) as unknown as Array<{
     active_experiments: number;
@@ -752,7 +752,9 @@ async function loadTopSuggestedLitItemImpl(): Promise<DashboardSuggestedLitItem 
     .leftJoin(litInbox, eq(litInbox.litItemId, litItems.id))
     .where(
       and(
-        eq(litItems.readState, 'unread'),
+        // Suggest things I haven't really committed to yet — unread by default,
+        // or items I explicitly bookmarked for a deeper read later.
+        inArray(litItems.readState, ['unread', 'saved_for_later']),
         sql`${litItems.title} <> ''`,
         sql`(${litInbox.surfacedOn} IS NULL OR ${litInbox.surfacedOn} > now()::date - interval '21 days')`,
       ),

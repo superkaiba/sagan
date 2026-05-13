@@ -61,7 +61,9 @@ export default async function LiteraturePage() {
     .orderBy(desc(litItems.releasedOn), desc(litItems.updatedAt))
     .limit(1000);
 
-  const activeCount = rows.filter((item) => ['reading', 'queued', 'unread'].includes(item.readState)).length;
+  const activeCount = rows.filter((item) =>
+    ['unread', 'summary_read', 'saved_for_later', 'reading'].includes(item.readState),
+  ).length;
   const rankedCount = rows.filter((item) => item.lastRankedAt).length;
 
   return (
@@ -81,7 +83,11 @@ export default async function LiteraturePage() {
       <section className="grid gap-3 md:grid-cols-3">
         <MetricTile label="Needs attention" value={activeCount} tone={activeCount > 0 ? 'info' : 'neutral'} />
         <MetricTile label="Ranked" value={rankedCount} />
-        <MetricTile label="Read" value={rows.filter((item) => item.readState === 'read').length} tone="success" />
+        <MetricTile
+          label="Read"
+          value={rows.filter((item) => item.readState === 'read' || item.readState === 'read_deeply').length}
+          tone="success"
+        />
       </section>
 
       <NewLitItemForm />

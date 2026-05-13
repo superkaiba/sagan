@@ -52,6 +52,14 @@ export const metadata: Metadata = {
   title: 'Sagan',
   description: 'Personal research-life dashboard.',
   manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.png', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: { url: '/favicon.png', sizes: '32x32' },
+    shortcut: '/favicon.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',

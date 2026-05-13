@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   '/api/auth/me',
   '/api/auth/google/start',
   '/api/auth/google/callback',
+  '/api/runpods/progress',
 ];
 
 export function proxy(req: NextRequest) {

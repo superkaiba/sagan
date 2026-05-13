@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { agentRuns, podLifecycle, projectNarratives, projects } from '@sagan/db/schema';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
+import { ClarifyingQuestionsPanel } from '@/components/ClarifyingQuestionsPanel';
 import { Comments } from '@/components/Comments';
 import { ProposedFollowUps } from '@/components/ProposedFollowUps';
 import { EditableBody } from '@/components/EditableBody';
@@ -142,6 +143,15 @@ export default async function EntityPage({
             <StartIdeationButton sourceKind={kind} sourceId={entity.id} />
           ) : null}
         </header>
+
+        {kind === 'experiment' ? (
+          <ClarifyingQuestionsPanel
+            experimentId={entity.id}
+            status={entity.status}
+            planJson={(entity.raw as { planJson?: unknown }).planJson}
+            canDispatch={owner}
+          />
+        ) : null}
 
         {owner && canEditBody(kind) ? (
           <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />

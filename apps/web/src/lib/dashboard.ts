@@ -1046,7 +1046,7 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
         detail: experiment.hypothesis || null,
         status: experiment.status,
         project: experiment.projectId ? projectById.get(experiment.projectId) ?? null : null,
-        ownerAction: ['plan_pending', 'awaiting_approval', 'blocked', 'awaiting_promotion'].includes(experiment.status)
+        ownerAction: ['awaiting_clarifications', 'plan_pending', 'awaiting_approval', 'blocked', 'awaiting_promotion'].includes(experiment.status)
           ? experimentTurn(experiment.status)
           : null,
         processState: deriveProcessState({ entityKind: 'experiment', status: experiment.status, run, pods }),

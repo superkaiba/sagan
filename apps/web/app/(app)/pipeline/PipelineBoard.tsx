@@ -16,6 +16,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Archive, CheckCircle2, ExternalLink, GripVertical, Loader2, RotateCcw, Server } from 'lucide-react';
 import { Panel } from '@/components/ui';
+import { DispatchPlannerButton } from '@/components/DispatchPlannerButton';
 import { ProcessStateBadge } from '@/components/ProcessStateBadge';
 import { cn } from '@/lib/cn';
 import { formatRelativeTime, statusTone } from '@/lib/status';
@@ -382,9 +383,15 @@ function PipelineCard({
 }) {
   const router = useRouter();
   const suppressClick = useRef(false);
-  const attentionColumn = card.stage === 'approval' || card.stage === 'review';
+  const attentionColumn =
+    card.stage === 'approval' || card.stage === 'review' || card.stage === 'awaiting_clarifications';
   const needsOwner = Boolean(card.ownerAction) && attentionColumn;
   const approvalLabel = card.stage === 'approval' ? 'Approve & dispatch' : card.stage === 'review' ? 'Approve' : null;
+  const showDispatchPlanner =
+    card.kind === 'experiment' &&
+    (card.stage === 'awaiting_clarifications' || card.stage === 'approval');
+  const dispatchLabel =
+    card.stage === 'awaiting_clarifications' ? 'Dispatch planner with answers' : 'Re-dispatch planner';
   const runActive = card.run ? RUN_ACTIVE_STATUSES.includes(card.run.status) : false;
   const runFailed = card.run ? RUN_FAILED_STATUSES.includes(card.run.status) : false;
   const cardBlocked = !needsOwner && (card.stage === 'blocked' || runFailed);
@@ -488,6 +495,15 @@ function PipelineCard({
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />}
             {approvalLabel}
           </button>
+        </div>
+      ) : null}
+      {showDispatchPlanner ? (
+        <div
+          className="relative z-20 mt-2 pr-8"
+          data-card-control="true"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <DispatchPlannerButton experimentId={card.id} label={dispatchLabel} size="sm" />
         </div>
       ) : null}
       {card.run ? (

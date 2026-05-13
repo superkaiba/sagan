@@ -6,6 +6,7 @@ import type { EntityKind } from './entity';
 export const EXPERIMENT_STATUSES = [
   'proposed',
   'clarifying',
+  'awaiting_clarifications',
   'gate_pending',
   'planning',
   'plan_pending',
@@ -41,6 +42,8 @@ export function experimentTurn(status: string) {
       return 'Sagan turn: clarify scope';
     case 'clarifying':
       return 'Sagan turn: clarify hypothesis and information gain';
+    case 'awaiting_clarifications':
+      return 'Owner turn: answer Sagan questions';
     case 'gate_pending':
       return 'Owner turn: resolve gate';
     case 'planning':

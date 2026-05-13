@@ -30,7 +30,7 @@ export function statusTone(status: string | null | undefined): StatusTone {
   if (['approved', 'completed', 'shared', 'done', 'done_experiment', 'done_impl', 'read', 'published', 'supported', 'active', 'useful', 'resolved'].includes(normalized)) {
     return 'success';
   }
-  if (['planning', 'clarifying', 'proposed', 'draft', 'deferred', 'paused', 'gate_pending'].includes(normalized)) return 'warning';
+  if (['planning', 'clarifying', 'awaiting_clarifications', 'proposed', 'draft', 'deferred', 'paused', 'gate_pending'].includes(normalized)) return 'warning';
   if (['info', 'note', 'decision', 'clean_result'].includes(normalized)) return 'info';
   return 'neutral';
 }

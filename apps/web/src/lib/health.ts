@@ -28,6 +28,7 @@ const ACTIVE_POD_STATUSES = [
 const ACTIVE_EXPERIMENT_STATUSES = [
   'proposed',
   'clarifying',
+  'awaiting_clarifications',
   'gate_pending',
   'planning',
   'plan_pending',

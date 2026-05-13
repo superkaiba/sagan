@@ -62,6 +62,7 @@ export function deriveProcessState(input: {
   if (['awaiting_approval', 'gate_pending', 'plan_pending'].includes(status)) return state('Owner review', status, 'approval');
   if (['proposed', 'inbox', 'open', 'scoped'].includes(status)) return state('Scoping', status, 'neutral');
   if (['clarifying'].includes(status)) return state('Clarifying', status, 'info');
+  if (['awaiting_clarifications'].includes(status)) return state('Owner: answer questions', status, 'approval');
   if (['planning'].includes(status)) return state('Planning + critic', status, 'info');
   if (['queued'].includes(status)) return state('Queued', status, 'info');
   if (['implementing', 'code_reviewing', 'testing', 'running', 'uploading', 'in_progress'].includes(status)) {

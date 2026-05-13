@@ -155,6 +155,7 @@ export const PIPELINE_STAGES = [
   { key: 'later', title: 'Later' },
   { key: 'idea', title: 'Idea / Proposed' },
   { key: 'clarifying', title: 'Clarifying' },
+  { key: 'awaiting_clarifications', title: 'Awaiting clarifications' },
   { key: 'planning', title: 'Planning' },
   { key: 'approval', title: 'Awaiting approval' },
   { key: 'queued', title: 'Approved / Queued' },
@@ -174,6 +175,7 @@ const PIPELINE_STAGE_NOTE_PREFIX = 'sagan:pipeline-stage=';
 export const DASHBOARD_EXPERIMENT_STATUSES = [
   'proposed',
   'clarifying',
+  'awaiting_clarifications',
   'gate_pending',
   'planning',
   'plan_pending',
@@ -204,7 +206,7 @@ const ACTIVE_EXPERIMENT_STATUSES = DASHBOARD_EXPERIMENT_STATUSES;
 const ACTIVE_AGENT_STATUSES = ['queued', 'running', 'awaiting_approval', 'approved', 'deploying', 'blocked', 'failed', 'cancelled'] as const;
 const ACTIVE_POD_STATUSES = ['queued', 'deploying', 'running', 'retrying', 'stop_requested', 'blocked'] as const;
 const DEPRIORITIZED_TODO_STATUSES = ['inbox', 'open', 'scoped', 'planning'] as const;
-const DEPRIORITIZED_EXPERIMENT_STATUSES = ['proposed', 'clarifying', 'planning'] as const;
+const DEPRIORITIZED_EXPERIMENT_STATUSES = ['proposed', 'clarifying', 'awaiting_clarifications', 'planning'] as const;
 
 function iso(value: Date | string | null | undefined) {
   if (!value) return new Date(0).toISOString();
@@ -707,6 +709,7 @@ function experimentStage(status: string, priority: string): PipelineStageKey {
   }
   if (status === 'proposed') return 'idea';
   if (status === 'clarifying') return 'clarifying';
+  if (status === 'awaiting_clarifications') return 'awaiting_clarifications';
   if (status === 'planning') return 'planning';
   if (status === 'gate_pending' || status === 'plan_pending' || status === 'awaiting_approval') return 'approval';
   if (status === 'approved' || status === 'queued') return 'queued';

@@ -21,6 +21,7 @@ export type EntityKind = z.infer<typeof entityKindSchema>;
 export const experimentStatusSchema = z.enum([
   'proposed',
   'clarifying',
+  'awaiting_clarifications',
   'gate_pending',
   'planning',
   'plan_pending',

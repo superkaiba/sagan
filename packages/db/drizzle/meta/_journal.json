@@ -183,6 +183,13 @@
       "when": 1778664711000,
       "tag": "0025_add_clarifying_experiment_status",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1778670427142,
+      "tag": "0026_add_awaiting_clarifications_experiment_status",
+      "breakpoints": true
     }
   ]
 }

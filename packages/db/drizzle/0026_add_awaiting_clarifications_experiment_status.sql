@@ -1,0 +1,1 @@
+ALTER TYPE "public"."experiment_status" ADD VALUE 'awaiting_clarifications' BEFORE 'gate_pending';

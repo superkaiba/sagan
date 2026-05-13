@@ -25,7 +25,7 @@ type Topic =
   | 'neuroscience'
   | 'other';
 
-type ReadState = 'unread' | 'queued' | 'reading' | 'read' | 'archived';
+type ReadState = 'unread' | 'summary_read' | 'saved_for_later' | 'reading' | 'read' | 'read_deeply';
 
 interface LitItem {
   id: string;
@@ -60,11 +60,26 @@ const TOPIC_ORDER: Array<{ key: Topic; title: string; subtitle: string }> = [
 
 const READ_STATE_TONE: Record<ReadState, PillTone> = {
   unread: 'info',
-  queued: 'info',
+  summary_read: 'info',
+  saved_for_later: 'info',
   reading: 'warning',
   read: 'success',
-  archived: 'neutral',
+  read_deeply: 'success',
 };
+
+const READ_STATE_LABEL: Record<ReadState, string> = {
+  unread: 'unread',
+  summary_read: 'summary read',
+  saved_for_later: 'saved',
+  reading: 'reading',
+  read: 'read',
+  read_deeply: 'read deeply',
+};
+
+// "needs attention" excludes saved_for_later (explicitly deferred) and the
+// two terminal states (read, read_deeply). summary_read still counts because
+// the full paper is yet to be read.
+const ACTIVE_READ_STATES: ReadState[] = ['unread', 'summary_read', 'reading'];
 
 function authorsLine(value: unknown): string {
   if (!value) return 'Unknown authors';
@@ -166,7 +181,7 @@ export default function LibraryScreen() {
   }
 
   const total = items?.length ?? 0;
-  const active = items?.filter((it) => ['reading', 'queued', 'unread'].includes(it.readState)).length ?? 0;
+  const active = items?.filter((it) => ACTIVE_READ_STATES.includes(it.readState)).length ?? 0;
 
   return (
     <Screen edges={['top']}>
@@ -245,7 +260,9 @@ export default function LibraryScreen() {
               </Text>
             ) : null}
             <HStack gap="sm" wrap>
-              <Pill tone={READ_STATE_TONE[item.readState]}>{item.readState}</Pill>
+              <Pill tone={READ_STATE_TONE[item.readState] ?? 'neutral'}>
+                {READ_STATE_LABEL[item.readState] ?? item.readState}
+              </Pill>
               {item.releasedOn ? (
                 <Text variant="caption" tone="subtle">
                   {recencyLabel(item.releasedOn)}

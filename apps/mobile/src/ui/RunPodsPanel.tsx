@@ -94,24 +94,31 @@ export function RunPodsPanel({ inline = false, pollMs = 30_000 }: RunPodsPanelPr
   const t = useTheme();
   const [data, setData] = useState<RunPodsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      abortRef.current?.abort();
     };
   }, []);
 
   const load = useCallback(async () => {
-    const r = await api<RunPodsResponse>('/api/runpods/active');
-    if (!isMountedRef.current) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const r = await api<RunPodsResponse>('/api/runpods/active', { signal: controller.signal });
+    if (controller.signal.aborted || !isMountedRef.current) return;
     if (r.ok && r.data) {
       setData(r.data);
       setError(null);
+      setForbidden(false);
     } else if (r.status === 403) {
+      setForbidden(true);
       setError(null);
-      setData({ pods: [], accounts: [], generatedAt: new Date().toISOString() });
     } else if (r.error !== 'aborted') {
       setError(r.error ?? `Refresh failed (${r.status})`);
     }
@@ -121,11 +128,18 @@ export function RunPodsPanel({ inline = false, pollMs = 30_000 }: RunPodsPanelPr
     void load();
   }, [load]);
 
+  // Stop polling once we know this account can't see pods — no point burning
+  // a 403 round-trip every 30s for non-owners.
   useEffect(() => {
-    if (pollMs <= 0) return;
-    const h = setInterval(() => void load(), pollMs);
-    return () => clearInterval(h);
-  }, [load, pollMs]);
+    if (pollMs <= 0 || forbidden) return;
+    const handle = setInterval(() => void load(), pollMs);
+    return () => clearInterval(handle);
+  }, [load, pollMs, forbidden]);
+
+  if (forbidden) {
+    // Non-owner: render nothing.
+    return null;
+  }
 
   if (!data) {
     return inline ? null : (

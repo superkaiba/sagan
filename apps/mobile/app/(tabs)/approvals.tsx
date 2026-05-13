@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, RefreshControl, View } from 'react-native';
+import { FlatList, Linking, RefreshControl, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '@/lib/api';
+import { api, apiBase } from '@/lib/api';
 import { spacing, useTheme } from '@/lib/theme';
 import {
   Button,
@@ -58,12 +58,29 @@ const GROUP_TONE: Record<ApprovalItem['group'], PillTone> = {
 
 const STATUS_TONE: Record<string, PillTone> = {
   awaiting_approval: 'warning',
+  awaiting_promotion: 'warning',
+  awaiting_clarifications: 'warning',
   reviewing: 'info',
   blocked: 'danger',
+  failed: 'danger',
   followups_running: 'info',
+  plan_pending: 'warning',
+  gate_pending: 'warning',
   promote_ready: 'success',
   needs_owner: 'warning',
 };
+
+const ENTITY_KIND_ROUTES = new Set([
+  'project',
+  'experiment',
+  'belief',
+  'lit_item',
+  'clean_result',
+  'project_narrative',
+  'todo',
+  'run',
+  'daily_log_entry',
+]);
 
 function formatRelative(iso: string): string {
   const t = new Date(iso).getTime();
@@ -125,6 +142,23 @@ export default function ApprovalsScreen() {
     setRefreshing(true);
     void load();
   }, [load]);
+
+  function openApprovalTarget(item: ApprovalItem) {
+    // agent_run items don't have an entity-detail screen — route to the run page.
+    if (item.action?.kind === 'agent_run') {
+      router.push(`/agent/${item.action.id}`);
+      return;
+    }
+    if (ENTITY_KIND_ROUTES.has(item.entityKind)) {
+      router.push({
+        pathname: '/entity/[kind]/[id]',
+        params: { kind: item.entityKind, id: item.entityId },
+      });
+      return;
+    }
+    // Unknown kind — open the server-rendered href on the web dashboard.
+    Linking.openURL(`${apiBase}${item.href}`);
+  }
 
   async function act(item: ApprovalItem, verb: 'approve' | 'defer' | 'block' | 'reject' | 'reopen') {
     const action = item.action;
@@ -228,9 +262,14 @@ export default function ApprovalsScreen() {
             {section.items.map((item) => {
               const isBusy = busy?.id === item.key;
               return (
-                <Card key={item.key} pad="base" gap="sm">
+                <Card
+                  key={item.key}
+                  pad="base"
+                  gap="sm"
+                  onPress={() => openApprovalTarget(item)}
+                >
                   <HStack gap="sm" wrap>
-                    <Pill tone={GROUP_TONE[section.group]}>{item.kind.replace('_', ' ')}</Pill>
+                    <Pill tone={GROUP_TONE[section.group]}>{item.kind.replace(/_/g, ' ')}</Pill>
                     {item.status ? (
                       <Pill tone={STATUS_TONE[item.status] ?? 'neutral'}>
                         {item.status.replace(/_/g, ' ')}
@@ -240,17 +279,7 @@ export default function ApprovalsScreen() {
                       {formatRelative(item.updatedAt)}
                     </Text>
                   </HStack>
-                  <Text
-                    variant="bodyEmph"
-                    onPress={() =>
-                      router.push({
-                        pathname: '/entity/[kind]/[id]',
-                        params: { kind: item.entityKind, id: item.entityId },
-                      })
-                    }
-                  >
-                    {item.title}
-                  </Text>
+                  <Text variant="bodyEmph">{item.title}</Text>
                   {item.context ? (
                     <Text variant="footnote" tone="muted" numberOfLines={3}>
                       {item.context}
@@ -262,7 +291,17 @@ export default function ApprovalsScreen() {
                       {item.requestedAction}
                     </Text>
                   </HStack>
-                  {item.action ? renderActionRow(item, act, isBusy, busy?.verb ?? null) : null}
+                  {item.action ? (
+                    // Claim the gesture responder so taps on Approve / Defer /
+                    // Block don't also bubble up to the Card's onPress and
+                    // navigate the user away mid-action.
+                    <View
+                      onStartShouldSetResponder={() => true}
+                      onResponderRelease={() => undefined}
+                    >
+                      {renderActionRow(item, act, isBusy, busy?.verb ?? null, busy !== null)}
+                    </View>
+                  ) : null}
                 </Card>
               );
             })}
@@ -278,8 +317,10 @@ function renderActionRow(
   act: (item: ApprovalItem, verb: 'approve' | 'defer' | 'block' | 'reject' | 'reopen') => void,
   isBusy: boolean,
   verb: string | null,
+  globalBusy: boolean,
 ) {
   const action = item.action!;
+  const lock = globalBusy;
   if (action.kind === 'experiment') {
     return (
       <HStack gap="sm" wrap>
@@ -287,7 +328,7 @@ function renderActionRow(
           label="Approve"
           size="sm"
           loading={isBusy && verb === 'approve'}
-          disabled={isBusy}
+          disabled={lock}
           onPress={() => act(item, 'approve')}
         />
         <Button
@@ -295,7 +336,7 @@ function renderActionRow(
           size="sm"
           variant="secondary"
           loading={isBusy && verb === 'defer'}
-          disabled={isBusy}
+          disabled={lock}
           onPress={() => act(item, 'defer')}
         />
         <Button
@@ -303,7 +344,7 @@ function renderActionRow(
           size="sm"
           variant="destructive"
           loading={isBusy && verb === 'block'}
-          disabled={isBusy}
+          disabled={lock}
           onPress={() => act(item, 'block')}
         />
       </HStack>
@@ -318,7 +359,7 @@ function renderActionRow(
             size="sm"
             variant="secondary"
             loading={isBusy && verb === 'reopen'}
-            disabled={isBusy}
+            disabled={lock}
             onPress={() => act(item, 'reopen')}
           />
         </HStack>
@@ -330,7 +371,7 @@ function renderActionRow(
           label="Approve"
           size="sm"
           loading={isBusy && verb === 'approve'}
-          disabled={isBusy}
+          disabled={lock}
           onPress={() => act(item, 'approve')}
         />
         <Button
@@ -338,7 +379,7 @@ function renderActionRow(
           size="sm"
           variant="destructive"
           loading={isBusy && verb === 'block'}
-          disabled={isBusy}
+          disabled={lock}
           onPress={() => act(item, 'block')}
         />
       </HStack>
@@ -351,7 +392,7 @@ function renderActionRow(
         label="Approve"
         size="sm"
         loading={isBusy && verb === 'approve'}
-        disabled={isBusy}
+        disabled={lock}
         onPress={() => act(item, 'approve')}
       />
       <Button
@@ -359,7 +400,7 @@ function renderActionRow(
         size="sm"
         variant="destructive"
         loading={isBusy && verb === 'reject'}
-        disabled={isBusy}
+        disabled={lock}
         onPress={() => act(item, 'reject')}
       />
     </HStack>

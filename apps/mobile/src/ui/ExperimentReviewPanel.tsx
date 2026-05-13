@@ -49,7 +49,9 @@ export function ExperimentReviewPanel({
   const [newBody, setNewBody] = useState('');
   const [submitting, setSubmitting] = useState<'improve' | 'todos' | 'done' | 'add' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ownerForbidden, setOwnerForbidden] = useState(false);
   const isMountedRef = useRef(true);
+  const epochRef = useRef(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -58,32 +60,45 @@ export function ExperimentReviewPanel({
     };
   }, []);
 
-  const loadFollowups = useCallback(async () => {
-    const r = await api<{ comments: CommentRow[] }>(
-      `/api/comments?entityKind=experiment&entityId=${encodeURIComponent(experimentId)}`,
-    );
-    if (!isMountedRef.current || !r.ok || !r.data) return;
-    const todos = r.data.comments
-      .filter((c) => c.kind === 'todo' && !c.resolvedAt)
-      .map((c) => ({ id: c.id, body: c.body, resolvedAt: c.resolvedAt, createdAt: c.createdAt }));
-    setFollowups(todos);
-  }, [experimentId]);
-
-  const loadImproveStatus = useCallback(async () => {
-    const r = await api<ImproveStatus>(`/api/experiments/${experimentId}/improve`);
-    if (!isMountedRef.current || !r.ok || !r.data) return;
-    setImproveStatus(r.data);
+  // Epoch-keyed loader: any response from a stale fetch is discarded. This
+  // avoids aborting a user-triggered foreground reload when the 6s poll fires.
+  const reload = useCallback(async () => {
+    const epoch = ++epochRef.current;
+    const [followupRes, improveRes] = await Promise.all([
+      api<{ comments: CommentRow[] }>(
+        `/api/comments?entityKind=experiment&entityId=${encodeURIComponent(experimentId)}`,
+      ),
+      api<ImproveStatus>(`/api/experiments/${experimentId}/improve`),
+    ]);
+    if (!isMountedRef.current || epoch !== epochRef.current) return;
+    if (followupRes.ok && followupRes.data) {
+      const todos = followupRes.data.comments
+        .filter((c) => c.kind === 'todo' && !c.resolvedAt)
+        .map((c) => ({ id: c.id, body: c.body, resolvedAt: c.resolvedAt, createdAt: c.createdAt }));
+      setFollowups(todos);
+    }
+    if (improveRes.ok && improveRes.data) {
+      setImproveStatus(improveRes.data);
+      setOwnerForbidden(false);
+    } else if (improveRes.status === 403) {
+      // /api/experiments/:id/improve is owner-only. A non-owner viewing this
+      // experiment shouldn't see the review panel at all — flag and bail.
+      setOwnerForbidden(true);
+    }
   }, [experimentId]);
 
   useEffect(() => {
-    void loadFollowups();
-    void loadImproveStatus();
-    const handle = setInterval(() => {
-      void loadFollowups();
-      void loadImproveStatus();
-    }, 6000);
+    void reload();
+    // Stop polling once we know the viewer can't act on this experiment.
+    if (ownerForbidden) return;
+    const handle = setInterval(() => void reload(), 6000);
     return () => clearInterval(handle);
-  }, [loadFollowups, loadImproveStatus]);
+  }, [reload, ownerForbidden]);
+
+  if (ownerForbidden) {
+    // Hide the entire panel for non-owners so we don't show buttons that 403.
+    return null;
+  }
 
   const selectedQuickIds = useMemo(
     () => Object.entries(selection).filter(([, s]) => s.quick).map(([id]) => id),
@@ -123,26 +138,31 @@ export function ExperimentReviewPanel({
       return;
     }
     setNewBody('');
-    void loadFollowups();
+    void reload();
     onChanged?.();
   }
 
+  const improveDisabled =
+    locked ||
+    submitting !== null ||
+    (selectedQuickIds.length === 0 && (improveStatus?.unresolvedCommentCount ?? 0) === 0);
+
   async function submitImprove() {
-    if (locked || submitting) return;
+    if (improveDisabled) return;
     setSubmitting('improve');
     setError(null);
     const r = await api(`/api/experiments/${experimentId}/improve`, {
       method: 'POST',
-      body: JSON.stringify({ followupCommentIds: selectedQuickIds }),
+      body: JSON.stringify({ quickFollowupCommentIds: selectedQuickIds }),
     });
-    setSubmitting(null);
     if (!r.ok) {
+      setSubmitting(null);
       setError(r.error ?? `Improve failed (${r.status})`);
       return;
     }
     setSelection({});
-    void loadImproveStatus();
-    void loadFollowups();
+    await reload();
+    setSubmitting(null);
     onChanged?.();
   }
 
@@ -152,20 +172,21 @@ export function ExperimentReviewPanel({
     setError(null);
     const r = await api(`/api/experiments/${experimentId}/queue-followups`, {
       method: 'POST',
-      body: JSON.stringify({ followupCommentIds: selectedTodoIds }),
+      body: JSON.stringify({ todoFollowupCommentIds: selectedTodoIds }),
     });
-    setSubmitting(null);
     if (!r.ok) {
+      setSubmitting(null);
       setError(r.error ?? `Queue followups failed (${r.status})`);
       return;
     }
     setSelection({});
-    void loadFollowups();
+    await reload();
+    setSubmitting(null);
     onChanged?.();
   }
 
   async function markDone() {
-    if (locked || submitting) return;
+    if (locked || submitting !== null) return;
     setSubmitting('done');
     setError(null);
     const r = await api(`/api/experiments/${experimentId}`, {
@@ -322,7 +343,7 @@ export function ExperimentReviewPanel({
         <Button
           label={`Submit Q (${selectedQuickIds.length}) → Improve`}
           onPress={() => void submitImprove()}
-          disabled={locked || submitting !== null}
+          disabled={improveDisabled}
           loading={submitting === 'improve'}
           fullWidth
         />

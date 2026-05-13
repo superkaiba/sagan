@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, RefreshControl } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, RefreshControl } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api, apiBase } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
@@ -81,12 +81,16 @@ const VALID_KINDS = new Set<Kind>([
   'daily_log_entry',
 ]);
 
-const READ_STATE_OPTIONS: Array<{ value: 'unread' | 'queued' | 'reading' | 'read' | 'archived'; label: string }> = [
+const READ_STATE_OPTIONS: Array<{
+  value: 'unread' | 'summary_read' | 'saved_for_later' | 'reading' | 'read' | 'read_deeply';
+  label: string;
+}> = [
   { value: 'unread', label: 'Unread' },
-  { value: 'queued', label: 'Queued' },
+  { value: 'summary_read', label: 'Summary' },
+  { value: 'saved_for_later', label: 'Saved' },
   { value: 'reading', label: 'Reading' },
   { value: 'read', label: 'Read' },
-  { value: 'archived', label: 'Archived' },
+  { value: 'read_deeply', label: 'Read deeply' },
 ];
 
 function webPathFor(kind: Kind, id: string, row: EntityRow | null): string {
@@ -208,9 +212,14 @@ export default function EntityDetailScreen() {
   const reviewStatus = kind === 'experiment' ? row?.status : null;
 
   return (
-    <>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+    >
       <Stack.Screen options={{ title: KIND_TITLES[kind] }} />
       <ScrollScreen
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -287,7 +296,11 @@ export default function EntityDetailScreen() {
                   </Text>
                   <HStack gap="xs" wrap>
                     {READ_STATE_OPTIONS.map((opt) => {
-                      const active = (row.raw?.readState ?? row.status) === opt.value;
+                      // For lit_item entity, both row.status and row.raw.readState
+                      // are sourced from the same column; prefer raw for future-
+                      // proofing in case the loader changes status semantics.
+                      const current = (row.raw?.readState as string | undefined) ?? row.status;
+                      const active = current === opt.value;
                       return (
                         <Button
                           key={opt.value}
@@ -326,6 +339,6 @@ export default function EntityDetailScreen() {
           </>
         ) : null}
       </ScrollScreen>
-    </>
+    </KeyboardAvoidingView>
   );
 }

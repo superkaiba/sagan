@@ -100,6 +100,7 @@ export function Comments({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const isMountedRef = useRef(true);
+  const epochRef = useRef(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -108,12 +109,15 @@ export function Comments({
     };
   }, []);
 
+  // Epoch-keyed: a stale response from the background poll never overwrites a
+  // newer foreground reload (e.g. post-submit) and vice-versa.
   const load = useCallback(
     async (silent = false) => {
+      const epoch = ++epochRef.current;
       const r = await api<CommentsResponse>(
         `/api/comments?entityKind=${encodeURIComponent(entityKind)}&entityId=${encodeURIComponent(entityId)}`,
       );
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || epoch !== epochRef.current) return;
       if (r.ok && r.data) {
         setComments(r.data.comments);
         if (!silent) setError(null);
@@ -130,10 +134,10 @@ export function Comments({
 
   useEffect(() => {
     if (pollMs <= 0) return;
-    const t = setInterval(() => {
+    const handle = setInterval(() => {
       void load(true);
     }, pollMs);
-    return () => clearInterval(t);
+    return () => clearInterval(handle);
   }, [load, pollMs]);
 
   async function submit(askAgent?: 'Claude' | 'Codex') {
@@ -161,7 +165,20 @@ export function Comments({
   }
 
   if (comments === null) {
-    return null;
+    return (
+      <VStack gap="md">
+        <Text variant="title3">Conversation</Text>
+        {error ? (
+          <Text variant="footnote" tone="danger">
+            {error}
+          </Text>
+        ) : (
+          <Text variant="footnote" tone="muted">
+            Loading…
+          </Text>
+        )}
+      </VStack>
+    );
   }
 
   const visible = comments.filter((c) => !excludeTodos || c.kind !== 'todo');

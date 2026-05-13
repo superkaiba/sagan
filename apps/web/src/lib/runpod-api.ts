@@ -1,5 +1,11 @@
+import { unstable_cache } from 'next/cache';
+
 const GRAPHQL_URL = 'https://api.runpod.io/graphql';
 const ANTHROPIC_SAFETY_RESEARCH_TEAM_ID = 'cm8ipuyys0004l108gb23hody';
+// RunPod balance/spend tick slowly; a 60s stale window is invisible to the
+// user but removes two 5s-timeout GraphQL round-trips from every authed page
+// render via loadShellDashboardState.
+const RUNPOD_SUMMARY_CACHE_SECONDS = 60;
 
 export type RunPodAccount = 'team' | 'personal';
 
@@ -129,9 +135,24 @@ async function fetchRunPodAccountSummary(account: RunPodAccount): Promise<RunPod
   }
 }
 
-export async function loadRunPodAccountSummaries(): Promise<RunPodAccountSummary[]> {
+async function loadRunPodAccountSummariesFresh(): Promise<RunPodAccountSummary[]> {
   const summaries = await Promise.all([fetchRunPodAccountSummary('team'), fetchRunPodAccountSummary('personal')]);
   return summaries.filter((summary): summary is RunPodAccountSummary => Boolean(summary));
+}
+
+const loadRunPodAccountSummariesCached = unstable_cache(
+  loadRunPodAccountSummariesFresh,
+  ['runpod-account-summaries'],
+  { revalidate: RUNPOD_SUMMARY_CACHE_SECONDS, tags: ['runpod-accounts'] },
+);
+
+export async function loadRunPodAccountSummaries(): Promise<RunPodAccountSummary[]> {
+  return loadRunPodAccountSummariesCached();
+}
+
+/** Bypass cache; use sparingly (only when the user asked for fresh balances). */
+export async function loadRunPodAccountSummariesUncached(): Promise<RunPodAccountSummary[]> {
+  return loadRunPodAccountSummariesFresh();
 }
 
 function finiteNumber(value: unknown) {

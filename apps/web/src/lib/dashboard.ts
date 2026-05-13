@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import {
   agentRunEvents,
@@ -238,13 +239,68 @@ function countOf(rows: Array<{ count: number }>) {
   return rows[0]?.count ?? 0;
 }
 
+// React.cache dedupes within a single server-rendered request, so layout +
+// page calling the same loader (e.g. /approvals invokes loadApprovalItems
+// both via loadShellDashboardState and directly) collapses to one query set.
+export const loadActiveRunPods = cache((limit?: number) => loadActiveRunPodsImpl(limit));
+export const loadApprovalItems = cache((limit?: number) => loadApprovalItemsImpl(limit));
+export const loadTopSuggestedLitItem = cache(() => loadTopSuggestedLitItemImpl());
+export const loadShellDashboardState = cache(() => loadShellDashboardStateImpl());
+
+interface ShellCounts {
+  activeExperiments: number;
+  activeCleanResults: number;
+  activeTodos: number;
+  activeAgents: number;
+  literatureQueue: number;
+  recentLog: number;
+}
+
+function sqlStringList(values: readonly string[]): string {
+  return values.map((v) => `'${v.replace(/'/g, "''")}'`).join(',');
+}
+
+// Single round-trip replacement for the six sidebar count(*) queries. Each
+// sub-select runs against a different table, so we let Postgres parallelize
+// them server-side and pay one client RTT instead of six. Status arrays are
+// static enums so we inline them as SQL literals (no injection surface).
+async function loadShellCounts(): Promise<ShellCounts> {
+  const experimentStatusList = sql.raw(sqlStringList(ACTIVE_EXPERIMENT_STATUSES));
+  const agentStatusList = sql.raw(sqlStringList(ACTIVE_AGENT_STATUSES));
+  const rows = (await db().execute(sql`
+    SELECT
+      (SELECT count(*)::int FROM experiments WHERE status IN (${experimentStatusList})) AS active_experiments,
+      (SELECT count(*)::int FROM clean_results WHERE status IN ('draft','reviewing','blocked')) AS active_clean_results,
+      (SELECT count(*)::int FROM todos WHERE status <> 'archived') AS active_todos,
+      (SELECT count(*)::int FROM agent_runs WHERE status IN (${agentStatusList})) AS active_agents,
+      (SELECT count(*)::int FROM lit_items WHERE read_state IN ('queued','reading','unread')) AS literature_queue,
+      (SELECT count(*)::int FROM workflow_events WHERE created_at > now() - interval '7 days') AS recent_log
+  `)) as unknown as Array<{
+    active_experiments: number;
+    active_clean_results: number;
+    active_todos: number;
+    active_agents: number;
+    literature_queue: number;
+    recent_log: number;
+  }>;
+  const row = rows[0];
+  return {
+    activeExperiments: row?.active_experiments ?? 0,
+    activeCleanResults: row?.active_clean_results ?? 0,
+    activeTodos: row?.active_todos ?? 0,
+    activeAgents: row?.active_agents ?? 0,
+    literatureQueue: row?.literature_queue ?? 0,
+    recentLog: row?.recent_log ?? 0,
+  };
+}
+
 export function entityHref(kind: string, id: string) {
   if (kind === 'clean_result') return `/clean-results/${id}`;
   if (kind === 'run') return `/agent/${id}`;
   return `/e/${kind}/${id}`;
 }
 
-export async function loadActiveRunPods(limit = 20): Promise<DashboardRunPod[]> {
+async function loadActiveRunPodsImpl(limit = 20): Promise<DashboardRunPod[]> {
   const podRows = await db()
     .select({
       id: podLifecycle.id,
@@ -313,7 +369,7 @@ export async function loadActiveRunPods(limit = 20): Promise<DashboardRunPod[]> 
   });
 }
 
-export async function loadApprovalItems(limit = 200): Promise<DashboardApprovalItem[]> {
+async function loadApprovalItemsImpl(limit = 200): Promise<DashboardApprovalItem[]> {
   const [requests, agentApprovalRuns, blockedExperiments, promotionExperiments, reviewResults, promotionTodos, blockedTodos] = await Promise.all([
     db()
       .select({
@@ -675,7 +731,7 @@ function approvalBucketSummaries(items: DashboardApprovalItem[]): DashboardAppro
   });
 }
 
-export async function loadTopSuggestedLitItem(): Promise<DashboardSuggestedLitItem | null> {
+async function loadTopSuggestedLitItemImpl(): Promise<DashboardSuggestedLitItem | null> {
   // Prefer an unread paper with the highest recent lit_inbox score (last 21 days).
   // Fall back to the most recently released unread paper for cold-start days
   // where the lit-review job hasn't produced an inbox row yet.
@@ -722,42 +778,20 @@ export async function loadTopSuggestedLitItem(): Promise<DashboardSuggestedLitIt
   };
 }
 
-export async function loadShellDashboardState(): Promise<DashboardShellState> {
-  const [approvalItems, activeExperiments, activeCleanResults, activeTodos, activeAgents, literatureQueue, recentLog, activePods, runpodAccounts, topSuggestion] =
-    await Promise.all([
-      loadApprovalItems(200),
-      db()
-        .select({ count: sql<number>`count(*)::int` })
-        .from(experiments)
-        .where(inArray(experiments.status, [...ACTIVE_EXPERIMENT_STATUSES])),
-      db()
-        .select({ count: sql<number>`count(*)::int` })
-        .from(cleanResults)
-        .where(inArray(cleanResults.status, ['draft', 'reviewing', 'blocked'])),
-      db().select({ count: sql<number>`count(*)::int` }).from(todos).where(ne(todos.status, 'archived')),
-      db()
-        .select({ count: sql<number>`count(*)::int` })
-        .from(agentRuns)
-        .where(inArray(agentRuns.status, [...ACTIVE_AGENT_STATUSES])),
-      db()
-        .select({ count: sql<number>`count(*)::int` })
-        .from(litItems)
-        .where(inArray(litItems.readState, ['queued', 'reading', 'unread'])),
-      db()
-        .select({ count: sql<number>`count(*)::int` })
-        .from(workflowEvents)
-        .where(sql`${workflowEvents.createdAt} > now() - interval '7 days'`),
-      loadActiveRunPods(20),
-      loadRunPodAccountSummaries(),
-      loadTopSuggestedLitItem(),
-    ]);
+async function loadShellDashboardStateImpl(): Promise<DashboardShellState> {
+  const [approvalItems, counts, activePods, runpodAccounts, topSuggestion] = await Promise.all([
+    loadApprovalItems(200),
+    loadShellCounts(),
+    loadActiveRunPods(20),
+    loadRunPodAccountSummaries(),
+    loadTopSuggestedLitItem(),
+  ]);
 
   return {
     approvalCount: approvalItems.length,
-    activePipelineCount:
-      countOf(activeExperiments) + countOf(activeCleanResults) + countOf(activeTodos) + countOf(activeAgents),
-    literatureQueueCount: countOf(literatureQueue),
-    recentLogCount: countOf(recentLog),
+    activePipelineCount: counts.activeExperiments + counts.activeCleanResults + counts.activeTodos + counts.activeAgents,
+    literatureQueueCount: counts.literatureQueue,
+    recentLogCount: counts.recentLog,
     activePods,
     runpodAccounts,
     topApprovals: approvalItems.slice(0, 8),

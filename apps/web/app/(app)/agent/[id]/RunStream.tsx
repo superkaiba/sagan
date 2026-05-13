@@ -613,14 +613,14 @@ export function RunStream({
             ))}
           </div>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-[--color-border] divide-y divide-[--color-border] font-mono text-xs">
+        <div className="max-h-[42vh] overflow-y-auto rounded-lg border border-[--color-border] divide-y divide-[--color-border] font-mono text-xs">
           {events.length === 0 ? (
             <p className="p-3 text-[--color-muted]">No events yet.</p>
           ) : filteredEvents.length === 0 ? (
             <p className="p-3 text-[--color-muted]">No matching events.</p>
           ) : (
             filteredEvents.map((ev) => (
-              <div key={ev.id} className={`p-3 ${isErrorEvent(ev) ? 'bg-[--color-danger-bg]' : ''}`}>
+              <div key={ev.id} className={`px-2.5 py-2 ${isErrorEvent(ev) ? 'bg-[--color-danger-bg]' : ''}`}>
                 <div className="flex items-baseline gap-3 text-[--color-muted]">
                   <span>{new Date(ev.createdAt).toLocaleTimeString()}</span>
                   <span className="text-[--color-fg]">{ev.eventType}</span>

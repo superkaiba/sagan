@@ -588,7 +588,9 @@ Acceptance criteria:
 
 ### Milestone 3: Adversarial Plan Approval
 
-Purpose: port the old planner/fact-checker/critic/consistency loop into Sagan.
+Purpose: port the old planning workflow into Sagan while keeping Claude as the
+sole plan drafter/reviser and using bounded, merged Claude+Codex critique loops
+before owner approval.
 
 User-visible outcome:
 
@@ -1288,9 +1290,10 @@ Implemented locally:
 - Extended the agent protocol plan schema with structured plan fields:
   goal, hypothesis, prediction, kill criterion, compute/hardware, artifacts,
   verification, risks, likely clean-result shape, and section bodies.
-- Updated the runner experiment planning prompt to require an internal
-  planner/fact-checker/critic/consistency/revised-plan loop and exact final
-  markdown headings for approval rendering.
+- Updated the runner experiment planning prompt to require Claude-authored
+  drafts, paired Claude+Codex critique loops with merged findings, a
+  scope-preserving revision rule, and exact final markdown headings for
+  approval rendering.
 - Added `parseStructuredPlan` and persisted structured sections when a plan
   enters `awaiting_approval`.
 - Wired experiment-scoped planning runs to move experiments to `plan_pending`,

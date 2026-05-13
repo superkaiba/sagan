@@ -6,7 +6,10 @@
  * the SDKResultMessage arrives.
  */
 import { type CanUseTool, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { runAgentWithContinuation } from './lib/run-agent.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
@@ -63,7 +66,7 @@ export async function runSession(runId: string): Promise<Outcome> {
     cwd: env.RUNNER_REPO_ROOT,
     permissionMode: 'bypassPermissions',
     allowDangerouslySkipPermissions: true,
-    env: process.env as Record<string, string>,
+    env: runnerProcessEnv(),
     pathToClaudeCodeExecutable: env.CLAUDE_CLI_PATH,
     ...toolPolicyForRunKind(row.kind),
     // Conservative tool restriction: disable Bash and write tools for QA mode.
@@ -89,15 +92,101 @@ export async function runSession(runId: string): Promise<Outcome> {
 }
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', 'ExitPlanMode'] as const;
+const EXPERIMENT_PLANNING_TOOLS = ['Read', 'Grep', 'Glob', 'Bash', 'Agent', 'TaskOutput', 'ExitPlanMode'] as const;
+const EXPERIMENT_PLANNING_AGENTS: NonNullable<Options['agents']> = {
+  critic: {
+    description: 'Claude experiment-plan critic for one specified lens.',
+    tools: ['Read', 'Grep', 'Glob'],
+    prompt: `You are a Sagan experiment-plan critic. You review a draft plan for exactly the lens named in the prompt and ignore other lenses.
 
-function toolPolicyForRunKind(kind: AgentRunRow['kind']): Pick<Options, 'tools' | 'canUseTool'> {
-  if (kind !== 'plan' && kind !== 'experiment') return {};
+Verdict definitions:
+- APPROVE: the plan will produce interpretable data on the research question. Real experiments have diagnostics, confounds, and alternative explanations; do not require a pre-registered gate for every concern when the plan reports the diagnostic the analyzer can weigh.
+- REVISE: the plan is missing data, a condition, a metric, or an infrastructure prerequisite that the analyzer cannot recover from. REVISE means add missing information or a missing comparison, not add a pass/fail rule about an existing diagnostic.
+- REJECT: the design cannot answer the research question even after targeted revisions.
+
+Classify each finding as blocker, important, follow-up, or nit. Also mark whether it is scope-preserving or scope-expanding. Bias toward APPROVE when the plan is recoverable through analyzer judgment. Put scope-expanding ideas under follow-up unless the current experiment would be uninterpretable without them. Do not invent extra approval gates, stop conditions, or confirmation conjunctions.`,
+  },
+  'codex-critic': {
+    description: 'Thin Claude wrapper that forwards one experiment-plan critique lens to Codex.',
+    tools: ['Bash'],
+    prompt: `You are a thin wrapper around the Codex companion task runtime for Sagan experiment-plan critique.
+
+Do not critique the plan yourself. Invoke Codex exactly once with Bash and return Codex's stdout verbatim. Use:
+
+node "\${SAGAN_CODEX_PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" task --model gpt-5.5 --effort high "<prompt>"
+
+The forwarded prompt must tell Codex:
+- It is read-only and must not edit files.
+- It is critiquing only the requested lens.
+- It must return Rating: APPROVE, REVISE, or REJECT.
+- It must classify findings as blocker, important, follow-up, or nit.
+- It must mark each finding as scope-preserving or scope-expanding.
+- It must avoid adding approval gates or confirmation conjunctions unless missing data would make the experiment uninterpretable.
+
+If the Codex companion cannot be invoked, return one line beginning with BLOCKER: and explain the invocation failure.`,
+  },
+  reconciler: {
+    description: 'Tie-breaker for one Claude/Codex critic-lens disagreement.',
+    tools: ['Read', 'Grep', 'Glob'],
+    prompt: `You reconcile one disagreement between a Claude critic and a Codex critic on a Sagan experiment plan.
+
+Read only the plan and the two critic reports supplied in the prompt. Do not review from scratch. Do not add new findings. Decide whether the failing side's finding is valid under this contract:
+- APPROVE means diagnostics are sufficient for the analyzer to weigh the concern.
+- REVISE means missing data, a missing condition, a missing metric, or wrong infrastructure would make the experiment uninterpretable.
+- REJECT means the design cannot answer the question.
+
+Return a binding Rating: APPROVE, REVISE, or REJECT, then a short adjudication table for the existing findings only. Reconciler suggestions do not count as a critique loop.`,
+  },
+};
+
+function toolPolicyForRunKind(kind: AgentRunRow['kind']): Pick<Options, 'tools' | 'canUseTool' | 'agents'> {
+  if (kind === 'experiment') {
+    return {
+      tools: [...EXPERIMENT_PLANNING_TOOLS],
+      canUseTool: experimentPlanningToolGuard(kind),
+      agents: EXPERIMENT_PLANNING_AGENTS,
+    };
+  }
+  if (kind !== 'plan') return {};
 
   return {
     // Restrict the actual tool surface. `allowedTools` only auto-approves
     // tools; it does not hide everything else from Claude Code.
     tools: [...READ_ONLY_TOOLS],
     canUseTool: readOnlyToolGuard(kind),
+  };
+}
+
+function experimentPlanningToolGuard(kind: AgentRunRow['kind']): CanUseTool {
+  const allowed = new Set<string>(EXPERIMENT_PLANNING_TOOLS);
+  const allowedAgents = new Set(['critic', 'codex-critic', 'reconciler']);
+  return async (toolName, input, options) => {
+    if (!allowed.has(toolName)) {
+      return denyReadOnlyTool(kind, toolName, input, options.toolUseID);
+    }
+    if (toolName === 'Agent') {
+      const subagentType = typeof input.subagent_type === 'string' ? input.subagent_type : '';
+      if (allowedAgents.has(subagentType)) {
+        return { behavior: 'allow', toolUseID: options.toolUseID };
+      }
+      return {
+        behavior: 'deny',
+        toolUseID: options.toolUseID,
+        message: `${kind} planning may only spawn critic, codex-critic, or reconciler agents. Claude must draft and revise the plan in the main session.`,
+      };
+    }
+    if (toolName === 'Bash') {
+      const command = typeof input.command === 'string' ? input.command : '';
+      if (isCodexCompanionTaskCommand(command)) {
+        return { behavior: 'allow', toolUseID: options.toolUseID };
+      }
+      return {
+        behavior: 'deny',
+        toolUseID: options.toolUseID,
+        message: `${kind} planning is read-only. Bash is reserved for the codex-critic wrapper's Codex companion task invocation.`,
+      };
+    }
+    return { behavior: 'allow', toolUseID: options.toolUseID };
   };
 }
 
@@ -108,16 +197,59 @@ function readOnlyToolGuard(kind: AgentRunRow['kind']): CanUseTool {
       return { behavior: 'allow', toolUseID: options.toolUseID };
     }
 
-    const command = typeof input.command === 'string' ? input.command : null;
-    const suffix = command ? ` Command was: ${command.slice(0, 240)}` : '';
-    return {
-      behavior: 'deny',
-      toolUseID: options.toolUseID,
-      message:
-        `${kind} runs are read-only. Use the scoped Sagan record and repo reads only; do not spawn agents, run shell commands, edit files, or mutate records.` +
-        suffix,
-    };
+    return denyReadOnlyTool(kind, toolName, input, options.toolUseID);
   };
+}
+
+function denyReadOnlyTool(
+  kind: AgentRunRow['kind'],
+  _toolName: string,
+  input: Record<string, unknown>,
+  toolUseID: string,
+) {
+  const command = typeof input.command === 'string' ? input.command : null;
+  const suffix = command ? ` Command was: ${command.slice(0, 240)}` : '';
+  return {
+    behavior: 'deny' as const,
+    toolUseID,
+    message:
+      `${kind} runs are read-only. Use the scoped Sagan record and repo reads only; do not run arbitrary shell commands, edit files, or mutate records.` +
+      suffix,
+  };
+}
+
+function isCodexCompanionTaskCommand(command: string) {
+  const normalized = command.replace(/\s+/g, ' ').trim();
+  if (!normalized.startsWith('node ')) return false;
+  if (!normalized.includes('codex-companion.mjs')) return false;
+  if (!/\btask\b/.test(normalized)) return false;
+  if (/\s--write\b/.test(normalized)) return false;
+  return true;
+}
+
+function runnerProcessEnv(): Record<string, string> {
+  const next = { ...(process.env as Record<string, string>) };
+  const codexRoot = resolveCodexPluginRoot();
+  if (codexRoot && !next.SAGAN_CODEX_PLUGIN_ROOT) next.SAGAN_CODEX_PLUGIN_ROOT = codexRoot;
+  return next;
+}
+
+function resolveCodexPluginRoot(): string | null {
+  const configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
+  const versionRoot = join(configDir, 'plugins', 'cache', 'openai-codex', 'codex');
+  try {
+    const versions = readdirSync(versionRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    for (const version of versions) {
+      const candidate = join(versionRoot, version);
+      if (existsSync(join(candidate, 'scripts', 'codex-companion.mjs'))) return candidate;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -762,18 +894,50 @@ async function markAwaitingApproval(runId: string, planMd: string) {
 function experimentPlanningInstructions() {
   return `You are drafting an adversarial experiment plan for Sagan.
 
-Do not launch anything. Do not edit files. Produce one approval-ready markdown plan.
+Do not launch experiment compute or RunPods. Do not edit files. Produce one approval-ready markdown plan.
 Use the provided scoped experiment record as the source of truth for the
 experiment title and scope. Do not rename, retitle, or otherwise mutate the
 scoped issue/experiment. Keep the run request as instructions, not as a title.
-Stay in the current session; do not spawn subagents.
+Claude is always the drafter and reviser. Do not delegate plan writing to
+Codex or to a critic. Use critics only to review a complete draft.
 
-Before finalizing, run this reasoning loop internally:
-1. Planner: propose the experiment.
-2. Fact-checker: identify uncertain assumptions and external facts that need verification.
-3. Critic: attack the design, confounds, cost, and failure modes.
-4. Consistency checker: ensure the goal, hypothesis, prediction, kill criterion, compute, artifacts, and verification all agree.
-5. Revised plan: write the final plan below.
+Before finalizing, use this bounded review workflow:
+
+1. Draft the plan in the main Claude session.
+2. Fact-check concrete assumptions with repo reads/searches available to you.
+3. Run up to five critique loops. Stop early once the merged critique has no
+   blocker and no cheap, scope-preserving important issue.
+4. In each critique loop, spawn paired Claude + Codex critics for these lenses:
+   methodology, statistics/measurement, and alternative explanations. Use the
+   Claude critic agent and the codex-critic agent for each lens. Spawn all six
+   critic agents in one message with run_in_background=true so they run in
+   parallel. The critics must see the draft plan only, not your private
+   reasoning or each other's outputs.
+5. Merge critiques per lens:
+   - APPROVE + APPROVE: accept the lens.
+   - REVISE/REJECT + REVISE/REJECT: union the blocker sets for that lens.
+   - APPROVE vs REVISE/REJECT: use the reconciler agent for that lens. The
+     reconciler may adjudicate only existing findings and may not add new ones.
+   - Codex no-show or malformed output: fall back to the Claude critic for
+     that lens and record the fallback in the critique notes.
+6. Merge across lenses into one issue ledger. Classify every item as blocker,
+   important, follow-up, or nit, and mark it scope-preserving or scope-expanding.
+7. Revise only for blockers and cheap, scope-preserving important items.
+   Scope-expanding suggestions, extra diagnostics, and speculative controls go
+   into follow-ups unless the current plan would be uninterpretable without
+   them.
+8. Do not let critics add new approval gates by default. Missing data,
+   missing controls, wrong metrics, or wrong infrastructure can require a
+   revision. Concerns about diagnostics that are already reported should be
+   surfaced for interpretation, not turned into pass/fail gates.
+9. After the last loop, run a consistency check yourself: ensure the goal,
+   hypothesis, prediction, kill criterion, compute, artifacts, verification,
+   risks, likely clean-result shape, and runpod-spec all agree.
+
+In ## Risks and Red Team, include a compact "Critique loop notes" subsection
+with the number of loops run, the final merged verdict, any Codex fallback,
+and any follow-up/nit items intentionally not folded into this run. Do not add
+new top-level markdown headings beyond the required headings below.
 
 The final answer must use these exact markdown headings:
 

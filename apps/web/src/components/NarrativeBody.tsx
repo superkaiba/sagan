@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { Markdown } from './Markdown';
 import {
   useAnchoredComments,
@@ -76,7 +76,7 @@ const MarkdownInner = memo(function MarkdownInner({ body }: { body: string }) {
  * "Comment" selection popover. Returns nothing when no anchor context is
  * present, leaving the narrative untouched.
  */
-export function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
+export function useAnchorBehaviors(ref: RefObject<HTMLDivElement | null>) {
   const ctx = useAnchoredComments();
   const [popover, setPopover] = useState<{
     left: number;
@@ -85,12 +85,22 @@ export function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) 
   } | null>(null);
 
   const anchors = ctx?.anchors;
+  const setAnchorPositions = ctx?.setAnchorPositions;
   const hoveredId = ctx?.hoveredId ?? null;
   const setHoveredId = ctx?.setHoveredId;
   const scrollToCommentId = ctx?.scrollToCommentId ?? null;
   const clearScrollRequest = ctx?.clearScrollRequest;
   const setPendingAnchor = ctx?.setPendingAnchor;
   const pendingAnchor = ctx?.pendingAnchor ?? null;
+
+  const measureAnchors = useCallback(() => {
+    if (!setAnchorPositions) return;
+    if (!ref.current || !anchors || anchors.length === 0) {
+      setAnchorPositions([]);
+      return;
+    }
+    setAnchorPositions(measureAnchorPositions(ref.current, anchors));
+  }, [anchors, ref, setAnchorPositions]);
 
   // When pendingAnchor is cleared (submit success or × clicked) drop the
   // transient highlight. While pendingAnchor is set, the mark stays put
@@ -105,7 +115,30 @@ export function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) 
   useEffect(() => {
     if (!anchors || !ref.current) return;
     applyAnchors(ref.current, anchors);
-  }, [anchors, ref]);
+    const id = window.requestAnimationFrame(measureAnchors);
+    return () => window.cancelAnimationFrame(id);
+  }, [anchors, measureAnchors, ref]);
+
+  useEffect(() => {
+    if (!setAnchorPositions) return;
+    let frame: number | null = null;
+    const schedule = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        measureAnchors();
+      });
+    };
+    schedule();
+    document.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      document.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('resize', schedule);
+      setAnchorPositions([]);
+    };
+  }, [measureAnchors, setAnchorPositions]);
 
   // Sync hovered class on marks.
   useEffect(() => {
@@ -245,7 +278,7 @@ export function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) 
           });
           const btn = document.createElement('button');
           btn.type = 'button';
-          btn.textContent = '💬 Comment';
+          btn.textContent = 'Comment';
           Object.assign(btn.style, {
             background: 'transparent',
             border: '0',
@@ -316,6 +349,36 @@ function applyAnchors(root: HTMLElement, anchors: AnchorRecord[]) {
     if (!quote || quote.length < 3) continue;
     wrapFirstMatch(root, quote, a.id);
   }
+}
+
+function measureAnchorPositions(root: HTMLElement, anchors: AnchorRecord[]) {
+  const grouped = new Map<string, { top: number; bottom: number }>();
+  const marks = Array.from(root.querySelectorAll<HTMLElement>('mark[data-comment-id]'));
+  for (const mark of marks) {
+    const id = mark.dataset.commentId;
+    if (!id) continue;
+    const rects = Array.from(mark.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+    if (rects.length === 0) continue;
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    const current = grouped.get(id);
+    grouped.set(id, {
+      top: current ? Math.min(current.top, top) : top,
+      bottom: current ? Math.max(current.bottom, bottom) : bottom,
+    });
+  }
+
+  return anchors.map((anchor) => {
+    const position = grouped.get(anchor.id);
+    if (!position) return { id: anchor.id, top: 0, height: 0, found: false };
+    const top = Math.round(position.top + window.scrollY);
+    return {
+      id: anchor.id,
+      top,
+      height: Math.max(1, Math.round(position.bottom - position.top)),
+      found: true,
+    };
+  });
 }
 
 function unwrapAllMarks(root: HTMLElement) {

@@ -31,7 +31,15 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   const prompt = `Review this Claude Code run as Codex.
 
-Focus on bugs, missed requirements, unsafe assumptions, and whether the run actually reached the user's requested final state. If it did not, provide a continuation plan.
+Focus on bugs, missed requirements, unsafe assumptions, and whether the run actually reached the user's requested final state. Classify each finding as blocker, important, follow-up, or nit.
+
+Use this scope discipline:
+- Blocker: the requested final state was not reached, the result is unsafe to trust, or there is a likely regression.
+- Important: cheap, scope-preserving work that materially improves correctness.
+- Follow-up: scope-expanding ideas, extra gates, additional diagnostics, or broader redesigns that are not required to satisfy this run.
+- Nit: wording or style issues that should not block.
+
+Do not turn ordinary caveats into new approval gates. If a diagnostic is already reported and the remaining concern can be handled during interpretation, list it as follow-up rather than a blocker. If the run did not reach the user's requested final state, provide a minimal continuation plan that addresses only blockers and cheap, scope-preserving important items.
 
 Run:
 - id: ${run.id}

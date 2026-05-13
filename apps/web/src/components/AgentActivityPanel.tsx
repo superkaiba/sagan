@@ -81,7 +81,7 @@ function actionLabel(eventType: string, body: string | null) {
 function eventBody(eventType: string, body: string | null) {
   if (!body) return null;
   if (eventType === 'tool_call' || eventType === 'file_change') return null;
-  return body.length > 900 ? `${body.slice(0, 900)}...` : body;
+  return body.length > 360 ? `${body.slice(0, 360)}...` : body;
 }
 
 function eventTone(eventType: string) {
@@ -144,8 +144,8 @@ export async function AgentActivityPanel({
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-panel]">
-      <div className="border-b border-[--color-border] px-4 py-3">
+    <section className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-panel] text-sm">
+      <div className="border-b border-[--color-border] px-3 py-2">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-sm font-medium">Agent log</h2>
           <span className="text-xs text-[--color-muted]">
@@ -154,14 +154,14 @@ export async function AgentActivityPanel({
         </div>
       </div>
 
-      <div className="max-h-[32rem] overflow-y-auto xl:max-h-[calc(100vh-9rem)]">
+      <div className="max-h-[24rem] overflow-y-auto xl:max-h-[42vh]">
         {runs.length === 0 ? (
           <p className="px-4 py-3 text-sm text-[--color-muted]">
             No agent has worked on this issue yet.
           </p>
         ) : (
           <div className="divide-y divide-[--color-border]">
-            {runs.map((run, index) => {
+              {runs.map((run) => {
             const runEvents = eventsByRun.get(run.id) ?? [];
             const runPods = podsByRun.get(run.id) ?? [];
             const activePods = runPods.filter((pod) => METERING_POD_STATUSES.has(pod.status));
@@ -172,11 +172,11 @@ export async function AgentActivityPanel({
             const activityEvents = runEvents.filter((event) => isActivityEvent(event.eventType));
             const crashed = ['failed', 'blocked'].includes(run.status) && Boolean(run.lastError);
             const resumable = canManageRun && RESUMABLE_STATUSES.has(run.status);
-            const open = index === 0 || crashed;
+            const open = crashed;
 
             return (
               <details key={run.id} open={open} className="group">
-                <summary className="cursor-pointer list-none px-4 py-3">
+                <summary className="cursor-pointer list-none px-3 py-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <Link href={`/agent/${run.id}`} className="font-mono text-xs text-[--color-accent] hover:underline">
                       {run.id.slice(0, 8)}
@@ -199,10 +199,10 @@ export async function AgentActivityPanel({
                       {activityEvents.length} activity item{activityEvents.length === 1 ? '' : 's'}
                     </span>
                   </div>
-                  <p className="mt-2 line-clamp-2 text-sm text-[--color-muted]">{run.request}</p>
+                  <p className="mt-1 line-clamp-1 text-xs text-[--color-muted]">{run.request}</p>
                 </summary>
 
-                <div className="space-y-3 px-4 pb-4">
+                <div className="space-y-2 px-3 pb-3">
                   <dl className="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1 text-xs">
                     <dt className="text-[--color-muted]">Started</dt>
                     <dd>{formatDate(run.startedAt ?? run.createdAt)}</dd>
@@ -217,7 +217,7 @@ export async function AgentActivityPanel({
                   </dl>
 
                   {activePods.length > 0 ? (
-                    <div className="rounded-md border border-[--color-running-border] bg-[--color-running-bg] p-3 text-xs">
+                    <div className="rounded-md border border-[--color-running-border] bg-[--color-running-bg] p-2 text-xs">
                       <div className="font-medium text-[--color-running]">Active RunPod spend</div>
                       <div className="mt-2 space-y-1">
                         {activePods.map((pod) => {
@@ -240,14 +240,14 @@ export async function AgentActivityPanel({
                   <div className="space-y-2">
                     <details className="rounded-md border border-[--color-border] bg-[--color-bg]">
                       <summary className="cursor-pointer px-3 py-2 text-xs font-medium">Initial request</summary>
-                      <pre className="whitespace-pre-wrap break-words border-t border-[--color-border] p-3 text-xs text-[--color-muted]">
+                      <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words border-t border-[--color-border] p-2 text-xs text-[--color-muted]">
                         {run.request}
                       </pre>
                     </details>
                     {run.planMd ? (
                       <details className="rounded-md border border-[--color-border] bg-[--color-bg]">
                         <summary className="cursor-pointer px-3 py-2 text-xs font-medium">Full plan</summary>
-                        <div className="border-t border-[--color-border] p-3">
+                        <div className="max-h-48 overflow-y-auto border-t border-[--color-border] p-2">
                           <Markdown className="text-xs">{run.planMd}</Markdown>
                         </div>
                       </details>
@@ -269,14 +269,14 @@ export async function AgentActivityPanel({
                     ) : null}
                   </div>
 
-                  <ol className="space-y-2">
+                  <ol className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
                     {activityEvents.length === 0 ? (
                       <li className="text-sm text-[--color-muted]">No high-level activity was recorded before the run stopped.</li>
                     ) : (
                       activityEvents.map((event) => {
                         const body = eventBody(event.eventType, event.body);
                         return (
-                          <li key={event.id} className={`rounded-md border p-2 text-xs ${eventTone(event.eventType)}`}>
+                          <li key={event.id} className={`rounded-md border px-2 py-1.5 text-xs ${eventTone(event.eventType)}`}>
                             <div className="flex flex-wrap items-baseline gap-2">
                               <time className="font-mono text-[--color-muted]" dateTime={event.createdAt.toISOString()}>
                                 {formatDate(event.createdAt)}

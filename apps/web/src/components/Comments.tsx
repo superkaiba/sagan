@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import { Markdown } from './Markdown';
@@ -47,6 +47,11 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   const [reviseError, setReviseError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const threadsRef = useRef<HTMLDivElement>(null);
+  const [threadOriginTop, setThreadOriginTop] = useState<number | null>(null);
+  const [threadHeights, setThreadHeights] = useState<Record<string, number>>({});
+  const [alignAnchoredThreads, setAlignAnchoredThreads] = useState(false);
 
   async function load() {
     const res = await fetch(
@@ -204,6 +209,27 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   }
 
   const visibleRoots = showResolved ? roots : roots.filter((r) => !r.resolvedAt);
+  const anchorPositionById = useMemo(() => {
+    const positions = new Map<string, { top: number; height: number }>();
+    for (const position of anchorCtx?.anchorPositions ?? []) {
+      if (position.found) positions.set(position.id, { top: position.top, height: position.height });
+    }
+    return positions;
+  }, [anchorCtx?.anchorPositions]);
+  const orderedVisibleRoots = useMemo(() => {
+    const anchored: Comment[] = [];
+    const unanchored: Comment[] = [];
+    for (const root of visibleRoots) {
+      if (anchorPositionById.has(root.id)) anchored.push(root);
+      else unanchored.push(root);
+    }
+    anchored.sort((a, b) => {
+      const aPos = anchorPositionById.get(a.id)?.top ?? 0;
+      const bPos = anchorPositionById.get(b.id)?.top ?? 0;
+      return aPos - bPos || a.createdAt.localeCompare(b.createdAt);
+    });
+    return [...anchored, ...unanchored];
+  }, [anchorPositionById, visibleRoots]);
   const unresolvedCount = items.filter((c) => !c.resolvedAt).length;
   const activeAgentStatuses = new Set(['queued', 'running', 'approved', 'deploying', 'awaiting_approval']);
   const activeAgentCount = items.filter((c) => c.agentRunId && c.agentRunStatus && activeAgentStatuses.has(c.agentRunStatus)).length;
@@ -255,6 +281,50 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     const summary = sentence.trim();
     return summary.length < text.length ? `${summary.replace(/[.!?]$/, '')}...` : summary;
   }
+
+  useLayoutEffect(() => {
+    function measureRail() {
+      const section = sectionRef.current;
+      const threads = threadsRef.current;
+      if (!section || !threads) return;
+
+      const canAlign =
+        Boolean(section.closest('aside')) &&
+        window.matchMedia('(min-width: 1024px)').matches &&
+        anchorPositionById.size > 0;
+      setAlignAnchoredThreads(canAlign);
+      setThreadOriginTop(Math.round(threads.getBoundingClientRect().top + window.scrollY));
+
+      const next: Record<string, number> = {};
+      threads.querySelectorAll<HTMLElement>('[data-comment-thread-id]').forEach((node) => {
+        const id = node.dataset.commentThreadId;
+        if (id) next[id] = Math.ceil(node.getBoundingClientRect().height);
+      });
+      setThreadHeights((prev) => (sameNumberRecord(prev, next) ? prev : next));
+    }
+
+    measureRail();
+    document.addEventListener('scroll', measureRail, true);
+    window.addEventListener('resize', measureRail);
+    return () => {
+      document.removeEventListener('scroll', measureRail, true);
+      window.removeEventListener('resize', measureRail);
+    };
+  }, [anchorPositionById, orderedVisibleRoots.length, collapsedIds, replyTo, showResolved, items.length]);
+
+  const threadMargins = useMemo(() => {
+    const margins = new Map<string, number>();
+    if (!alignAnchoredThreads || threadOriginTop == null) return margins;
+    let cursor = 0;
+    for (const root of orderedVisibleRoots) {
+      const position = anchorPositionById.get(root.id);
+      const target = position ? Math.max(0, position.top - threadOriginTop) : cursor;
+      const marginTop = Math.max(0, target - cursor);
+      margins.set(root.id, Math.round(marginTop));
+      cursor += marginTop + (threadHeights[root.id] ?? 80) + 8;
+    }
+    return margins;
+  }, [alignAnchoredThreads, anchorPositionById, orderedVisibleRoots, threadHeights, threadOriginTop]);
 
   function renderComment(c: Comment, isReply = false, replyCount = 0) {
     const isAgent = c.authorKind === 'claude' || c.authorKind === 'codex';
@@ -408,7 +478,7 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   }
 
   return (
-    <section className="space-y-3">
+    <section ref={sectionRef} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">Comments</h2>
@@ -445,15 +515,20 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
       </div>
       {reviseError ? <p className="text-xs text-[--color-danger]">{reviseError}</p> : null}
 
-      <div className="rounded-lg border border-[--color-border] divide-y divide-[--color-border]">
+      <div ref={threadsRef} className="rounded-lg border border-[--color-border] divide-y divide-[--color-border]">
         {visibleRoots.length === 0 ? (
           <p className="p-3 text-sm text-[--color-muted]">No comments yet.</p>
         ) : (
-          visibleRoots.map((root) => {
+          orderedVisibleRoots.map((root) => {
             const replies = repliesByParent.get(root.id) ?? [];
             const collapsed = collapsedIds.has(root.id);
             return (
-              <div key={root.id}>
+              <div
+                key={root.id}
+                data-comment-thread-id={root.id}
+                className={alignAnchoredThreads ? 'transition-[margin-top] duration-150 ease-out' : undefined}
+                style={alignAnchoredThreads ? { marginTop: threadMargins.get(root.id) ?? 0 } : undefined}
+              >
                 {renderComment(root, false, replies.length)}
                 {collapsed ? null : replies.map((reply) => renderComment(reply, true))}
               </div>
@@ -528,4 +603,14 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
       </form>
     </section>
   );
+}
+
+function sameNumberRecord(a: Record<string, number>, b: Record<string, number>) {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
 }

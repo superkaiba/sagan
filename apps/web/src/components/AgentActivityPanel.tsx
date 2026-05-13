@@ -324,11 +324,26 @@ export async function AgentActivityPanel({
                       </pre>
                     </details>
                     {run.planMd ? (
-                      <details className="rounded-md border border-[--color-border] bg-[--color-bg]">
-                        <summary className="cursor-pointer px-3 py-2 text-xs font-medium">Full plan</summary>
-                        <div className="max-h-48 overflow-y-auto border-t border-[--color-border] p-2">
+                      <details
+                        className="rounded-md border border-[--color-border] bg-[--color-bg]"
+                        open={run.status === 'awaiting_approval'}
+                      >
+                        <summary className="cursor-pointer px-3 py-2 text-xs font-medium">
+                          {run.status === 'awaiting_approval' ? 'Plan awaiting approval' : 'Full plan'}
+                        </summary>
+                        <div className="max-h-96 overflow-y-auto border-t border-[--color-border] p-3">
                           <Markdown className="text-xs">{run.planMd}</Markdown>
                         </div>
+                        {run.status === 'awaiting_approval' && canManageRun ? (
+                          <div className="border-t border-[--color-border] px-3 py-2">
+                            <Link
+                              href={`/agent/${run.id}`}
+                              className="inline-block rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg] hover:opacity-90"
+                            >
+                              Review and approve →
+                            </Link>
+                          </div>
+                        ) : null}
                       </details>
                     ) : null}
                   </div>

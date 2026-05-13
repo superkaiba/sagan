@@ -1,0 +1,162 @@
+version: 1
+name: sagan-eps-style-experiment-workflow
+control_plane: sagan_http_api
+
+identifiers:
+  issue_command: "/issue <N>"
+  issue_number_means: "Sagan experiments.number"
+  legacy_github_issues: "historical evidence only"
+
+statuses:
+  - proposed
+  - clarifying
+  - gate_pending
+  - planning
+  - plan_pending
+  - approved
+  - awaiting_approval
+  - queued
+  - implementing
+  - code_reviewing
+  - testing
+  - running
+  - uploading
+  - verifying
+  - interpreting
+  - reviewing
+  - awaiting_promotion
+  - followups_running
+  - shared
+  - blocked
+  - completed
+  - done_experiment
+  - done_impl
+  - failed
+  - cancelled
+  - archived
+
+canonical_lifecycle:
+  - proposed
+  - clarifying
+  - planning
+  - plan_pending
+  - approved
+  - queued
+  - implementing
+  - code_reviewing
+  - testing
+  - running
+  - uploading
+  - verifying
+  - interpreting
+  - reviewing
+  - awaiting_promotion
+  - completed
+
+status_aliases:
+  under_review: reviewing
+  done_experiment: completed
+  done_impl: completed
+
+clarification:
+  status: clarifying
+  required_points:
+    - specific_hypothesis
+    - expected_information_gain
+    - result_that_changes_next_action_or_belief
+    - missing_constraints_that_make_planning_invalid
+  rules:
+    - ask_few_targeted_questions
+    - advance_to_planning_if_hypothesis_and_information_gain_are_clear
+    - do_not_add_broad_literature_or_methodological_gates
+
+reviewer_pairs:
+  max_rounds: 3
+  verdicts:
+    - pass
+    - needs_targeted_fix
+    - blocked_needs_user_decision
+    - fail_not_worth_continuing
+  pairs:
+    code_review:
+      reviewers:
+        - claude-code-reviewer
+        - codex-code-reviewer
+      markers:
+        - epm:code-review
+        - epm:code-review-codex
+    interpretation:
+      reviewers:
+        - claude-interpretation-critic
+        - codex-interpretation-critic
+      markers:
+        - epm:interp-critique
+        - epm:interp-critique-codex
+    clean_result:
+      reviewers:
+        - claude-clean-result-critic
+        - codex-clean-result-critic
+      markers:
+        - epm:clean-result-critique
+        - epm:clean-result-critique-codex
+  reconciler:
+    marker: epm:review-reconcile
+    after_round_3_rule: "Record the final critique, choose the minimal necessary fix, and continue unless a real user-decision blocker remains."
+
+markers:
+  store: workflow_events
+  metadata_shape:
+    review_pair: interpretation
+    round: 2
+    reviewer: codex-interpretation-critic
+    verdict: needs_targeted_fix
+    required_fix: "Clarify whether the result supports the stated hypothesis."
+  names:
+    - epm:clarify
+    - epm:plan
+    - epm:code-review
+    - epm:code-review-codex
+    - epm:review-reconcile
+    - epm:preflight
+    - epm:launch
+    - epm:progress
+    - epm:results
+    - epm:upload-verification
+    - epm:interpretation
+    - epm:interp-critique
+    - epm:interp-critique-codex
+    - epm:clean-result-critique
+    - epm:clean-result-critique-codex
+    - epm:completion-audit
+    - epm:done
+    - epm:failure
+
+runpod:
+  planning_contract: runpod-spec
+  launcher: sagan_runner_dispatcher
+  progress_api_env:
+    - SAGAN_PROGRESS_URL
+    - SAGAN_POD_PROGRESS_TOKEN
+    - SAGAN_AGENT_RUN_ID
+    - SAGAN_EXPERIMENT_ID
+    - SAGAN_RUN_INDEX
+  preserve_dashboard_fields:
+    - status
+    - progress_pct
+    - estimated_remaining_minutes
+    - uptime_seconds
+    - adjusted_cost_per_hr
+    - artifacts
+
+forbidden_workflow_state:
+  - github_issues
+  - github_labels
+  - github_issue_comments
+  - github_project_board_columns
+  - local_state_files
+  - direct_sagan_database_writes
+
+client:
+  script: scripts/sagan_state.py
+  auth: "Authorization: Bearer $SAGAN_API_TOKEN"
+  mutation_rule: "HTTP API calls only"

@@ -25,6 +25,7 @@ async function notifyPipelineChanged(payload: string) {
 const pipelineStageSchema = z.enum([
   'later',
   'idea',
+  'clarifying',
   'planning',
   'approval',
   'queued',
@@ -65,6 +66,7 @@ const activeRunStatuses = ['queued', 'running', 'awaiting_approval', 'approved',
 const experimentStatusByStage: Record<PipelineStage, ExperimentStatus> = {
   later: 'proposed',
   idea: 'proposed',
+  clarifying: 'clarifying',
   planning: 'planning',
   approval: 'plan_pending',
   queued: 'queued',
@@ -177,7 +179,7 @@ function cardPayload(input: {
 
 function agentStepFor(kind: PipelineKind, stage: PipelineStage): AgentRunKind | null {
   if (kind === 'experiment' || kind === 'idea') {
-    if (stage === 'planning' || stage === 'queued' || stage === 'running') return 'experiment';
+    if (stage === 'clarifying' || stage === 'planning' || stage === 'queued' || stage === 'running') return 'experiment';
     if (stage === 'interpreting' || stage === 'review') return 'qa';
   }
   if (kind === 'todo') {
@@ -201,6 +203,9 @@ function agentRequest(input: {
   switch (input.kind) {
     case 'experiment':
     case 'idea':
+      if (input.toStage === 'clarifying') {
+        return `${movement} on the Pipeline board.\n\nClarify the scoped experiment before full planning. Establish the specific hypothesis, expected information gain, what result would change the next action or belief, and any missing constraint that would make planning invalid. Ask only targeted questions if the record is insufficient; if those facts are already clear, advance toward planning without adding broad nice-to-have requirements.`;
+      }
       if (input.toStage === 'interpreting' || input.toStage === 'review') {
         return `${movement} on the Pipeline board.\n\nInterpret the current evidence for the scoped experiment. Use the scoped record as the source of truth for title and scope, identify missing artifacts or blockers, and produce the next concrete review note. Do not rename, retitle, or otherwise mutate the scoped issue/experiment.`;
       }
@@ -620,7 +625,7 @@ async function advanceTodo(input: z.infer<typeof advanceSchema>, actorUserId: st
 }
 
 async function advanceIdea(input: z.infer<typeof advanceSchema>, actorUserId: string) {
-  if (input.toStage !== 'planning' && input.toStage !== 'archived') return unsupported(input.toStage, 'idea');
+  if (input.toStage !== 'clarifying' && input.toStage !== 'planning' && input.toStage !== 'archived') return unsupported(input.toStage, 'idea');
   const rows = await db().select().from(ideaCards).where(eq(ideaCards.id, input.id)).limit(1);
   const idea = rows[0];
   if (!idea) return NextResponse.json({ error: 'not_found' }, { status: 404 });
@@ -657,7 +662,7 @@ async function advanceIdea(input: z.infer<typeof advanceSchema>, actorUserId: st
     .values({
       title: idea.title.slice(0, 300),
       hypothesis: idea.bodyMd,
-      status: 'planning',
+      status: input.toStage === 'clarifying' ? 'clarifying' : 'planning',
       planJson: {
         createdFrom: 'idea_card',
         ideaCardId: idea.id,
@@ -710,7 +715,7 @@ async function advanceIdea(input: z.infer<typeof advanceSchema>, actorUserId: st
       key: `experiment-${experiment.id}`,
       id: experiment.id,
       kind: 'experiment',
-      stage: 'planning',
+      stage: input.toStage,
       marker: experimentMarker(experiment.number),
       title: experiment.title,
       detail: experiment.hypothesis,

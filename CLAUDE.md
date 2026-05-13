@@ -22,6 +22,13 @@ a later phase; do not add more.
 Clients of Sagan (EPS today, more later) talk to it only over HTTP.
 Sagan never reaches into a client repo at runtime.
 
+EPS workflow state is canonical in Sagan. EPS agents and compatibility
+scripts may run EPS-specific experiment code and prompts, but they must read
+and mutate workflow state only through Sagan HTTP APIs with API-token auth.
+Do not use GitHub issues, labels, issue comments, project board columns, local
+state files, or direct Sagan database writes as workflow state. `/issue <N>`
+means Sagan `experiments.number`.
+
 ## Layout
 
 - `apps/web` — Next.js 16 dashboard (deployed to Vercel).

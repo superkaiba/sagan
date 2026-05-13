@@ -65,6 +65,7 @@ type CreatedTodo = {
 const ISSUE_DEFAULTS_BY_STAGE: Record<PipelineStageKey, { status: string; priority: 'low' | 'normal' | 'high' | 'urgent' }> = {
   later: { status: 'inbox', priority: 'low' },
   idea: { status: 'open', priority: 'normal' },
+  clarifying: { status: 'planning', priority: 'normal' },
   planning: { status: 'planning', priority: 'normal' },
   approval: { status: 'planning', priority: 'high' },
   queued: { status: 'planning', priority: 'normal' },
@@ -78,10 +79,10 @@ const ISSUE_DEFAULTS_BY_STAGE: Record<PipelineStageKey, { status: string; priori
 };
 
 const dropTargets: Record<PipelineCardKind, PipelineStageKey[]> = {
-  experiment: ['later', 'idea', 'planning', 'approval', 'queued', 'running', 'interpreting', 'blocked', 'review', 'done', 'archived'],
+  experiment: ['later', 'idea', 'clarifying', 'planning', 'approval', 'queued', 'running', 'interpreting', 'blocked', 'review', 'done', 'archived'],
   clean_result: ['interpreting', 'clean_results', 'blocked', 'review', 'done', 'archived'],
   todo: ['later', 'idea', 'planning', 'running', 'interpreting', 'blocked', 'review', 'done', 'archived'],
-  idea: ['planning', 'archived'],
+  idea: ['clarifying', 'planning', 'archived'],
   automation: ['approval', 'queued', 'running', 'done', 'blocked', 'archived'],
 };
 

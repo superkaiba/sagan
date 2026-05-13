@@ -27,15 +27,22 @@ const ACTIVE_POD_STATUSES = [
 
 const ACTIVE_EXPERIMENT_STATUSES = [
   'proposed',
+  'clarifying',
+  'gate_pending',
   'planning',
   'plan_pending',
   'approved',
   'queued',
+  'implementing',
+  'code_reviewing',
+  'testing',
   'running',
+  'uploading',
   'verifying',
   'interpreting',
   'reviewing',
   'awaiting_promotion',
+  'followups_running',
   'blocked',
 ] satisfies Array<typeof experiments.$inferSelect.status>;
 

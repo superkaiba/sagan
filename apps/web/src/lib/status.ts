@@ -1,6 +1,10 @@
 export type StatusTone = 'approval' | 'warning' | 'danger' | 'running' | 'success' | 'info' | 'neutral';
 
 const LABELS: Record<string, string> = {
+  code_reviewing: 'code reviewing',
+  done_experiment: 'done experiment',
+  done_impl: 'done implementation',
+  followups_running: 'follow-ups running',
   plan_pending: 'plan pending',
   awaiting_approval: 'awaiting approval',
   awaiting_promotion: 'awaiting promotion',
@@ -22,11 +26,11 @@ export function statusTone(status: string | null | undefined): StatusTone {
     return 'approval';
   }
   if (['blocked', 'failed', 'rejected', 'falsified'].includes(normalized)) return 'danger';
-  if (['running', 'deploying', 'queued', 'verifying', 'reading', 'in_progress'].includes(normalized)) return 'running';
-  if (['approved', 'completed', 'shared', 'done', 'read', 'published', 'supported', 'active', 'useful', 'resolved'].includes(normalized)) {
+  if (['running', 'deploying', 'queued', 'implementing', 'testing', 'uploading', 'verifying', 'followups_running', 'reading', 'in_progress'].includes(normalized)) return 'running';
+  if (['approved', 'completed', 'shared', 'done', 'done_experiment', 'done_impl', 'read', 'published', 'supported', 'active', 'useful', 'resolved'].includes(normalized)) {
     return 'success';
   }
-  if (['planning', 'proposed', 'draft', 'deferred', 'paused'].includes(normalized)) return 'warning';
+  if (['planning', 'clarifying', 'proposed', 'draft', 'deferred', 'paused', 'gate_pending'].includes(normalized)) return 'warning';
   if (['info', 'note', 'decision', 'clean_result'].includes(normalized)) return 'info';
   return 'neutral';
 }

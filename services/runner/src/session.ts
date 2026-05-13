@@ -100,11 +100,12 @@ const EXPERIMENT_PLANNING_AGENTS: NonNullable<Options['agents']> = {
     prompt: `You are a Sagan experiment-plan critic. You review a draft plan for exactly the lens named in the prompt and ignore other lenses.
 
 Verdict definitions:
-- APPROVE: the plan will produce interpretable data on the research question. Real experiments have diagnostics, confounds, and alternative explanations; do not require a pre-registered gate for every concern when the plan reports the diagnostic the analyzer can weigh.
-- REVISE: the plan is missing data, a condition, a metric, or an infrastructure prerequisite that the analyzer cannot recover from. REVISE means add missing information or a missing comparison, not add a pass/fail rule about an existing diagnostic.
-- REJECT: the design cannot answer the research question even after targeted revisions.
+- pass: the plan will produce interpretable data on the research question. Real experiments have diagnostics, confounds, and alternative explanations; do not require a pre-registered gate for every concern when the plan reports the diagnostic the analyzer can weigh.
+- needs_targeted_fix: the plan is missing data, a condition, a metric, or an infrastructure prerequisite that the analyzer cannot recover from. This means add missing information or a missing comparison, not add a pass/fail rule about an existing diagnostic.
+- blocked_needs_user_decision: the plan needs owner input before it can be made testable or safe.
+- fail_not_worth_continuing: the design cannot answer the research question even after targeted revisions.
 
-Classify each finding as blocker, important, follow-up, or nit. Also mark whether it is scope-preserving or scope-expanding. Bias toward APPROVE when the plan is recoverable through analyzer judgment. Put scope-expanding ideas under follow-up unless the current experiment would be uninterpretable without them. Do not invent extra approval gates, stop conditions, or confirmation conjunctions.`,
+Classify each finding as blocker, important, follow-up, or nit. Also mark whether it is scope-preserving or scope-expanding. Bias toward pass when the plan is recoverable through analyzer judgment. Put scope-expanding ideas under follow-up unless the current experiment would be uninterpretable without them. Do not invent extra approval gates, stop conditions, or confirmation conjunctions.`,
   },
   'codex-critic': {
     description: 'Thin Claude wrapper that forwards one experiment-plan critique lens to Codex.',
@@ -118,7 +119,7 @@ node "\${SAGAN_CODEX_PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.m
 The forwarded prompt must tell Codex:
 - It is read-only and must not edit files.
 - It is critiquing only the requested lens.
-- It must return Rating: APPROVE, REVISE, or REJECT.
+- It must return Verdict: pass, needs_targeted_fix, blocked_needs_user_decision, or fail_not_worth_continuing.
 - It must classify findings as blocker, important, follow-up, or nit.
 - It must mark each finding as scope-preserving or scope-expanding.
 - It must avoid adding approval gates or confirmation conjunctions unless missing data would make the experiment uninterpretable.
@@ -131,11 +132,12 @@ If the Codex companion cannot be invoked, return one line beginning with BLOCKER
     prompt: `You reconcile one disagreement between a Claude critic and a Codex critic on a Sagan experiment plan.
 
 Read only the plan and the two critic reports supplied in the prompt. Do not review from scratch. Do not add new findings. Decide whether the failing side's finding is valid under this contract:
-- APPROVE means diagnostics are sufficient for the analyzer to weigh the concern.
-- REVISE means missing data, a missing condition, a missing metric, or wrong infrastructure would make the experiment uninterpretable.
-- REJECT means the design cannot answer the question.
+- pass means diagnostics are sufficient for the analyzer to weigh the concern.
+- needs_targeted_fix means missing data, a missing condition, a missing metric, or wrong infrastructure would make the experiment uninterpretable.
+- blocked_needs_user_decision means owner input is required before the plan can become testable or safe.
+- fail_not_worth_continuing means the design cannot answer the question.
 
-Return a binding Rating: APPROVE, REVISE, or REJECT, then a short adjudication table for the existing findings only. Reconciler suggestions do not count as a critique loop.`,
+Return a binding Verdict, then a short adjudication table for the existing findings only. Reconciler suggestions do not count as a critique loop. After round 3, disagreement alone cannot block; choose the minimal necessary fix and continue unless a true user-decision blocker remains.`,
   },
 };
 
@@ -901,11 +903,18 @@ scoped issue/experiment. Keep the run request as instructions, not as a title.
 Claude is always the drafter and reviser. Do not delegate plan writing to
 Codex or to a critic. Use critics only to review a complete draft.
 
+Before drafting a full plan, check whether the scoped record establishes the
+specific hypothesis, expected information gain, what result would change the
+next action or belief, and any missing constraint that would make planning
+invalid. If those points are unclear, produce only the few targeted clarifying
+questions needed and do not add broad literature work, unrelated methodology
+gates, or nice-to-have controls. If they are clear, continue to planning.
+
 Before finalizing, use this bounded review workflow:
 
 1. Draft the plan in the main Claude session.
 2. Fact-check concrete assumptions with repo reads/searches available to you.
-3. Run up to five critique loops. Stop early once the merged critique has no
+3. Run up to three critique loops. Stop early once the merged critique has no
    blocker and no cheap, scope-preserving important issue.
 4. In each critique loop, spawn paired Claude + Codex critics for these lenses:
    methodology, statistics/measurement, and alternative explanations. Use the
@@ -914,9 +923,9 @@ Before finalizing, use this bounded review workflow:
    parallel. The critics must see the draft plan only, not your private
    reasoning or each other's outputs.
 5. Merge critiques per lens:
-   - APPROVE + APPROVE: accept the lens.
-   - REVISE/REJECT + REVISE/REJECT: union the blocker sets for that lens.
-   - APPROVE vs REVISE/REJECT: use the reconciler agent for that lens. The
+   - pass + pass: accept the lens.
+   - needs_targeted_fix / blocked_needs_user_decision / fail_not_worth_continuing on both sides: union the blocker sets for that lens.
+   - pass vs non-pass: use the reconciler agent for that lens. The
      reconciler may adjudicate only existing findings and may not add new ones.
    - Codex no-show or malformed output: fall back to the Claude critic for
      that lens and record the fallback in the critique notes.
@@ -930,7 +939,10 @@ Before finalizing, use this bounded review workflow:
    missing controls, wrong metrics, or wrong infrastructure can require a
    revision. Concerns about diagnostics that are already reported should be
    surfaced for interpretation, not turned into pass/fail gates.
-9. After the last loop, run a consistency check yourself: ensure the goal,
+9. After round 3, unresolved disagreement alone is not enough to block. The
+   reconciler records the final critique, chooses the minimal necessary fix,
+   and you continue after that fix unless a real user-decision blocker remains.
+10. After the last loop, run a consistency check yourself: ensure the goal,
    hypothesis, prediction, kill criterion, compute, artifacts, verification,
    risks, likely clean-result shape, and runpod-spec all agree.
 

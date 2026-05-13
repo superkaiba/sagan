@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { agentRunEvents, experiments, podLifecycle } from '@sagan/db/schema';
+import { agentRunEvents, experiments, podLifecycle, workflowEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { mergeExperimentProgress } from '@/lib/experiment-estimate';
 
@@ -93,6 +93,20 @@ export async function POST(req: Request) {
         })
         .where(eq(experiments.id, pod.experimentId));
     }
+    await db().insert(workflowEvents).values({
+      entityKind: 'experiment',
+      entityId: pod.experimentId,
+      eventType: 'note',
+      actorKind: 'runpod',
+      note: progressBody(parsed.data),
+      metadata: {
+        marker_type: 'epm:progress',
+        podId: pod.runpodPodId,
+        estimatedRemainingMinutes: parsed.data.estimatedRemainingMinutes ?? null,
+        progressPct: parsed.data.progressPct ?? null,
+        status: parsed.data.status ?? null,
+      },
+    });
   }
 
   if (pod.agentRunId) {

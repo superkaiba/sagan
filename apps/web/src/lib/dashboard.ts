@@ -154,6 +154,7 @@ export interface DashboardRunPod {
 export const PIPELINE_STAGES = [
   { key: 'later', title: 'Later' },
   { key: 'idea', title: 'Idea / Proposed' },
+  { key: 'clarifying', title: 'Clarifying' },
   { key: 'planning', title: 'Planning' },
   { key: 'approval', title: 'Awaiting approval' },
   { key: 'queued', title: 'Approved / Queued' },
@@ -170,29 +171,40 @@ export type PipelineStageKey = (typeof PIPELINE_STAGES)[number]['key'];
 const PIPELINE_STAGE_KEYS = new Set<PipelineStageKey>(PIPELINE_STAGES.map((stage) => stage.key));
 const PIPELINE_STAGE_NOTE_PREFIX = 'sagan:pipeline-stage=';
 
-const ACTIVE_EXPERIMENT_STATUSES = [
+export const DASHBOARD_EXPERIMENT_STATUSES = [
   'proposed',
+  'clarifying',
+  'gate_pending',
   'planning',
   'plan_pending',
   'approved',
   'awaiting_approval',
   'queued',
+  'implementing',
+  'code_reviewing',
+  'testing',
   'running',
+  'uploading',
   'verifying',
   'interpreting',
   'reviewing',
   'awaiting_promotion',
+  'followups_running',
   'shared',
   'blocked',
   'completed',
+  'done_experiment',
+  'done_impl',
   'failed',
+  'cancelled',
   'archived',
 ] as const;
 
+const ACTIVE_EXPERIMENT_STATUSES = DASHBOARD_EXPERIMENT_STATUSES;
 const ACTIVE_AGENT_STATUSES = ['queued', 'running', 'awaiting_approval', 'approved', 'deploying', 'blocked', 'failed', 'cancelled'] as const;
 const ACTIVE_POD_STATUSES = ['queued', 'deploying', 'running', 'retrying', 'stop_requested', 'blocked'] as const;
 const DEPRIORITIZED_TODO_STATUSES = ['inbox', 'open', 'scoped', 'planning'] as const;
-const DEPRIORITIZED_EXPERIMENT_STATUSES = ['proposed', 'planning'] as const;
+const DEPRIORITIZED_EXPERIMENT_STATUSES = ['proposed', 'clarifying', 'planning'] as const;
 
 function iso(value: Date | string | null | undefined) {
   if (!value) return new Date(0).toISOString();
@@ -694,13 +706,23 @@ function experimentStage(status: string, priority: string): PipelineStageKey {
     return 'later';
   }
   if (status === 'proposed') return 'idea';
+  if (status === 'clarifying') return 'clarifying';
   if (status === 'planning') return 'planning';
-  if (status === 'plan_pending' || status === 'awaiting_approval') return 'approval';
+  if (status === 'gate_pending' || status === 'plan_pending' || status === 'awaiting_approval') return 'approval';
   if (status === 'approved' || status === 'queued') return 'queued';
-  if (status === 'running' || status === 'verifying') return 'running';
-  if (status === 'interpreting') return 'interpreting';
+  if (
+    status === 'implementing' ||
+    status === 'code_reviewing' ||
+    status === 'testing' ||
+    status === 'running' ||
+    status === 'uploading' ||
+    status === 'verifying'
+  ) {
+    return 'running';
+  }
+  if (status === 'interpreting' || status === 'followups_running') return 'interpreting';
   if (status === 'reviewing' || status === 'awaiting_promotion') return 'review';
-  if (status === 'shared' || status === 'completed') return 'done';
+  if (status === 'shared' || status === 'completed' || status === 'done_experiment' || status === 'done_impl') return 'done';
   if (status === 'blocked' || status === 'failed') return 'blocked';
   if (status === 'archived' || status === 'cancelled') return 'archived';
   return 'planning';

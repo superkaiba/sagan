@@ -9,7 +9,23 @@ import { ExperimentStatusButton } from './ExperimentStatusButton';
 
 export const dynamic = 'force-dynamic';
 
-const QUEUE_STATUSES = ['proposed', 'planning', 'plan_pending', 'approved', 'running', 'awaiting_promotion'] as const;
+const QUEUE_STATUSES = [
+  'proposed',
+  'clarifying',
+  'planning',
+  'plan_pending',
+  'approved',
+  'queued',
+  'implementing',
+  'code_reviewing',
+  'testing',
+  'running',
+  'uploading',
+  'verifying',
+  'interpreting',
+  'reviewing',
+  'awaiting_promotion',
+] as const;
 
 export default async function ExperimentsPage() {
   const [queue, pendingApprovals, events] = await Promise.all([
@@ -72,7 +88,7 @@ export default async function ExperimentsPage() {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">Approval queue</h2>
           <p className="text-xs text-[--color-muted]">
-            proposed · planning · plan_pending · approved · running · awaiting_promotion
+            proposed · clarifying · planning · plan_pending · approved · queued · running · interpreting · reviewing · awaiting_promotion
           </p>
         </div>
         <div className="rounded-lg border border-[--color-border] divide-y divide-[--color-border]">
@@ -95,7 +111,25 @@ export default async function ExperimentsPage() {
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {experiment.status === 'proposed' || experiment.status === 'planning' ? (
+                    {experiment.status === 'proposed' ? (
+                      <ExperimentStatusButton
+                        experimentId={experiment.id}
+                        status="clarifying"
+                        label="Clarify"
+                        note="Move proposal to clarifying before full planning."
+                        variant="primary"
+                      />
+                    ) : null}
+                    {experiment.status === 'clarifying' ? (
+                      <ExperimentStatusButton
+                        experimentId={experiment.id}
+                        status="planning"
+                        label="Start planning"
+                        note="Clarification is sufficient to start planning."
+                        variant="primary"
+                      />
+                    ) : null}
+                    {experiment.status === 'planning' ? (
                       <ExperimentStatusButton
                         experimentId={experiment.id}
                         status="plan_pending"

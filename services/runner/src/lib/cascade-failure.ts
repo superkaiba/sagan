@@ -19,13 +19,19 @@ type CascadeReason = 'failed' | 'stale' | 'cancelled';
 
 const ACTIVE_TODO_STATUSES = ['running', 'in_progress', 'planning', 'interpreting'] as const;
 const ACTIVE_EXPERIMENT_STATUSES = [
+  'clarifying',
   'running',
   'queued',
   'approved',
+  'implementing',
+  'code_reviewing',
+  'testing',
   'planning',
   'interpreting',
+  'uploading',
   'verifying',
   'reviewing',
+  'followups_running',
 ] as const;
 const ACTIVE_CLEAN_RESULT_STATUSES = ['draft', 'reviewing'] as const;
 

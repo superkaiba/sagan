@@ -5,6 +5,7 @@ import type { EntityKind } from './entity';
 
 export const EXPERIMENT_STATUSES = [
   'proposed',
+  'clarifying',
   'gate_pending',
   'planning',
   'plan_pending',
@@ -37,7 +38,11 @@ type WorkflowEventInsert = typeof workflowEvents.$inferInsert;
 export function experimentTurn(status: string) {
   switch (status) {
     case 'proposed':
-      return 'Sagan turn: clarify and plan';
+      return 'Sagan turn: clarify scope';
+    case 'clarifying':
+      return 'Sagan turn: clarify hypothesis and information gain';
+    case 'gate_pending':
+      return 'Owner turn: resolve gate';
     case 'planning':
       return 'Sagan turn: draft plan';
     case 'plan_pending':
@@ -45,10 +50,15 @@ export function experimentTurn(status: string) {
       return 'Owner turn: approve, defer, or reject';
     case 'approved':
     case 'queued':
+    case 'implementing':
+    case 'code_reviewing':
+    case 'testing':
     case 'running':
+    case 'uploading':
     case 'verifying':
     case 'interpreting':
     case 'reviewing':
+    case 'followups_running':
       return 'Sagan turn: run and verify';
     case 'awaiting_promotion':
       return 'Owner turn: review clean result';

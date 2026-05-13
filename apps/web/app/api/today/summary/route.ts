@@ -11,14 +11,22 @@ import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 
 const ACTIVE_EXPERIMENT_STATUSES = [
+  'proposed',
+  'clarifying',
+  'planning',
   'plan_pending',
   'approved',
   'queued',
+  'implementing',
+  'code_reviewing',
+  'testing',
   'running',
+  'uploading',
   'verifying',
   'interpreting',
   'reviewing',
   'awaiting_promotion',
+  'followups_running',
   'blocked',
 ] satisfies Array<typeof experiments.$inferSelect.status>;
 

@@ -59,15 +59,16 @@ export function deriveProcessState(input: {
   if (['blocked', 'failed', 'rejected'].includes(status)) return state('Blocked', status, 'danger');
   if (['cancelled', 'archived'].includes(status)) return state(status === 'archived' ? 'Archived' : 'Cancelled', status, 'warning');
   if (['completed', 'done', 'shared', 'approved'].includes(status)) return state(status === 'approved' ? 'Approved' : 'Done', status, 'success');
-  if (['awaiting_approval', 'plan_pending'].includes(status)) return state('Owner review', status, 'approval');
+  if (['awaiting_approval', 'gate_pending', 'plan_pending'].includes(status)) return state('Owner review', status, 'approval');
   if (['proposed', 'inbox', 'open', 'scoped'].includes(status)) return state('Scoping', status, 'neutral');
+  if (['clarifying'].includes(status)) return state('Clarifying', status, 'info');
   if (['planning'].includes(status)) return state('Planning + critic', status, 'info');
   if (['queued'].includes(status)) return state('Queued', status, 'info');
-  if (['running', 'in_progress'].includes(status)) {
+  if (['implementing', 'code_reviewing', 'testing', 'running', 'uploading', 'in_progress'].includes(status)) {
     return state(input.entityKind === 'experiment' ? 'Experiment' : 'Implementing', status, 'running');
   }
   if (['verifying'].includes(status)) return state('Verifying', status, 'info');
-  if (['interpreting'].includes(status)) return state('Analyzing', status, 'info');
+  if (['interpreting', 'followups_running'].includes(status)) return state('Analyzing', status, 'info');
   if (['reviewing'].includes(status)) return state(input.entityKind === 'clean_result' ? 'Critic review' : 'Code reviewer', status, 'approval');
   if (['awaiting_promotion', 'draft'].includes(status)) return state('Writing result', status, 'info');
   return state(titleize(status), status, 'neutral');

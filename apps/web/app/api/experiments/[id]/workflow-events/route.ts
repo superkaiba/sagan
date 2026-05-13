@@ -5,6 +5,7 @@ import { experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendWorkflowEvent } from '@/lib/workflow';
+import { validateReviewerLoopEvent } from '@/lib/reviewer-loops';
 
 const WORKFLOW_EVENT_TYPES = [
   'created',
@@ -66,6 +67,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const combinedMetadata = markerType
     ? { ...(meta ?? {}), marker_type: markerType }
     : meta;
+  const reviewerLoop = validateReviewerLoopEvent({
+    markerType,
+    metadata: combinedMetadata,
+    toStatus: toStatus ?? null,
+  });
+  if (!reviewerLoop.ok) {
+    return NextResponse.json(
+      { error: reviewerLoop.error, message: reviewerLoop.message },
+      { status: 400 },
+    );
+  }
 
   const event = await appendWorkflowEvent({
     entityKind: 'experiment',
@@ -76,7 +88,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     actorKind,
     actorUserId: session.user.id,
     note,
-    metadata: combinedMetadata,
+    metadata: reviewerLoop.metadata,
   });
 
   return NextResponse.json({ ok: true, id: event.id });

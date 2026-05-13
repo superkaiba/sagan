@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type ExperimentStatus = 'planning' | 'plan_pending' | 'approved' | 'blocked';
+type ExperimentStatus = 'clarifying' | 'planning' | 'plan_pending' | 'approved' | 'blocked';
 
 export function ExperimentStatusButton({
   experimentId,

@@ -106,6 +106,7 @@ export const assigneeKindEnum = pgEnum('assignee_kind', ['agent', 'human']);
 
 export const experimentStatusEnum = pgEnum('experiment_status', [
   'proposed',
+  'clarifying',
   'gate_pending',
   'planning',
   'plan_pending',

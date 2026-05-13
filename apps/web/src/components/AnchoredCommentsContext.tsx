@@ -48,7 +48,7 @@ export function AnchoredCommentsProvider({
   children: ReactNode;
   initialAnchors?: AnchorRecord[];
 }) {
-  const [anchors, setAnchors] = useState<AnchorRecord[]>(initialAnchors ?? []);
+  const [anchors, setAnchorRows] = useState<AnchorRecord[]>(initialAnchors ?? []);
   const [anchorPositions, setAnchorPositionRows] = useState<AnchorPosition[]>([]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [pendingAnchor, setPendingAnchor] = useState<PendingAnchor | null>(null);
@@ -58,6 +58,12 @@ export function AnchoredCommentsProvider({
   const clearScrollRequest = useCallback(() => setScrollToCommentId(null), []);
   const setAnchorPositions = useCallback((positions: AnchorPosition[]) => {
     setAnchorPositionRows((prev) => (sameAnchorPositions(prev, positions) ? prev : positions));
+  }, []);
+  // Dedupe identical anchor lists so the 4s comment poll doesn't keep handing
+  // the narrative body a new array reference, which would tear down and
+  // rebuild every <mark> on every poll and shift the sidebar threads.
+  const setAnchors = useCallback((next: AnchorRecord[]) => {
+    setAnchorRows((prev) => (sameAnchors(prev, next) ? prev : next));
   }, []);
 
   const value = useMemo<AnchoredCommentsValue>(
@@ -74,7 +80,7 @@ export function AnchoredCommentsProvider({
       requestScrollTo,
       clearScrollRequest,
     }),
-    [anchors, anchorPositions, setAnchorPositions, hoveredId, pendingAnchor, scrollToCommentId, requestScrollTo, clearScrollRequest],
+    [anchors, setAnchors, anchorPositions, setAnchorPositions, hoveredId, pendingAnchor, scrollToCommentId, requestScrollTo, clearScrollRequest],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -97,6 +103,14 @@ function sameAnchorPositions(a: AnchorPosition[], b: AnchorPosition[]) {
     ) {
       return false;
     }
+  }
+  return true;
+}
+
+function sameAnchors(a: AnchorRecord[], b: AnchorRecord[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i]!.id !== b[i]!.id || a[i]!.quote !== b[i]!.quote) return false;
   }
   return true;
 }

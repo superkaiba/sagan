@@ -354,7 +354,11 @@ function PipelineCard({
   const needsOwner = Boolean(card.ownerAction) && attentionColumn;
   const runActive = card.run ? RUN_ACTIVE_STATUSES.includes(card.run.status) : false;
   const runFailed = card.run ? RUN_FAILED_STATUSES.includes(card.run.status) : false;
-  const cardBlocked = !needsOwner && (card.stage === 'blocked' || runFailed);
+  // A stale failed/cancelled run on a card that has already moved past the work
+  // (archived, done, awaiting clean-result writeup) is historical noise, not a
+  // live blocker — don't paint those cards red.
+  const postWorkStage = card.stage === 'archived' || card.stage === 'done' || card.stage === 'clean_results';
+  const cardBlocked = !needsOwner && (card.stage === 'blocked' || (runFailed && !postWorkStage));
   const cardActive = !needsOwner && !cardBlocked && runActive;
 
   function openCard(event?: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) {

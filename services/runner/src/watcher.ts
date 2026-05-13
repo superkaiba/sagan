@@ -88,9 +88,14 @@ export async function stopPodsForRun(agentRunId: string) {
     .where(eq(schema.agentRuns.id, agentRunId));
   await emitEvent(agentRunId, 'cancelled', 'active RunPod pods were stopped; volumes were preserved');
 
+  // The agent run is cancelled, but the experiment is not — pod stops are owner
+  // pauses (or pod-orphan cleanup), not a verdict on the experiment. Mark it
+  // `blocked` so it surfaces in the Blocked column for owner attention instead
+  // of silently disappearing into Archived/Cancelled. `setExperimentWorkflowStatus`
+  // is a no-op when the experiment is already in a terminal status.
   const experimentIds = new Set(rows.map((row) => row.experimentId).filter((id): id is string => Boolean(id)));
   for (const experimentId of experimentIds) {
-    await setExperimentWorkflowStatus(experimentId, 'cancelled', 'RunPod pod stopped; volume preserved.');
+    await setExperimentWorkflowStatus(experimentId, 'blocked', 'RunPod pod stopped; volume preserved.');
   }
 }
 

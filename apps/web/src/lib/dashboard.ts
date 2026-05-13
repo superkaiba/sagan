@@ -58,6 +58,7 @@ export interface DashboardSuggestedLitItem {
   authors: string[];
   releasedOn: string | null;
   topic: string;
+  priority: string;
   summaryMd: string | null;
   relevanceReasonMd: string | null;
   url: string | null;
@@ -742,6 +743,7 @@ async function loadTopSuggestedLitItemImpl(): Promise<DashboardSuggestedLitItem 
       authors: litItems.authors,
       releasedOn: litItems.releasedOn,
       topic: litItems.topic,
+      priority: litItems.priority,
       summaryMd: litItems.summaryMd,
       relevanceReasonMd: litItems.relevanceReasonMd,
       url: litItems.url,
@@ -760,7 +762,20 @@ async function loadTopSuggestedLitItemImpl(): Promise<DashboardSuggestedLitItem 
       ),
     )
     .groupBy(litItems.id)
-    .orderBy(sql`max(${litInbox.score}) desc nulls last`, desc(litItems.releasedOn), desc(litItems.createdAt))
+    .orderBy(
+      // Priority comes first — anything I've explicitly bumped to urgent/high
+      // should outrank the lit-review job's score. Cast the enum to an int so
+      // the ordering is deterministic.
+      sql`CASE ${litItems.priority}
+            WHEN 'urgent' THEN 3
+            WHEN 'high'   THEN 2
+            WHEN 'normal' THEN 1
+            WHEN 'low'    THEN 0
+          END DESC`,
+      sql`max(${litInbox.score}) desc nulls last`,
+      desc(litItems.releasedOn),
+      desc(litItems.createdAt),
+    )
     .limit(1);
   const row = scored[0];
   if (!row) return null;
@@ -772,6 +787,7 @@ async function loadTopSuggestedLitItemImpl(): Promise<DashboardSuggestedLitItem 
       : [],
     releasedOn: row.releasedOn ? (typeof row.releasedOn === 'string' ? row.releasedOn : (row.releasedOn as Date).toISOString().slice(0, 10)) : null,
     topic: row.topic ?? 'other',
+    priority: row.priority ?? 'normal',
     summaryMd: row.summaryMd,
     relevanceReasonMd: row.relevanceReasonMd,
     url: row.url,
@@ -834,8 +850,8 @@ function experimentStage(status: string, priority: string): PipelineStageKey {
   if (status === 'reviewing') return 'review';
   if (status === 'clean_result_drafting' || status === 'awaiting_promotion') return 'clean_results';
   if (status === 'shared' || status === 'completed' || status === 'done_experiment' || status === 'done_impl') return 'done';
-  if (status === 'blocked' || status === 'failed') return 'blocked';
-  if (status === 'archived' || status === 'cancelled') return 'archived';
+  if (status === 'blocked' || status === 'failed' || status === 'cancelled') return 'blocked';
+  if (status === 'archived') return 'archived';
   return 'planning';
 }
 

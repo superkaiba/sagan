@@ -1,5 +1,11 @@
 import { and, eq, isNull } from 'drizzle-orm';
-import { cleanResults, dailyLogEntries, entityMemberships } from '@sagan/db/schema';
+import {
+  cleanResults,
+  dailyLogEntries,
+  entityMemberships,
+  projectNarratives,
+  projects,
+} from '@sagan/db/schema';
 import type { SessionContext } from '@sagan/auth';
 import { requireSession } from './auth';
 import { db } from './db';
@@ -77,6 +83,22 @@ async function canReadSharedEntity(entityKind: EntityKind, entityId: string): Pr
       )
       .limit(1);
     return Boolean(rows[0]);
+  }
+
+  // A published narrative of a public project is readable by any authenticated
+  // user (matches the visibility of /p/<slug>, which doesn't require auth).
+  // Combined with the comment fallback in canCommentOnEntity, this also lets
+  // any signed-in viewer post comments — the Google-Docs "anyone with the link
+  // can comment" model for the public dashboard view.
+  if (entityKind === 'project_narrative') {
+    const rows = await db()
+      .select({ status: projectNarratives.status, isPublic: projects.public })
+      .from(projectNarratives)
+      .innerJoin(projects, eq(projects.id, projectNarratives.projectId))
+      .where(eq(projectNarratives.id, entityId))
+      .limit(1);
+    const row = rows[0];
+    return Boolean(row && row.status === 'published' && row.isPublic === true);
   }
 
   if (entityKind !== 'clean_result') return false;

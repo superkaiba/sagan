@@ -161,7 +161,10 @@ export default async function PublicProjectPage({
                 </>
               ) : (
                 <p className="text-sm text-[--color-muted]">
-                  <Link href="/login" className="underline">
+                  <Link
+                    href={`/login?next=${encodeURIComponent(`/p/${slug}`)}`}
+                    className="underline"
+                  >
                     Sign in
                   </Link>{' '}
                   to leave comments. Click <strong>Improve</strong> after commenting to have all

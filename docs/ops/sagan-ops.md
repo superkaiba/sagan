@@ -19,12 +19,21 @@
 ## Runner
 
 - The runner is intended to run under systemd on the VM.
-- Restart after code or prompt changes:
+- Always restart via the safe wrapper. It skips the restart when nothing
+  under `services/runner/**` changed since the last restart, and refuses
+  when agent runs are active so we don't SIGTERM Claude subprocesses
+  mid-flight:
 
 ```bash
-sudo systemctl restart sagan-runner
+scripts/restart-runner.sh             # safe; refuses on active runs
+scripts/restart-runner.sh --dry-run   # show what it would do
+scripts/restart-runner.sh --force     # bypass active-run check (rare)
 sudo systemctl status sagan-runner --no-pager
 ```
+
+- Do not call `sudo systemctl restart sagan-runner` directly — it kills
+  every in-flight Claude subprocess and forces auto-recovery to replay
+  transcripts from scratch.
 
 - Use `/admin/health` to inspect active agent runs, recent jobs, notification email status, active experiments, and active pods.
 - Use stop before terminate for RunPod. Stop preserves the volume; terminate needs a separate explicit approval path.

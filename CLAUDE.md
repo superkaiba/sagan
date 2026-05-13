@@ -58,6 +58,11 @@ means Sagan `experiments.number`.
 - Do not use destructive git commands (`git reset --hard`, `git checkout --`,
   etc.) unless the user explicitly asks.
 - Do not revert unrelated dirty work. Work with existing changes.
+- Never call `sudo systemctl restart sagan-runner` directly. Always use
+  `scripts/restart-runner.sh` — it skips the restart when nothing under
+  `services/runner/**` changed since the last restart, and refuses when
+  agent runs are active so we don't SIGTERM Claude subprocesses
+  mid-flight. Web-only commits do not need a runner restart.
 
 ## User-facing ergonomics
 

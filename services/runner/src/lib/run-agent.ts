@@ -158,13 +158,12 @@ export async function* runAgentWithContinuation(
           .join('\n');
         if (assistantText.includes(sentinel)) {
           sentinelSeen = true;
+          // Close the input queue so no further Continue prompts can be
+          // dispatched, then let the SDK finish its turn and emit the
+          // terminal `result` message. session.ts depends on that result
+          // to mark the run completed; closing q here drops it.
           inputQueue.close();
-          try {
-            q.close();
-          } catch {
-            // ignore — already closing.
-          }
-          return;
+          continue;
         }
         const stopReason = message.message?.stop_reason ?? null;
         const hasToolUse = toolUsesInTurn > 0;

@@ -10,7 +10,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { runAgentWithContinuation } from './lib/run-agent.js';
+import { runAgentWithContinuation, stripSentinel } from './lib/run-agent.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { db, schema } from './db.js';
@@ -378,6 +378,23 @@ async function runWithStreaming(
         });
         await markAwaitingApproval(runId, recoveredPlan);
         return { ok: true, status: 'awaiting_approval', planMd: recoveredPlan };
+      }
+    }
+    // Safety net: the SDK stream closed before emitting a `result` envelope,
+    // but the assistant terminated its turn with the DONE sentinel. Treat
+    // that as a successful qa reply using the captured text. Without this,
+    // every "Ask Claude" comment reply was failing once the agent ended its
+    // turn cleanly with the sentinel.
+    const finalText = stripSentinel(lastAssistantText).trim();
+    if (finalText && lastAssistantText.includes('<<<DONE>>>') && row.kind === 'qa') {
+      const invalidReason = invalidQaReplyReason(finalText);
+      if (!invalidReason) {
+        if (row.chatSessionId && !recordedClaudeSessionId) {
+          recordedClaudeSessionId = row.chatSessionId;
+          await syncChatSessionHandle(row.chatSessionId, row.chatSessionId);
+        }
+        await markCompleted(runId, finalText, costUsd, numTurns);
+        return { ok: true, status: 'completed', resultText: finalText, costUsd, numTurns };
       }
     }
     const errMsg = 'stream ended without result';

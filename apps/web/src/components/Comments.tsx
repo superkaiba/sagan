@@ -452,14 +452,6 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
                     </button>
                     <button
                       type="button"
-                      onClick={() => void submitReply(c.id, 'Codex')}
-                      disabled={submitting || !replyBody.trim()}
-                      className="text-[--color-muted] hover:text-[--color-fg]"
-                    >
-                      ask Codex
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => {
                         setReplyTo(null);
                         setReplyBody('');
@@ -599,14 +591,6 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
               className="rounded-md border border-[--color-border] px-3 py-1.5 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
             >
               Ask Claude
-            </button>
-            <button
-              type="button"
-              onClick={() => void submitTopLevel('Codex')}
-              disabled={submitting || !body.trim()}
-              className="rounded-md border border-[--color-border] px-3 py-1.5 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
-            >
-              Ask Codex
             </button>
             <button
               type="submit"

@@ -159,7 +159,6 @@ export const PIPELINE_STAGES = [
   { key: 'idea', title: 'Idea / Proposed' },
   { key: 'planning', title: 'Planning' },
   { key: 'approval', title: 'Awaiting approval' },
-  { key: 'queued', title: 'Approved / Queued' },
   { key: 'running', title: 'Running' },
   { key: 'interpreting', title: 'Interpreting' },
   { key: 'followups_running', title: 'Follow-ups running' },
@@ -712,8 +711,14 @@ function experimentStage(status: string, priority: string): PipelineStageKey {
   if (status === 'proposed') return 'idea';
   if (status === 'clarifying' || status === 'awaiting_clarifications' || status === 'planning') return 'planning';
   if (status === 'gate_pending' || status === 'plan_pending' || status === 'awaiting_approval') return 'approval';
-  if (status === 'approved' || status === 'queued') return 'queued';
+  // `approved` and `queued` are blip states between the approval drag and the
+  // orchestrator picking up the run (millisecond-scale via pg_notify) plus
+  // the few-minute "pod dispatched, sshHost still booting" window that
+  // commitDispatchedPod stamps as `queued`. Group them with `running` — the
+  // owner cares about "agent is working on this," not the sub-state.
   if (
+    status === 'approved' ||
+    status === 'queued' ||
     status === 'implementing' ||
     status === 'code_reviewing' ||
     status === 'testing' ||
@@ -769,12 +774,11 @@ function todoStage(status: string, priority: string, ownerNote?: string | null):
 
 function agentStage(status: string): PipelineStageKey {
   if (status === 'awaiting_approval') return 'approval';
-  if (status === 'queued' || status === 'approved') return 'queued';
-  if (status === 'running' || status === 'deploying') return 'running';
+  if (status === 'queued' || status === 'approved' || status === 'running' || status === 'deploying') return 'running';
   if (status === 'completed') return 'done';
   if (status === 'blocked' || status === 'failed' || status === 'rejected') return 'blocked';
   if (status === 'cancelled') return 'archived';
-  return 'queued';
+  return 'running';
 }
 
 const RUN_PRIORITY: Record<string, number> = {

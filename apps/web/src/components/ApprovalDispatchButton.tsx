@@ -33,7 +33,7 @@ export function ApprovalDispatchButton({
             id: action.id,
             kind: 'experiment',
             fromStage: 'approval',
-            toStage: 'queued',
+            toStage: 'running',
           }),
         });
       } else {

@@ -27,7 +27,6 @@ const pipelineStageSchema = z.enum([
   'idea',
   'planning',
   'approval',
-  'queued',
   'running',
   'interpreting',
   'followups_running',
@@ -68,7 +67,6 @@ const experimentStatusByStage: Record<PipelineStage, ExperimentStatus> = {
   idea: 'proposed',
   planning: 'planning',
   approval: 'plan_pending',
-  queued: 'queued',
   running: 'running',
   interpreting: 'interpreting',
   followups_running: 'followups_running',
@@ -113,7 +111,6 @@ const cleanResultStatusByStage: Partial<Record<PipelineStage, (typeof cleanResul
 
 const automationStatusByStage: Partial<Record<PipelineStage, AgentRunStatus>> = {
   approval: 'awaiting_approval',
-  queued: 'queued',
   running: 'queued',
   done: 'completed',
   blocked: 'blocked',
@@ -179,7 +176,7 @@ function cardPayload(input: {
 
 function agentStepFor(kind: PipelineKind, stage: PipelineStage): AgentRunKind | null {
   if (kind === 'experiment' || kind === 'idea') {
-    if (stage === 'planning' || stage === 'queued' || stage === 'running') return 'experiment';
+    if (stage === 'planning' || stage === 'running') return 'experiment';
     if (stage === 'interpreting' || stage === 'review') return 'qa';
   }
   if (kind === 'todo') {
@@ -517,7 +514,7 @@ async function advanceExperiment(input: z.infer<typeof advanceSchema>, actorUser
 
   let agentRunId: string | undefined;
   let message = `Moved to ${input.toStage}.`;
-  if (input.toStage === 'queued' || input.toStage === 'running') {
+  if (input.toStage === 'running') {
     const approvedRun = await approveLatestScopedRun({
       scopeEntityKind: 'experiment',
       scopeEntityId: input.id,
@@ -898,7 +895,7 @@ async function advanceAutomation(input: z.infer<typeof advanceSchema>, actorUser
   let nextStatus: AgentRunStatus = targetStatus;
   let agentRunId: string | undefined = run.id;
   let message = `Moved automation to ${input.toStage}.`;
-  if ((input.toStage === 'queued' || input.toStage === 'running') && run.status === 'awaiting_approval') {
+  if (input.toStage === 'running' && run.status === 'awaiting_approval') {
     await db()
       .update(agentRuns)
       .set({ status: 'approved', approvedBy: actorUserId, approvedAt: new Date(), updatedAt: new Date() })
@@ -938,7 +935,7 @@ async function advanceAutomation(input: z.infer<typeof advanceSchema>, actorUser
       key: `agent-${run.id}`,
       id: run.id,
       kind: 'automation',
-      stage: input.toStage === 'running' ? 'queued' : input.toStage,
+      stage: input.toStage,
       marker: run.scopeEntityKind === 'experiment' ? await markerForExperimentId(run.scopeEntityId) : null,
       title: run.request,
       detail: run.scopeEntityKind && run.scopeEntityId ? `${run.scopeEntityKind} ${run.scopeEntityId.slice(0, 8)}` : run.kind,

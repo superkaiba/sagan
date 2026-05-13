@@ -1089,6 +1089,18 @@ After those sections, include a fenced \`\`\`runpod-spec block containing valid 
 
 Choose the smallest GPU type/count that can plausibly run the approved experiment. If the experiment truly should not launch compute, do not use kind=experiment; write a blocker explaining that it should be handled as a planning/QA run instead.
 
+The ## Compute and Hardware section must include a USD cost estimate alongside GPU-hours, computed from RunPod Secure Cloud on-demand rates. Use these reference prices (per GPU per hour, last checked May 2026; treat as guidance — note in the section that they may drift):
+
+| GPU                | USD/hr |
+| H100 80GB SXM      | $2.69  |
+| H100 80GB PCIe     | $2.39  |
+| A100 80GB SXM      | $1.49  |
+| A100 80GB PCIe     | $1.39  |
+| L40S 48GB          | $0.86  |
+| RTX 4090 24GB      | $0.59  |
+
+Format: \`GPU-hours × rate × gpuCount × pods = $X (compute) + ~$Y (storage at $0.10/GB-month for the run window) = ~$Z total\`. Round to two significant figures. State the rate you used so the estimate is auditable. If the experiment runs in parallel across multiple pods, multiply through accordingly.
+
 If the experiment should run automatically on pod boot, set dockerArgs to the exact shell command. The dispatcher injects SAGAN_PROGRESS_URL, SAGAN_POD_PROGRESS_TOKEN, SAGAN_AGENT_RUN_ID, SAGAN_EXPERIMENT_ID, and SAGAN_RUN_INDEX into the pod. The experimenter command should POST progress updates as it runs:
 
 \`\`\`bash
@@ -1098,7 +1110,7 @@ curl -sS -X POST "$SAGAN_PROGRESS_URL" \
   -d '{"estimatedRemainingMinutes": 90, "progressPct": 50, "message": "training halfway through"}'
 \`\`\`
 
-The Approval Checklist must explicitly cover goal, hypothesis, prediction, kill criterion, compute/hardware, artifacts, verification, risks, likely clean-result shape, and whether the runpod-spec matches the plan.`;
+The Approval Checklist must explicitly cover goal, hypothesis, prediction, kill criterion, compute/hardware (including the USD cost estimate), artifacts, verification, risks, likely clean-result shape, and whether the runpod-spec matches the plan.`;
 }
 
 export function parseStructuredPlan(planMd: string): StructuredPlan {

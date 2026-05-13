@@ -41,6 +41,7 @@ export const KNOWN_MARKER_TYPES = [
   'epm:review-reconcile',
   'epm:reviewer-verdict',
   'epm:reviewer-verdict-codex',
+  'epm:textbox-answers',
   'epm:reviewer-pass',
   'epm:reviewer-decision',
   'epm:reviewer-ensemble-final',

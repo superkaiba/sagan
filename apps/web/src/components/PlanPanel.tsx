@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { agentRuns, experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { Markdown } from '@/components/Markdown';
+import { MarkdownWithTextboxes } from '@/components/MarkdownWithTextboxes';
 import { StatusBadge } from '@/components/ui';
 
 /**
@@ -94,7 +94,12 @@ export async function PlanPanel({
         ) : null}
       </header>
       <div className="px-4 py-3">
-        <Markdown>{planMd}</Markdown>
+        <MarkdownWithTextboxes
+          body={planMd}
+          entityKind={entityKind as 'experiment' | 'todo'}
+          entityId={entityId}
+          source="plan"
+        />
       </div>
     </section>
   );

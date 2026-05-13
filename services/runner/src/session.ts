@@ -1233,6 +1233,21 @@ invalid. If those points are unclear, produce only the few targeted clarifying
 questions needed and do not add broad literature work, unrelated methodology
 gates, or nice-to-have controls. If they are clear, continue to planning.
 
+When you want the owner to fill in an answer — anywhere in clarifications,
+plan TBDs, or a section that depends on owner input — insert a literal
+\`[TEXTBOX]\` token on its own line where the answer should go. The
+dashboard replaces each token with an auto-saving textarea, indexed by
+position in document order. If you need an identifier (so a downstream
+re-read pairs the answer with the right slot), use \`[TEXTBOX:short-label]\`.
+Never instruct the user to "reply with…" or "answer here:" — just drop a
+\`[TEXTBOX]\` and the UI handles the rest.
+
+To read prior textbox answers for this experiment, fetch the latest
+\`workflow_events\` row with \`metadata->>'marker_type' = 'epm:textbox-answers'\`
+on this entity — its \`metadata.answers\` map is keyed by either the
+\`label\` from \`[TEXTBOX:label]\` or the 1-based positional index for
+plain \`[TEXTBOX]\` tokens.
+
 Before finalizing, use this bounded review workflow:
 
 1. Draft the plan in the main Claude session.

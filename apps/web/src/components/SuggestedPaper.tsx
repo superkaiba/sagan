@@ -46,7 +46,13 @@ export function SuggestedPaper({ suggestion }: { suggestion: DashboardSuggestedL
         {authorLabel(suggestion.authors)} · {dateLabel}
       </p>
       {suggestion.summaryMd ? (
-        <p className="relative mt-2 line-clamp-3 text-xs text-[--color-fg]/85">{suggestion.summaryMd}</p>
+        // Strip the optional "**Main takeaways:**" bullet section from the
+        // markdown — the sidebar shows a one-glance teaser, not the full
+        // structure. The clean prose paragraph is everything before the
+        // takeaways list.
+        <p className="relative mt-2 line-clamp-3 text-xs text-[--color-fg]/85">
+          {suggestion.summaryMd.split(/\n\n\*\*Main takeaways/i)[0]?.trim() || suggestion.summaryMd}
+        </p>
       ) : null}
       {suggestion.relevanceReasonMd ? (
         <p className="relative mt-2 line-clamp-2 text-xs italic text-[--color-muted]">

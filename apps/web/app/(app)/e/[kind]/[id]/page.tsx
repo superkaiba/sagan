@@ -17,6 +17,11 @@ import { ProjectChildren } from '@/components/ProjectChildren';
 import { LoadProjectNarrative } from '@/components/LoadProjectNarrative';
 import { LiteratureIntelligencePanel } from '@/components/LiteratureIntelligencePanel';
 import { AskClaudeAboutPaper } from '@/components/AskClaudeAboutPaper';
+import {
+  LiteraturePaperMain,
+  LiteraturePaperSide,
+  type LitPaperFields,
+} from '@/components/LiteraturePaperView';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { AgentActivityPanel } from '@/components/AgentActivityPanel';
 import { NarrativePublishControl } from '@/components/NarrativePublishControl';
@@ -169,7 +174,9 @@ export default async function EntityPage({
           <PlanHistory experimentId={entity.id} />
         ) : null}
 
-        {owner && canEditBody(kind) ? (
+        {kind === 'lit_item' ? (
+          <LiteraturePaperMain paper={entity.raw as unknown as LitPaperFields} />
+        ) : owner && canEditBody(kind) ? (
           <EditableBody kind={kind} id={entity.id} initialBody={entity.body ?? ''} />
         ) : (
           <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
@@ -192,10 +199,12 @@ export default async function EntityPage({
           </>
         ) : null}
 
-        {kind === 'lit_item' ? <LiteratureIntelligencePanel litItemId={entity.id} /> : null}
       </main>
 
       <aside className="min-w-0 space-y-4 xl:border-l xl:border-[--color-border] xl:pl-5">
+        {kind === 'lit_item' ? (
+          <LiteraturePaperSide paper={entity.raw as unknown as LitPaperFields} />
+        ) : null}
         <AgentActivityPanel
           entityKind={kind}
           entityId={entity.id}
@@ -217,7 +226,7 @@ export default async function EntityPage({
 
         <Comments entityKind={kind} entityId={entity.id} />
 
-        {entity.meta && entity.meta.length > 0 ? (
+        {entity.meta && entity.meta.length > 0 && kind !== 'lit_item' ? (
           <details className="rounded-lg border border-[--color-border] bg-[--color-panel]">
             <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-[--color-muted]">Details</summary>
             <dl className="border-t border-[--color-border]">

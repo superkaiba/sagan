@@ -147,9 +147,9 @@ export default async function LiteraturePage() {
                         </div>
                         <p className="mt-1 text-xs text-[--color-muted]">{authorsText(item.authors)}</p>
                         {item.summaryMd ? (
-                          <p className="mt-2 line-clamp-3 text-sm text-[--color-fg]/85">{item.summaryMd}</p>
-                        ) : item.abstract ? (
-                          <p className="mt-2 line-clamp-3 text-sm text-[--color-fg]/85">{item.abstract}</p>
+                          <p className="mt-2 line-clamp-3 text-sm text-[--color-fg]/85">
+                            {item.summaryMd.split(/\n\n\*\*Main takeaways/i)[0]?.trim() || item.summaryMd}
+                          </p>
                         ) : null}
                         {item.relevanceReasonMd ? (
                           <p className="mt-2 line-clamp-2 text-xs italic text-[--color-muted]">

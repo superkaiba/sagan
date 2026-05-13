@@ -16,6 +16,7 @@ import { BeliefHistoryLink } from '@/components/BeliefHistoryLink';
 import { ProjectChildren } from '@/components/ProjectChildren';
 import { LoadProjectNarrative } from '@/components/LoadProjectNarrative';
 import { LiteratureIntelligencePanel } from '@/components/LiteratureIntelligencePanel';
+import { AskClaudeAboutPaper } from '@/components/AskClaudeAboutPaper';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { AgentActivityPanel } from '@/components/AgentActivityPanel';
 import { NarrativePublishControl } from '@/components/NarrativePublishControl';
@@ -208,6 +209,10 @@ export default async function EntityPage({
             states so legacy kind='todo' comments stay actionable. */}
         {kind === 'experiment' && entity.status !== 'reviewing' && entity.status !== 'followups_running' ? (
           <ProposedFollowUps experimentId={entity.id} />
+        ) : null}
+
+        {kind === 'lit_item' ? (
+          <AskClaudeAboutPaper litItemId={entity.id} paperTitle={entity.title} />
         ) : null}
 
         <Comments entityKind={kind} entityId={entity.id} />

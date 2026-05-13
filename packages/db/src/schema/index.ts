@@ -171,6 +171,15 @@ export const litSourceKindEnum = pgEnum('lit_source_kind', [
   'rss',
 ]);
 
+export const litTopicEnum = pgEnum('lit_topic', [
+  'current_project',
+  'general_safety',
+  'general_ai',
+  'cognitive_science',
+  'neuroscience',
+  'other',
+]);
+
 export const edgeTypeEnum = pgEnum('edge_type', [
   'parent',
   'child',
@@ -640,6 +649,7 @@ export const litItems = pgTable(
     doi: varchar('doi', { length: 200 }),
     releasedOn: date('released_on'),
     tags: jsonb('tags'),
+    topic: litTopicEnum('topic').notNull().default('other'),
     readState: litReadStateEnum('read_state').notNull().default('unread'),
     queuePosition: integer('queue_position'),
     lastRankedAt: timestamp('last_ranked_at', { withTimezone: true }),
@@ -653,6 +663,7 @@ export const litItems = pgTable(
     doiUq: unique('lit_items_doi_uq').on(t.doi),
     typeIdx: index('lit_items_type_idx').on(t.type),
     readStateIdx: index('lit_items_read_state_idx').on(t.readState),
+    topicIdx: index('lit_items_topic_idx').on(t.topic),
   }),
 );
 

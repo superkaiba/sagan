@@ -1,0 +1,1 @@
+ALTER TYPE "public"."experiment_status" ADD VALUE 'clean_result_drafting' BEFORE 'awaiting_promotion';

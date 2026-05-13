@@ -13,6 +13,7 @@ import { TocHighlighter } from '@/components/TocHighlighter';
 import { DashboardLiveRefresh } from '@/components/DashboardLiveRefresh';
 import { ActiveRunPodsPanel } from '@/components/ActiveRunPodsPanel';
 import { ApprovalDispatchButton } from '@/components/ApprovalDispatchButton';
+import { SuggestedPaper } from '@/components/SuggestedPaper';
 import { hasFullDashboardAccess } from '@/lib/full-dashboard-access';
 import { loadShellDashboardState, type DashboardApprovalBucketKey } from '@/lib/dashboard';
 import { cn } from '@/lib/cn';
@@ -220,6 +221,7 @@ export default async function AppLayout({
                 </div>
               </section>
             ) : null}
+            {shellState?.topSuggestion ? <SuggestedPaper suggestion={shellState.topSuggestion} /> : null}
             {shellState ? <ActiveRunPodsPanel initialPods={shellState.activePods} accounts={shellState.runpodAccounts} /> : null}
           </>
         ) : (

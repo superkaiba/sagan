@@ -20,6 +20,9 @@ const patchSchema = z.object({
   summaryMd: z.string().max(20_000).optional(),
   relevanceReasonMd: z.string().max(20_000).optional(),
   threatReasonMd: z.string().max(20_000).optional(),
+  topic: z
+    .enum(['current_project', 'general_safety', 'general_ai', 'cognitive_science', 'neuroscience', 'other'])
+    .optional(),
 });
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {

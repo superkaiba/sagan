@@ -6,6 +6,7 @@ import {
   cleanResults,
   experiments,
   ideaCards,
+  litInbox,
   litItems,
   podLifecycle,
   projects,
@@ -50,6 +51,19 @@ export interface DashboardApprovalBucketSummary {
   items: DashboardApprovalItem[];
 }
 
+export interface DashboardSuggestedLitItem {
+  id: string;
+  title: string;
+  authors: string[];
+  releasedOn: string | null;
+  topic: string;
+  summaryMd: string | null;
+  relevanceReasonMd: string | null;
+  url: string | null;
+  arxivId: string | null;
+  score: number | null;
+}
+
 export interface DashboardShellState {
   approvalCount: number;
   activePipelineCount: number;
@@ -59,6 +73,7 @@ export interface DashboardShellState {
   runpodAccounts: RunPodAccountSummary[];
   topApprovals: DashboardApprovalItem[];
   approvalBuckets: DashboardApprovalBucketSummary[];
+  topSuggestion: DashboardSuggestedLitItem | null;
 }
 
 export type PipelineRunStatus =
@@ -191,6 +206,7 @@ export const DASHBOARD_EXPERIMENT_STATUSES = [
   'verifying',
   'interpreting',
   'reviewing',
+  'clean_result_drafting',
   'awaiting_promotion',
   'followups_running',
   'shared',
@@ -659,8 +675,55 @@ function approvalBucketSummaries(items: DashboardApprovalItem[]): DashboardAppro
   });
 }
 
+export async function loadTopSuggestedLitItem(): Promise<DashboardSuggestedLitItem | null> {
+  // Prefer an unread paper with the highest recent lit_inbox score (last 21 days).
+  // Fall back to the most recently released unread paper for cold-start days
+  // where the lit-review job hasn't produced an inbox row yet.
+  const scored = await db()
+    .select({
+      id: litItems.id,
+      title: litItems.title,
+      authors: litItems.authors,
+      releasedOn: litItems.releasedOn,
+      topic: litItems.topic,
+      summaryMd: litItems.summaryMd,
+      relevanceReasonMd: litItems.relevanceReasonMd,
+      url: litItems.url,
+      arxivId: litItems.arxivId,
+      score: sql<number | null>`max(${litInbox.score})`.as('best_score'),
+    })
+    .from(litItems)
+    .leftJoin(litInbox, eq(litInbox.litItemId, litItems.id))
+    .where(
+      and(
+        eq(litItems.readState, 'unread'),
+        sql`${litItems.title} <> ''`,
+        sql`(${litInbox.surfacedOn} IS NULL OR ${litInbox.surfacedOn} > now()::date - interval '21 days')`,
+      ),
+    )
+    .groupBy(litItems.id)
+    .orderBy(sql`max(${litInbox.score}) desc nulls last`, desc(litItems.releasedOn), desc(litItems.createdAt))
+    .limit(1);
+  const row = scored[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: row.title,
+    authors: Array.isArray(row.authors)
+      ? (row.authors as unknown[]).map((a) => (typeof a === 'string' ? a : '')).filter(Boolean)
+      : [],
+    releasedOn: row.releasedOn ? (typeof row.releasedOn === 'string' ? row.releasedOn : (row.releasedOn as Date).toISOString().slice(0, 10)) : null,
+    topic: row.topic ?? 'other',
+    summaryMd: row.summaryMd,
+    relevanceReasonMd: row.relevanceReasonMd,
+    url: row.url,
+    arxivId: row.arxivId,
+    score: row.score,
+  };
+}
+
 export async function loadShellDashboardState(): Promise<DashboardShellState> {
-  const [approvalItems, activeExperiments, activeCleanResults, activeTodos, activeAgents, literatureQueue, recentLog, activePods, runpodAccounts] =
+  const [approvalItems, activeExperiments, activeCleanResults, activeTodos, activeAgents, literatureQueue, recentLog, activePods, runpodAccounts, topSuggestion] =
     await Promise.all([
       loadApprovalItems(200),
       db()
@@ -686,6 +749,7 @@ export async function loadShellDashboardState(): Promise<DashboardShellState> {
         .where(sql`${workflowEvents.createdAt} > now() - interval '7 days'`),
       loadActiveRunPods(20),
       loadRunPodAccountSummaries(),
+      loadTopSuggestedLitItem(),
     ]);
 
   return {
@@ -698,6 +762,7 @@ export async function loadShellDashboardState(): Promise<DashboardShellState> {
     runpodAccounts,
     topApprovals: approvalItems.slice(0, 8),
     approvalBuckets: approvalBucketSummaries(approvalItems),
+    topSuggestion,
   };
 }
 
@@ -730,7 +795,8 @@ function experimentStage(status: string, priority: string): PipelineStageKey {
   }
   if (status === 'followups_running') return 'followups_running';
   if (status === 'interpreting') return 'interpreting';
-  if (status === 'reviewing' || status === 'awaiting_promotion') return 'review';
+  if (status === 'reviewing') return 'review';
+  if (status === 'clean_result_drafting' || status === 'awaiting_promotion') return 'clean_results';
   if (status === 'shared' || status === 'completed' || status === 'done_experiment' || status === 'done_impl') return 'done';
   if (status === 'blocked' || status === 'failed') return 'blocked';
   if (status === 'archived' || status === 'cancelled') return 'archived';

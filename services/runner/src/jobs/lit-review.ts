@@ -52,6 +52,7 @@ interface FetchedEntry {
 interface RankedEntry extends FetchedEntry {
   score: number;
   category: LitReviewCategory;
+  topic: LitTopic;
   linkedContexts: LinkedContext[];
   summaryMd: string;
   relevanceReasonMd: string;
@@ -69,6 +70,20 @@ const LIT_REVIEW_CATEGORIES = [
 ] as const;
 type LitReviewCategory = (typeof LIT_REVIEW_CATEGORIES)[number];
 const LIT_REVIEW_CATEGORY_SET = new Set<string>(LIT_REVIEW_CATEGORIES);
+
+const LIT_TOPICS = [
+  'current_project',
+  'general_safety',
+  'general_ai',
+  'cognitive_science',
+  'neuroscience',
+  'other',
+] as const;
+type LitTopic = (typeof LIT_TOPICS)[number];
+const LIT_TOPIC_SET = new Set<string>(LIT_TOPICS);
+function coerceTopic(value: string | null | undefined): LitTopic {
+  return value && LIT_TOPIC_SET.has(value) ? (value as LitTopic) : 'other';
+}
 
 type LitReviewEdgeType = 'supports' | 'contradicts' | 'method' | 'background' | 'threat' | 'cites';
 
@@ -114,6 +129,7 @@ const discoveredItemSchema = z.object({
   doi: z.string().max(200).nullable().optional(),
   score: z.number().int().min(0).max(100).default(50),
   category: z.enum(LIT_REVIEW_CATEGORIES).default('new_research'),
+  topic: z.enum(LIT_TOPICS).default('other'),
   relatedContextIds: z.array(z.string()).max(8).default([]),
 });
 
@@ -127,6 +143,7 @@ const annotationSchema = z.object({
       externalId: z.string(),
       score: z.number().int().min(0).max(100),
       category: z.enum(LIT_REVIEW_CATEGORIES).default('new_research'),
+      topic: z.enum(LIT_TOPICS).default('other'),
       relatedContextIds: z.array(z.string()).max(8).default([]),
       summaryMd: z.string().min(1).max(4_000),
       relevanceReasonMd: z.string().min(1).max(4_000),
@@ -158,7 +175,7 @@ async function fetchArxivFeed(config: ArxivConfig): Promise<FetchedEntry[]> {
   if (!items) return [];
   const list = Array.isArray(items) ? items : [items];
   const max = config.maxResults ?? 30;
-  return list.slice(0, max).map((raw) => {
+  return list.slice(0, max).flatMap((raw) => {
     const r = raw as {
       title: string;
       link: string;
@@ -176,16 +193,20 @@ async function fetchArxivFeed(config: ArxivConfig): Promise<FetchedEntry[]> {
             .filter(Boolean),
         )
       : [];
-    return {
+    // Strip only a real "[category] " prefix; the older greedy form
+    // `/^\[?[^\]]*\]?\s*/` ate the whole title when no brackets were present.
+    const title = r.title.replace(/\s+/g, ' ').replace(/^\[[^\]]+\]\s*/, '').trim();
+    if (!title) return [];
+    return [{
       externalId: r.link, // RSS uses the abs URL as the id
-      title: r.title.replace(/\s+/g, ' ').replace(/^\[?[^\]]*\]?\s*/, '').trim(),
+      title,
       summary: r.description.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(),
       authors,
       url: r.link,
       pdfUrl: r.link.replace('/abs/', '/pdf/'),
       arxivId: arxivIdFromIdField(r.link),
       releasedOn: isoDateFromUnknown(r.pubDate ?? r['dc:date']),
-    };
+    }];
   });
 }
 
@@ -428,6 +449,14 @@ Build a daily reading queue across these categories:
 - threats: papers that challenge, caveat, contradict, or stress-test current results
 - general_important: broadly important AI/ML papers worth knowing about even without a direct context link
 
+Also assign each paper a topic bucket from this taxonomy:
+- current_project: directly relevant to the current Sagan research context above
+- general_safety: AI safety, alignment, interpretability, evaluation of model risks (broader than current project)
+- general_ai: ML / NLP / AI research not specific to safety
+- cognitive_science: psychology, decision making, mind, behavior
+- neuroscience: brain, neural systems, neuroimaging
+- other: anything that does not fit the buckets above
+
 Surface clearly relevant new research first, but include older/foundational papers when they are linked to the research context.
 Do not include duplicates. Do not invent bibliographic details.
 Set relatedContextIds to ids from the current research context only when the paper is actually linked.
@@ -448,6 +477,7 @@ Return only JSON with this exact shape:
       "doi": "doi or null",
       "abstract": "abstract text if available",
       "category": "new_research",
+      "topic": "general_ai",
       "relatedContextIds": ["context uuid if directly linked"],
       "summaryMd": "1-2 sentence LLM summary of the actual contribution",
       "relevanceReasonMd": "1 concise sentence explaining why this is relevant or generally important",
@@ -458,6 +488,7 @@ Return only JSON with this exact shape:
 }
 
 Allowed category values are: ${LIT_REVIEW_CATEGORIES.join(', ')}.
+Allowed topic values are: ${LIT_TOPICS.join(', ')}.
 Score 0-100, where 70+ means read soon. Return at most 24 items.`;
 }
 
@@ -491,6 +522,7 @@ function parseDiscoveredItems(text: string, contexts: ResearchContext[]): Ranked
       ...entry,
       score: item.score,
       category,
+      topic: coerceTopic(item.topic),
       linkedContexts: linkedContextsFromIds(item.relatedContextIds, contexts, category, item.relevanceReasonMd, matchedContexts),
       summaryMd: item.summaryMd,
       relevanceReasonMd: item.relevanceReasonMd,
@@ -528,11 +560,12 @@ ${JSON.stringify(
   2,
 )}
 
-For each candidate, write a brief LLM-generated summary, a relevance/general-importance reason, a caveat if useful, a category, directly related context ids, and a 0-100 score.
+For each candidate, write a brief LLM-generated summary, a relevance/general-importance reason, a caveat if useful, a category, a topic, directly related context ids, and a 0-100 score.
 Category must be one of: ${LIT_REVIEW_CATEGORIES.join(', ')}.
+Topic must be one of: ${LIT_TOPICS.join(', ')}. Choose current_project when the paper is directly relevant to the research context above; otherwise pick the best fit among general_safety (alignment/interpretability/eval), general_ai (other AI/ML), cognitive_science (psychology/mind/behavior), neuroscience (brain), or other.
 Use relatedContextIds only for ids from the current research context that the paper directly informs, supports, contradicts, or contextualizes.
 Return only JSON:
-{"items":[{"externalId":"...","score":72,"category":"linked_to_results","relatedContextIds":["context uuid"],"summaryMd":"...","relevanceReasonMd":"...","threatReasonMd":null}]}`;
+{"items":[{"externalId":"...","score":72,"category":"linked_to_results","topic":"current_project","relatedContextIds":["context uuid"],"summaryMd":"...","relevanceReasonMd":"...","threatReasonMd":null}]}`;
 
   const completion = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -555,6 +588,7 @@ Return only JSON:
       ...entry,
       score: annotation.score,
       category: coerceCategory(annotation.category),
+      topic: coerceTopic(annotation.topic),
       linkedContexts: linkedContextsFromIds(
         annotation.relatedContextIds,
         contexts,
@@ -582,6 +616,7 @@ async function upsertRankedEntry(entry: RankedEntry, surfacedOn: string, sourceI
       summaryMd: entry.summaryMd,
       relevanceReasonMd: entry.relevanceReasonMd,
       threatReasonMd: entry.threatReasonMd ?? null,
+      topic: entry.topic,
       lastRankedAt: new Date(),
       updatedAt: new Date(),
     };
@@ -609,6 +644,7 @@ async function upsertRankedEntry(entry: RankedEntry, surfacedOn: string, sourceI
         summaryMd: entry.summaryMd,
         relevanceReasonMd: entry.relevanceReasonMd,
         threatReasonMd: entry.threatReasonMd ?? null,
+        topic: entry.topic,
         lastRankedAt: new Date(),
         readState: 'unread',
       })
@@ -774,12 +810,29 @@ function heuristicRankEntry(entry: FetchedEntry, contexts: ResearchContext[], so
     ...entry,
     score,
     category,
+    topic: heuristicTopic(entry, matchedContexts),
     linkedContexts: linkedContextsFromContexts(matchedContexts, category, reasonMd),
     summaryMd: summarizeEntry(entry),
     relevanceReasonMd: reasonMd,
     threatReasonMd,
     sourceTitle,
   };
+}
+
+const TOPIC_KEYWORDS: Array<[LitTopic, string[]]> = [
+  ['general_safety', ['alignment', 'safety', 'interpretab', 'jailbreak', 'red team', 'adversarial', 'sandbagging', 'deception']],
+  ['neuroscience', ['neuro', 'brain', 'cortex', 'fmri', 'eeg', 'neural circuit']],
+  ['cognitive_science', ['cognit', 'psycholog', 'behavior', 'decision making', 'reasoning bias']],
+  ['general_ai', ['language model', 'llm', 'transformer', 'reinforcement learning', 'neural network', 'machine learning', 'nlp']],
+];
+
+function heuristicTopic(entry: FetchedEntry, matchedContexts: ResearchContext[]): LitTopic {
+  if (matchedContexts.length > 0) return 'current_project';
+  const text = `${entry.title}\n${entry.summary}`.toLowerCase();
+  for (const [topic, kws] of TOPIC_KEYWORDS) {
+    if (kws.some((kw) => text.includes(kw))) return topic;
+  }
+  return 'other';
 }
 
 function matchContextsForEntry(entry: FetchedEntry, contexts: ResearchContext[]) {

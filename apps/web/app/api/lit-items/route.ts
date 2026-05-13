@@ -17,7 +17,11 @@ export async function GET() {
 }
 
 const createSchema = z.object({
-  title: z.string().min(1).max(500),
+  title: z
+    .string()
+    .max(500)
+    .transform((s) => s.trim())
+    .refine((s) => s.length > 0, { message: 'title is required' }),
   authors: z.array(z.string().min(1).max(200)).max(100).optional(),
   type: z
     .enum(['paper', 'blog_post', 'forum_post', 'newsletter', 'report', 'repo', 'video', 'other'])
@@ -31,6 +35,9 @@ const createSchema = z.object({
   summaryMd: z.string().max(20_000).optional(),
   relevanceReasonMd: z.string().max(20_000).optional(),
   threatReasonMd: z.string().max(20_000).optional(),
+  topic: z
+    .enum(['current_project', 'general_safety', 'general_ai', 'cognitive_science', 'neuroscience', 'other'])
+    .optional(),
 });
 
 const ARXIV_RE = /(?:arxiv\.org\/abs\/|arxiv\.org\/pdf\/)([0-9]{4}\.[0-9]+)/i;
@@ -69,6 +76,7 @@ export async function POST(req: Request) {
       summaryMd: parsed.data.summaryMd,
       relevanceReasonMd: parsed.data.relevanceReasonMd,
       threatReasonMd: parsed.data.threatReasonMd,
+      topic: parsed.data.topic ?? 'other',
       readState: 'unread',
     })
     .returning();

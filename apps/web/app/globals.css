@@ -557,6 +557,52 @@ a[href]:active,
   }
 }
 
+.sagan-suggested-paper {
+  --sagan-suggest-fg: var(--color-accent);
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--sagan-suggest-fg) 38%, var(--color-border));
+  background: color-mix(in srgb, var(--sagan-suggest-fg) 6%, var(--color-panel));
+  animation: sagan-suggested-paper-glow 3.6s ease-in-out infinite;
+}
+
+.sagan-suggested-paper::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 60% at 12% 0%,
+    color-mix(in srgb, var(--sagan-suggest-fg) 14%, transparent),
+    transparent 70%
+  );
+}
+
+@keyframes sagan-suggested-paper-glow {
+  0%,
+  100% {
+    box-shadow:
+      var(--shadow-inset),
+      0 0 0 0 color-mix(in srgb, var(--sagan-suggest-fg) 0%, transparent),
+      0 0 14px 0 color-mix(in srgb, var(--sagan-suggest-fg) 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      var(--shadow-inset),
+      0 0 0 3px color-mix(in srgb, var(--sagan-suggest-fg) 18%, transparent),
+      0 0 26px 2px color-mix(in srgb, var(--sagan-suggest-fg) 34%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sagan-suggested-paper {
+    animation: none;
+    box-shadow:
+      var(--shadow-inset),
+      0 0 0 2px color-mix(in srgb, var(--sagan-suggest-fg) 24%, transparent);
+  }
+}
+
 @keyframes sagan-approval-bucket-glow {
   0%,
   100% {

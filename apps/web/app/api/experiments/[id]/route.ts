@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { approvalRequests, experiments, workflowEvents } from '@sagan/db/schema';
+import { approvalRequests, experiments, runs, workflowEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
@@ -79,6 +79,22 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .returning({ id: experiments.id, title: experiments.title, status: experiments.status });
   if (!updated[0]) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   let experiment = updated[0]!;
+
+  // When a caller flips hasCleanResult=true, ensure there's a pending
+  // runs row so the /promote endpoint has something to flip. The analyzer's
+  // in-place promotion path (.claude/agents/analyzer.md Step 6) relies on
+  // this — without it, promote would 409 with no_pending_run. Idempotent:
+  // if a pending row already exists, we no-op.
+  if (metadataUpdates.hasCleanResult === true) {
+    const existingPending = await db()
+      .select({ id: runs.id })
+      .from(runs)
+      .where(and(eq(runs.experimentId, id), eq(runs.classification, 'pending')))
+      .limit(1);
+    if (existingPending.length === 0) {
+      await db().insert(runs).values({ experimentId: id, classification: 'pending' });
+    }
+  }
 
   if (status) {
     const transitioned = await setExperimentStatus({

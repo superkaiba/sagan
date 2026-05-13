@@ -204,6 +204,13 @@
       "when": 1778677584960,
       "tag": "0028_nice_genesis",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1778689473073,
+      "tag": "0029_aromatic_thor",
+      "breakpoints": true
     }
   ]
 }

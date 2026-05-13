@@ -10,6 +10,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { extractPodSpecFromPlanMd } from '@sagan/api';
 import { runAgentWithContinuation, stripSentinel } from './lib/run-agent.js';
 import { loadAgentsFromProject } from './lib/agent-loader.js';
 import { loadPlannerSubagents, loadPromptText } from './lib/prompt-loader.js';
@@ -586,21 +587,22 @@ async function buildExperimentOrchestratorPrompt(
   let parentPlan = '';
   let experimentNumber: number | null = null;
   let projectSlug: string | null = null;
-  if (parentRunId) {
-    const parentRows = await db()
-      .select({ planMd: schema.agentRuns.planMd })
-      .from(schema.agentRuns)
-      .where(eq(schema.agentRuns.id, parentRunId))
-      .limit(1);
-    parentPlan = parentRows[0]?.planMd ?? '';
-  }
   if (row.scopeEntityKind === 'experiment' && row.scopeEntityId) {
+    // Parent plan for an experiment-scoped orchestrator lives on the
+    // experiment row (canonical since 0029). The parentRunId from the
+    // orchestrator request is kept for trail / cross-reference; the plan
+    // itself is read from experiments.
     const expRows = await db()
-      .select({ number: schema.experiments.number, projectId: schema.experiments.projectId })
+      .select({
+        number: schema.experiments.number,
+        projectId: schema.experiments.projectId,
+        planMd: schema.experiments.planMd,
+      })
       .from(schema.experiments)
       .where(eq(schema.experiments.id, row.scopeEntityId))
       .limit(1);
     experimentNumber = expRows[0]?.number ?? null;
+    parentPlan = expRows[0]?.planMd ?? '';
     const projectId = expRows[0]?.projectId ?? null;
     if (projectId) {
       const projectRows = await db()
@@ -954,29 +956,34 @@ async function buildScopedEntityContext(row: AgentRunRow): Promise<string> {
 async function markAwaitingApproval(runId: string, planMd: string) {
   const row = await loadRun(runId);
   const planJson = parseStructuredPlan(planMd);
+  // Pre-extract pod_spec from the runpod-spec block. May be null (clarifying
+  // output, plan-kind on todos) or throw on malformed JSON. We let throws
+  // propagate so the run fails loudly rather than landing an unparseable spec.
+  const podSpec = extractPodSpecFromPlanMd(planMd);
+  // For experiment-scoped experiment-kind runs the plan lives on experiments
+  // (canonical). For everything else (todo plans), the plan continues to live
+  // on agent_runs.plan_md as before.
+  const isExperimentScoped =
+    row?.kind === 'experiment' && row.scopeEntityKind === 'experiment' && !!row.scopeEntityId;
 
   // A full experiment plan needs both a runpod-spec fenced block and an
   // ## Approval Checklist section. If either is missing on an experiment run,
   // Claude produced clarifying questions rather than an approvable plan —
   // route the experiment to `awaiting_clarifications` so the owner sees a
   // distinct column instead of a misleading "Awaiting approval" card.
-  const isExperimentClarification =
-    row?.kind === 'experiment' &&
-    row.scopeEntityKind === 'experiment' &&
-    !!row.scopeEntityId &&
-    isClarificationOutput(planMd, planJson);
+  const isExperimentClarification = isExperimentScoped && isClarificationOutput(planMd, planJson);
 
   if (isExperimentClarification) {
     await db()
       .update(schema.agentRuns)
-      .set({ status: 'completed', planMd, planJson, completedAt: new Date(), updatedAt: new Date() })
+      .set({ status: 'completed', completedAt: new Date(), updatedAt: new Date() })
       .where(eq(schema.agentRuns.id, runId));
     await emitEvent(runId, 'awaiting_clarifications', 'Claude produced clarifying questions instead of a full plan.', {
       plan_len: planMd.length,
       structured_sections: planJson.sections.length,
     });
     await notifyPipelineChanged(runId);
-    await markExperimentAwaitingClarifications(row!.scopeEntityId!, runId, planMd, planJson);
+    await markExperimentAwaitingClarifications(row!.scopeEntityId!, runId, planMd, planJson, podSpec);
     await recordTrail({
       action: `Run ${runId.slice(0, 8)} has clarifying questions`,
       why: 'Claude produced clarifying questions for the owner before drafting a plan.',
@@ -1001,13 +1008,7 @@ async function markAwaitingApproval(runId: string, planMd: string) {
   if (row && !row.approvalRequired && row.kind === 'experiment') {
     await db()
       .update(schema.agentRuns)
-      .set({
-        status: 'approved',
-        approvedAt: new Date(),
-        planMd,
-        planJson,
-        updatedAt: new Date(),
-      })
+      .set({ status: 'approved', approvedAt: new Date(), updatedAt: new Date() })
       .where(eq(schema.agentRuns.id, runId));
     await emitEvent(runId, 'auto_approved', 'experiment.auto_approve_plan=true — skipping owner gate', {
       plan_len: planMd.length,
@@ -1022,7 +1023,7 @@ async function markAwaitingApproval(runId: string, planMd: string) {
       const prevStatus = current[0]?.status ?? null;
       await db()
         .update(schema.experiments)
-        .set({ status: 'approved', planMd, planJson, updatedAt: new Date() })
+        .set({ status: 'approved', planMd, planJson, podSpec, updatedAt: new Date() })
         .where(eq(schema.experiments.id, row.scopeEntityId));
       await db().insert(schema.workflowEvents).values({
         entityKind: 'experiment',
@@ -1040,17 +1041,28 @@ async function markAwaitingApproval(runId: string, planMd: string) {
     return;
   }
 
+  // agent_runs.plan_md is the storage for plan-kind runs on todos only;
+  // experiment-scoped plans live on experiments (canonical) and we don't
+  // duplicate them onto the agent_run row.
+  const agentRunUpdate: Partial<typeof schema.agentRuns.$inferInsert> = {
+    status: 'awaiting_approval',
+    updatedAt: new Date(),
+  };
+  if (!isExperimentScoped) {
+    agentRunUpdate.planMd = planMd;
+    agentRunUpdate.planJson = planJson;
+  }
   await db()
     .update(schema.agentRuns)
-    .set({ status: 'awaiting_approval', planMd, planJson, updatedAt: new Date() })
+    .set(agentRunUpdate)
     .where(eq(schema.agentRuns.id, runId));
   await emitEvent(runId, 'awaiting_approval', undefined, {
     plan_len: planMd.length,
     structured_sections: planJson.sections.length,
   });
   await notifyPipelineChanged(runId);
-  if (row?.kind === 'experiment' && row.scopeEntityKind === 'experiment' && row.scopeEntityId) {
-    await markExperimentPlanPending(row.scopeEntityId, runId, planMd, planJson);
+  if (isExperimentScoped) {
+    await markExperimentPlanPending(row!.scopeEntityId!, runId, planMd, planJson, podSpec);
   }
   // Todos don't have a `plan_pending` status enum value, so we use the
   // owner_note `sagan:pipeline-stage=approval` override instead. This moves
@@ -1117,6 +1129,7 @@ async function markExperimentAwaitingClarifications(
   runId: string,
   planMd: string,
   planJson: StructuredPlan,
+  podSpec: unknown,
 ) {
   const current = await db()
     .select({ status: schema.experiments.status })
@@ -1129,7 +1142,7 @@ async function markExperimentAwaitingClarifications(
   if (experiment.status !== 'awaiting_clarifications') {
     await db()
       .update(schema.experiments)
-      .set({ status: 'awaiting_clarifications', planMd, planJson, updatedAt: new Date() })
+      .set({ status: 'awaiting_clarifications', planMd, planJson, podSpec, updatedAt: new Date() })
       .where(eq(schema.experiments.id, experimentId));
     await db().insert(schema.workflowEvents).values({
       entityKind: 'experiment',
@@ -1144,7 +1157,7 @@ async function markExperimentAwaitingClarifications(
   } else {
     await db()
       .update(schema.experiments)
-      .set({ planMd, planJson, updatedAt: new Date() })
+      .set({ planMd, planJson, podSpec, updatedAt: new Date() })
       .where(eq(schema.experiments.id, experimentId));
   }
 }
@@ -1199,6 +1212,7 @@ async function markExperimentPlanPending(
   runId: string,
   planMd: string,
   planJson: StructuredPlan,
+  podSpec: unknown,
 ) {
   const current = await db()
     .select({ status: schema.experiments.status, title: schema.experiments.title })
@@ -1211,7 +1225,7 @@ async function markExperimentPlanPending(
   if (experiment.status !== 'plan_pending') {
     await db()
       .update(schema.experiments)
-      .set({ status: 'plan_pending', planMd, planJson, updatedAt: new Date() })
+      .set({ status: 'plan_pending', planMd, planJson, podSpec, updatedAt: new Date() })
       .where(eq(schema.experiments.id, experimentId));
     await db().insert(schema.workflowEvents).values({
       entityKind: 'experiment',
@@ -1226,7 +1240,7 @@ async function markExperimentPlanPending(
   } else {
     await db()
       .update(schema.experiments)
-      .set({ planMd, planJson, updatedAt: new Date() })
+      .set({ planMd, planJson, podSpec, updatedAt: new Date() })
       .where(eq(schema.experiments.id, experimentId));
   }
 

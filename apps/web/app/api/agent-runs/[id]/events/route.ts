@@ -5,9 +5,9 @@ import { agentRuns, agentRunEvents, experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 
-// Canonical plan_md / plan_json for an experiment-scoped agent_run live on
-// experiments. Fall back to the run row only when there is no scoped
-// experiment (or it isn't backfilled).
+// Canonical plan_md / plan_json for experiment-scoped runs live on experiments
+// (since 0029). For non-experiment runs (todo plans) the plan lives on the
+// agent_run row — that's storage divergence by entity, not a fallback.
 async function loadCanonicalPlan(run: {
   scopeEntityKind: string | null;
   scopeEntityId: string | null;
@@ -21,12 +21,7 @@ async function loadCanonicalPlan(run: {
       .where(eq(experiments.id, run.scopeEntityId))
       .limit(1);
     const exp = rows[0];
-    if (exp) {
-      return {
-        planMd: exp.planMd ?? run.planMd ?? null,
-        planJson: exp.planJson ?? run.planJson ?? null,
-      };
-    }
+    return { planMd: exp?.planMd ?? null, planJson: exp?.planJson ?? null };
   }
   return { planMd: run.planMd ?? null, planJson: run.planJson ?? null };
 }

@@ -34,9 +34,9 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
     .orderBy(runArtifacts.createdAt);
   const runpodAccounts = pods.length > 0 ? await loadRunPodAccountSummaries() : [];
 
-  // For experiment-scoped runs, the canonical plan lives on experiments.
-  // Prefer that; fall back to the per-run copy when the run isn't scoped to
-  // an experiment or the experiment row hasn't been backfilled.
+  // For experiment-scoped runs, the canonical plan lives on experiments
+  // (since 0029). For non-experiment runs (todo plans) it lives on the
+  // agent_run row — that's storage divergence by entity, not a fallback.
   let canonicalPlanMd: string | null = run.planMd;
   let canonicalPlanJson: typeof run.planJson = run.planJson;
   if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
@@ -46,10 +46,8 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
       .where(eq(experiments.id, run.scopeEntityId))
       .limit(1);
     const exp = expRows[0];
-    if (exp) {
-      if (exp.planMd && exp.planMd.length > 0) canonicalPlanMd = exp.planMd;
-      if (exp.planJson) canonicalPlanJson = exp.planJson;
-    }
+    canonicalPlanMd = exp?.planMd ?? null;
+    canonicalPlanJson = exp?.planJson ?? null;
   }
 
   return (

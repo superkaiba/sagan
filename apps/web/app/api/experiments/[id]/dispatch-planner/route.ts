@@ -53,25 +53,10 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const experiment = expRows[0];
   if (!experiment) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  // Canonical plan_md lives on experiments. Fall back to the most recent
-  // experiment-kind agent_run only if the experiment row hasn't been
-  // backfilled (legacy experiments that pre-date 0028_nice_genesis).
-  let priorPlanMd: string | null = experiment.planMd ?? null;
-  if (!priorPlanMd) {
-    const priorPlanRow = await db()
-      .select({ planMd: agentRuns.planMd })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.scopeEntityKind, 'experiment'),
-          eq(agentRuns.scopeEntityId, id),
-          eq(agentRuns.kind, 'experiment'),
-        ),
-      )
-      .orderBy(desc(agentRuns.updatedAt))
-      .limit(1);
-    priorPlanMd = priorPlanRow[0]?.planMd ?? null;
-  }
+  // Canonical plan_md lives on experiments (since 0029). If null, this is
+  // either a brand-new experiment or one whose planner never finished —
+  // either way, the re-dispatch can proceed with empty prior context.
+  const priorPlanMd: string | null = experiment.planMd ?? null;
 
   if (experiment.status !== 'awaiting_clarifications' && experiment.status !== 'plan_pending') {
     return NextResponse.json(

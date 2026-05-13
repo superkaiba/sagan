@@ -366,15 +366,11 @@ async function approveLatestScopedRun(input: {
 }
 
 /**
- * Re-use the most recent existing plan for this experiment scope when the
- * owner moves the card to queued/running. Without this, every approval→queued
- * move triggers a fresh planning pass (the agent re-drafts from scratch)
- * because cancelled / completed agent_runs are invisible to
- * approveLatestScopedRun. If the experiment has a plan_md anywhere, copy it
- * into a new agent_run with status=approved and fire APPROVED_CHANNEL so the
- * dispatcher takes over — no re-planning.
- *
- * Excludes failed runs (their plan_md is suspect by definition).
+ * Re-use the existing plan for this experiment scope when the owner moves the
+ * card to queued/running. The plan_md / plan_json / pod_spec live on the
+ * experiment row (since 0029); we only need the experiment to have a plan
+ * present. We then insert a fresh approved agent_run that the dispatcher will
+ * pick up and read pod_spec from the experiment.
  */
 async function reuseLatestPlanIfAny(input: {
   scopeEntityKind: EntityKind;
@@ -382,16 +378,23 @@ async function reuseLatestPlanIfAny(input: {
   actorUserId: string;
   note: string;
 }) {
-  const rows = await db()
+  if (input.scopeEntityKind !== 'experiment') return null;
+  const expRows = await db()
+    .select({ planMd: experiments.planMd })
+    .from(experiments)
+    .where(eq(experiments.id, input.scopeEntityId))
+    .limit(1);
+  if (!expRows[0]?.planMd || expRows[0].planMd.length === 0) return null;
+
+  // Carry forward runpod_account + chat_session from the most recent prior
+  // experiment-kind run so the dispatched pod is on the right account and the
+  // discussion thread stays continuous.
+  const priorRows = await db()
     .select({
-      id: agentRuns.id,
-      kind: agentRuns.kind,
-      planMd: agentRuns.planMd,
-      planJson: agentRuns.planJson,
-      request: agentRuns.request,
       provider: agentRuns.provider,
       runpodAccount: agentRuns.runpodAccount,
       chatSessionId: agentRuns.chatSessionId,
+      id: agentRuns.id,
     })
     .from(agentRuns)
     .where(
@@ -399,40 +402,36 @@ async function reuseLatestPlanIfAny(input: {
         eq(agentRuns.scopeEntityKind, input.scopeEntityKind),
         eq(agentRuns.scopeEntityId, input.scopeEntityId),
         eq(agentRuns.kind, 'experiment'),
-        ne(agentRuns.status, 'failed'),
-        sql`${agentRuns.planMd} IS NOT NULL AND length(${agentRuns.planMd}) > 0`,
       ),
     )
     .orderBy(desc(agentRuns.updatedAt))
     .limit(1);
-  const source = rows[0];
-  if (!source) return null;
+  const prior = priorRows[0];
 
   const inserted = await db()
     .insert(agentRuns)
     .values({
       kind: 'experiment',
-      provider: source.provider,
+      provider: prior?.provider ?? 'claude_code',
       status: 'approved',
-      request: `[plan-reused-from:${source.id}]\n\nApproved an existing plan without re-drafting. Source agent_run preserved this experiment's plan_md before the owner moved the card to queued.`,
-      planMd: source.planMd,
-      planJson: source.planJson,
+      request: `[plan-reused${prior ? `:from:${prior.id}` : ''}]\n\nApproved the existing experiment plan without re-drafting. Dispatcher reads plan_md / pod_spec from experiments.`,
       scopeEntityKind: input.scopeEntityKind,
       scopeEntityId: input.scopeEntityId,
-      runpodAccount: source.runpodAccount,
-      chatSessionId: source.chatSessionId,
+      runpodAccount: prior?.runpodAccount ?? 'team',
+      chatSessionId: prior?.chatSessionId,
       approvalRequired: false,
       approvedBy: input.actorUserId,
       approvedAt: new Date(),
     })
     .returning({ id: agentRuns.id });
   const newRunId = inserted[0]!.id;
+  const sourceRunId = prior?.id ?? newRunId;
 
   await db().insert(agentRunEvents).values({
     runId: newRunId,
     eventType: 'plan_reused',
-    body: source.id,
-    metadata: { sourceRunId: source.id, actorUserId: input.actorUserId },
+    body: sourceRunId,
+    metadata: { sourceRunId, actorUserId: input.actorUserId },
   });
   await db().execute(sql`SELECT pg_notify(${APPROVED_CHANNEL}, ${newRunId})`);
   await appendDailyLogTrailBestEffort({
@@ -443,8 +442,10 @@ async function reuseLatestPlanIfAny(input: {
     actorKind: 'user',
     actorUserId: input.actorUserId,
     agentRunId: newRunId,
-    correlationId: source.id,
-    detail: `Skipped re-planning; copied plan_md from agent_run ${source.id.slice(0, 8)}.`,
+    correlationId: sourceRunId,
+    detail: prior
+      ? `Skipped re-planning; reused experiment plan from agent_run ${sourceRunId.slice(0, 8)}.`
+      : 'Skipped re-planning; experiment had an existing plan with no prior agent_run trail.',
   });
   return newRunId;
 }

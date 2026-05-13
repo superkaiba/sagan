@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { extractPodSpecFromPlanMd } from '@sagan/api';
 import { approvalRequests, experiments, runs, workflowEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
@@ -80,6 +81,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
   const { status, note, ...metadataUpdates } = parsed.data;
   const updateValues: Partial<typeof experiments.$inferInsert> = { ...metadataUpdates, updatedAt: new Date() };
+  // When the caller updates plan_md, derive pod_spec server-side from the
+  // runpod-spec fenced block so the dispatcher (which reads pod_spec) stays
+  // in sync. Throws on malformed JSON — that's the right failure mode here.
+  if (metadataUpdates.planMd !== undefined) {
+    try {
+      updateValues.podSpec = extractPodSpecFromPlanMd(metadataUpdates.planMd) as typeof updateValues.podSpec;
+    } catch (err) {
+      return NextResponse.json(
+        { error: 'invalid_plan_md', detail: err instanceof Error ? err.message : String(err) },
+        { status: 400 },
+      );
+    }
+  }
   const updated = await db()
     .update(experiments)
     .set(updateValues)

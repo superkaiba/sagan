@@ -36,8 +36,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (run.kind !== 'experiment') {
     return NextResponse.json({ error: 'not_experiment_run', kind: run.kind }, { status: 409 });
   }
-  // Canonical plan_md lives on experiments.plan_md; fall back to the run row
-  // when the experiment hasn't been backfilled.
+  // Canonical plan_md is on experiments for experiment-scoped runs (since
+  // 0029). Other run kinds (todo plans) keep plan_md on the run row.
   let planMd: string | null = run.planMd ?? null;
   if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
     const expRows = await db()
@@ -45,8 +45,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
       .from(experiments)
       .where(eq(experiments.id, run.scopeEntityId))
       .limit(1);
-    const expPlanMd = expRows[0]?.planMd ?? null;
-    if (expPlanMd && expPlanMd.length > 0) planMd = expPlanMd;
+    planMd = expRows[0]?.planMd ?? null;
   }
   if (!planMd) {
     return NextResponse.json({ error: 'plan_md_missing' }, { status: 409 });

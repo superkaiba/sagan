@@ -26,41 +26,62 @@ export async function PlanPanel({
   let runKind: string | null = null;
 
   if (entityKind === 'experiment') {
+    // Experiment plan lives on the experiment row (since 0029). The agent_run
+    // query below just picks up the latest associated run for the approval
+    // link; it no longer carries the plan content.
     const expRows = await db()
       .select({ planMd: experiments.planMd })
       .from(experiments)
       .where(eq(experiments.id, entityId))
       .limit(1);
     planMd = expRows[0]?.planMd ?? null;
-  }
 
-  // Always look up the most recent non-failed run with a populated plan_md so
-  // we can show its status and link to /agent/<id> for approval. For todos
-  // this is also where plan_md itself comes from.
-  const runRows = await db()
-    .select({
-      id: agentRuns.id,
-      kind: agentRuns.kind,
-      status: agentRuns.status,
-      planMd: agentRuns.planMd,
-    })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.scopeEntityKind, entityKind as 'experiment' | 'todo'),
-        eq(agentRuns.scopeEntityId, entityId),
-        ne(agentRuns.status, 'failed'),
-        sql`${agentRuns.planMd} IS NOT NULL AND length(${agentRuns.planMd}) > 0`,
-      ),
-    )
-    .orderBy(desc(agentRuns.updatedAt))
-    .limit(1);
-  const run = runRows[0];
-  if (run) {
-    runId = run.id;
-    runStatus = run.status;
-    runKind = run.kind;
-    if (!planMd) planMd = run.planMd;
+    const runRows = await db()
+      .select({ id: agentRuns.id, kind: agentRuns.kind, status: agentRuns.status })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.scopeEntityKind, 'experiment'),
+          eq(agentRuns.scopeEntityId, entityId),
+          eq(agentRuns.kind, 'experiment'),
+          ne(agentRuns.status, 'failed'),
+        ),
+      )
+      .orderBy(desc(agentRuns.updatedAt))
+      .limit(1);
+    const run = runRows[0];
+    if (run) {
+      runId = run.id;
+      runStatus = run.status;
+      runKind = run.kind;
+    }
+  } else {
+    // Todos still keep plan_md on the agent_run row.
+    const runRows = await db()
+      .select({
+        id: agentRuns.id,
+        kind: agentRuns.kind,
+        status: agentRuns.status,
+        planMd: agentRuns.planMd,
+      })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.scopeEntityKind, entityKind as 'todo'),
+          eq(agentRuns.scopeEntityId, entityId),
+          ne(agentRuns.status, 'failed'),
+          sql`${agentRuns.planMd} IS NOT NULL AND length(${agentRuns.planMd}) > 0`,
+        ),
+      )
+      .orderBy(desc(agentRuns.updatedAt))
+      .limit(1);
+    const run = runRows[0];
+    if (run) {
+      runId = run.id;
+      runStatus = run.status;
+      runKind = run.kind;
+      planMd = run.planMd;
+    }
   }
 
   if (!planMd) return null;

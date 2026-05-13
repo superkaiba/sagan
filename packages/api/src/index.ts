@@ -2,3 +2,4 @@
 // Per-entity Zod write/update schemas land here as Phase 3 ships entity forms.
 
 export * from './schemas/index';
+export { extractPodSpecFromPlanMd } from './pod-spec';

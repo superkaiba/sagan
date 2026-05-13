@@ -299,6 +299,9 @@ importers:
       '@sagan/agent-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-protocol
+      '@sagan/api':
+        specifier: workspace:*
+        version: link:../../packages/api
       '@sagan/db':
         specifier: workspace:*
         version: link:../../packages/db

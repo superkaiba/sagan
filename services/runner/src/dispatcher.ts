@@ -50,22 +50,8 @@ interface ParsedSpec {
   wandbProject?: string;
 }
 
-const SPEC_BLOCK_RE = /```runpod-spec\s*\n([\s\S]*?)\n```/;
-
-export function parseSpecsFromPlan(planMd: string): ParsedSpec[] {
-  const match = planMd.match(SPEC_BLOCK_RE);
-  if (!match) return [];
-  const block = match[1]?.trim();
-  if (!block) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(block);
-  } catch {
-    throw new Error(
-      'plan contained a ```runpod-spec``` block but it is not valid JSON. Wrap a single pod spec in {} or an array of specs in [].',
-    );
-  }
-  const specs: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+export function validatePodSpecs(raw: unknown): ParsedSpec[] {
+  const specs: unknown[] = Array.isArray(raw) ? raw : [raw];
   return specs.map((s, i) => validateSpec(s, i));
 }
 
@@ -233,38 +219,36 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
     log.debug('dispatch: run is not approved', { runId, status: run.status });
     return;
   }
-  // Canonical plan_md lives on experiments.plan_md (the workflow-port canonical
-  // record). Fall back to the per-run copy on agent_runs.plan_md only when the
-  // run isn't scoped to an experiment (e.g. todo-kind apply runs that someday
-  // grow a runpod-spec) or when the experiment row hasn't been backfilled.
-  let planMd: string | null = run.planMd ?? null;
-  if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
-    const expRows = await db()
-      .select({ planMd: schema.experiments.planMd })
-      .from(schema.experiments)
-      .where(eq(schema.experiments.id, run.scopeEntityId))
-      .limit(1);
-    const expPlanMd = expRows[0]?.planMd ?? null;
-    if (expPlanMd && expPlanMd.length > 0) planMd = expPlanMd;
+  // Read pod_spec from the canonical experiment row. The planner stores it as
+  // typed jsonb at awaiting_approval; owner PATCH derives it server-side from
+  // plan_md. Dispatcher does not parse markdown.
+  if (run.scopeEntityKind !== 'experiment' || !run.scopeEntityId) {
+    await fail(runId, 'experiment-kind run is not scoped to an experiment; cannot dispatch');
+    return;
   }
-
-  if (!planMd) {
-    await fail(runId, 'plan_md is empty; cannot dispatch');
+  const expRows = await db()
+    .select({ podSpec: schema.experiments.podSpec })
+    .from(schema.experiments)
+    .where(eq(schema.experiments.id, run.scopeEntityId))
+    .limit(1);
+  const rawPodSpec = expRows[0]?.podSpec ?? null;
+  if (!rawPodSpec) {
+    await fail(
+      runId,
+      'experiments.pod_spec is null. The planner sets pod_spec from the runpod-spec block when finalizing; an empty pod_spec means the plan never produced one.',
+    );
     return;
   }
 
   let specs: ParsedSpec[];
   try {
-    specs = parseSpecsFromPlan(planMd);
+    specs = validatePodSpecs(rawPodSpec);
   } catch (err) {
     await fail(runId, err instanceof Error ? err.message : String(err));
     return;
   }
   if (specs.length === 0) {
-    await fail(
-      runId,
-      'plan contained no ```runpod-spec``` block. The plan must include a fenced block describing the pod(s) to dispatch.',
-    );
+    await fail(runId, 'experiments.pod_spec is empty; nothing to dispatch.');
     return;
   }
 

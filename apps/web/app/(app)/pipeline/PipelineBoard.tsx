@@ -65,8 +65,6 @@ type CreatedTodo = {
 const ISSUE_DEFAULTS_BY_STAGE: Record<PipelineStageKey, { status: string; priority: 'low' | 'normal' | 'high' | 'urgent' }> = {
   later: { status: 'inbox', priority: 'low' },
   idea: { status: 'open', priority: 'normal' },
-  clarifying: { status: 'planning', priority: 'normal' },
-  awaiting_clarifications: { status: 'planning', priority: 'high' },
   planning: { status: 'planning', priority: 'normal' },
   approval: { status: 'planning', priority: 'high' },
   queued: { status: 'planning', priority: 'normal' },
@@ -81,10 +79,10 @@ const ISSUE_DEFAULTS_BY_STAGE: Record<PipelineStageKey, { status: string; priori
 };
 
 const dropTargets: Record<PipelineCardKind, PipelineStageKey[]> = {
-  experiment: ['later', 'idea', 'clarifying', 'awaiting_clarifications', 'planning', 'approval', 'queued', 'running', 'interpreting', 'followups_running', 'blocked', 'review', 'done', 'archived'],
+  experiment: ['later', 'idea', 'planning', 'approval', 'queued', 'running', 'interpreting', 'followups_running', 'blocked', 'review', 'done', 'archived'],
   clean_result: ['interpreting', 'clean_results', 'blocked', 'review', 'done', 'archived'],
   todo: ['later', 'idea', 'planning', 'running', 'interpreting', 'blocked', 'review', 'done', 'archived'],
-  idea: ['clarifying', 'planning', 'archived'],
+  idea: ['planning', 'archived'],
   automation: ['approval', 'queued', 'running', 'done', 'blocked', 'archived'],
 };
 
@@ -353,8 +351,7 @@ function PipelineCard({
 }) {
   const router = useRouter();
   const suppressClick = useRef(false);
-  const attentionColumn =
-    card.stage === 'approval' || card.stage === 'review' || card.stage === 'awaiting_clarifications';
+  const attentionColumn = card.stage === 'approval' || card.stage === 'review' || card.stage === 'planning';
   const needsOwner = Boolean(card.ownerAction) && attentionColumn;
   const runActive = card.run ? RUN_ACTIVE_STATUSES.includes(card.run.status) : false;
   const runFailed = card.run ? RUN_FAILED_STATUSES.includes(card.run.status) : false;

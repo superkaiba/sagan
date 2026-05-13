@@ -157,8 +157,6 @@ export interface DashboardRunPod {
 export const PIPELINE_STAGES = [
   { key: 'later', title: 'Later' },
   { key: 'idea', title: 'Idea / Proposed' },
-  { key: 'clarifying', title: 'Clarifying' },
-  { key: 'awaiting_clarifications', title: 'Awaiting clarifications' },
   { key: 'planning', title: 'Planning' },
   { key: 'approval', title: 'Awaiting approval' },
   { key: 'queued', title: 'Approved / Queued' },
@@ -712,9 +710,7 @@ function experimentStage(status: string, priority: string): PipelineStageKey {
     return 'later';
   }
   if (status === 'proposed') return 'idea';
-  if (status === 'clarifying') return 'clarifying';
-  if (status === 'awaiting_clarifications') return 'awaiting_clarifications';
-  if (status === 'planning') return 'planning';
+  if (status === 'clarifying' || status === 'awaiting_clarifications' || status === 'planning') return 'planning';
   if (status === 'gate_pending' || status === 'plan_pending' || status === 'awaiting_approval') return 'approval';
   if (status === 'approved' || status === 'queued') return 'queued';
   if (

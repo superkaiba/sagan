@@ -96,6 +96,9 @@ const EXPERIMENT_ORCHESTRATOR_TOOLS = [
   'Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write', 'Agent', 'TaskOutput', 'TaskStop',
 ] as const;
 export const EXPERIMENT_ORCHESTRATOR_PREFIX = 'experiment-orchestrator-for:';
+export const EXPERIMENT_IMPROVE_PREFIX = 'experiment-improve-for:';
+export const EXPERIMENT_REINTERPRET_PREFIX = 'experiment-reinterpret-for:';
+export const EXPERIMENT_CLEAN_RESULT_PREFIX = 'experiment-clean-result-for:';
 // Planner sub-agent prompts (critic / codex-critic / reconciler /
 // consistency-checker) are loaded from `.claude/prompts/runner/planner-subagents/`
 // at session start so prompt edits land via a web deploy without a runner
@@ -110,11 +113,18 @@ function toolPolicyForRunKind(row: AgentRunRow): Pick<Options, 'tools' | 'canUse
       agents: loadPlannerSubagents(),
     };
   }
-  if (kind === 'apply' && row.request.startsWith(EXPERIMENT_ORCHESTRATOR_PREFIX)) {
+  if (
+    kind === 'apply' &&
+    (row.request.startsWith(EXPERIMENT_ORCHESTRATOR_PREFIX) ||
+      row.request.startsWith(EXPERIMENT_IMPROVE_PREFIX) ||
+      row.request.startsWith(EXPERIMENT_REINTERPRET_PREFIX) ||
+      row.request.startsWith(EXPERIMENT_CLEAN_RESULT_PREFIX))
+  ) {
     return {
       tools: [...EXPERIMENT_ORCHESTRATOR_TOOLS],
-      // No tool guard — the orchestrator needs to write code, post markers,
-      // and trigger the dispatcher via HTTP. All sub-agents loaded from
+      // No tool guard — the orchestrator/improve/reinterpret session needs to
+      // write code, post markers, and (for improve/reinterpret runs) spawn
+      // analyzer/critic/pod-provisioner subagents. All sub-agents loaded from
       // .claude/agents are exposed via the Agent tool.
       agents: loadAgentsFromProject(env.RUNNER_REPO_ROOT),
     };
@@ -551,6 +561,12 @@ ${row.request}`;
   if (row.kind === 'apply' && row.request.startsWith(EXPERIMENT_ORCHESTRATOR_PREFIX)) {
     return await buildExperimentOrchestratorPrompt(row, header, scope);
   }
+  if (row.kind === 'apply' && row.request.startsWith(EXPERIMENT_REINTERPRET_PREFIX)) {
+    return await buildExperimentReinterpretPrompt(row, header, scope);
+  }
+  if (row.kind === 'apply' && row.request.startsWith(EXPERIMENT_CLEAN_RESULT_PREFIX)) {
+    return await buildExperimentCleanResultPrompt(row, header, scope);
+  }
   if (row.kind === 'apply' && row.chatSessionId && !row.scopeEntityKind && !row.scopeEntityId) {
     const transcript = await buildChatTranscript(row.chatSessionId);
     return `${header}${scope}
@@ -635,6 +651,160 @@ async function buildExperimentOrchestratorPrompt(
     parentRunIdOrPlaceholder,
     parentRunIdLabel,
     parentPlanBlock,
+  });
+  return `${header}${scope}\n\n${body}\n`;
+}
+
+/**
+ * Brief for the re-interpret runner. After all follow-up children of a parent
+ * experiment reach a terminal status, the followups watcher transitions the
+ * parent back to `interpreting` and queues a kind=apply run whose `request`
+ * begins with EXPERIMENT_REINTERPRET_PREFIX. That session re-runs the
+ * analyzer + interpretation-critic pair on the updated artifacts and exits
+ * after transitioning to `reviewing`. The auto follow-up-proposer does NOT
+ * re-run — it fires once per experiment.
+ */
+async function buildExperimentReinterpretPrompt(
+  row: AgentRunRow,
+  header: string,
+  scope: string,
+): Promise<string> {
+  const experimentId =
+    row.scopeEntityKind === 'experiment' && row.scopeEntityId
+      ? row.scopeEntityId
+      : row.request.slice(EXPERIMENT_REINTERPRET_PREFIX.length).trim().split(/\s/)[0] || '';
+  let experimentNumber: number | null = null;
+  let projectSlug: string | null = null;
+  let parentPlan = '';
+  if (experimentId) {
+    const expRows = await db()
+      .select({
+        number: schema.experiments.number,
+        projectId: schema.experiments.projectId,
+        planMd: schema.experiments.planMd,
+      })
+      .from(schema.experiments)
+      .where(eq(schema.experiments.id, experimentId))
+      .limit(1);
+    experimentNumber = expRows[0]?.number ?? null;
+    parentPlan = expRows[0]?.planMd ?? '';
+    const projectId = expRows[0]?.projectId ?? null;
+    if (projectId) {
+      const projectRows = await db()
+        .select({ slug: schema.projects.slug })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, projectId))
+        .limit(1);
+      projectSlug = projectRows[0]?.slug ?? null;
+    }
+  }
+
+  // Collect a one-line summary per completed child so the analyzer knows
+  // what new data to integrate. Status filter is mirrored from the watcher:
+  // only experiments that actually produced (or definitively failed to
+  // produce) data count as terminal here.
+  let childrenSummary = '(no completed children found)';
+  if (experimentId) {
+    const childRows = await db()
+      .select({
+        id: schema.experiments.id,
+        number: schema.experiments.number,
+        title: schema.experiments.title,
+        status: schema.experiments.status,
+      })
+      .from(schema.experiments)
+      .where(eq(schema.experiments.parentExperimentId, experimentId));
+    if (childRows.length > 0) {
+      childrenSummary = childRows
+        .map(
+          (c) =>
+            `- ${c.number !== null && c.number !== undefined ? `#${c.number}` : c.id.slice(0, 8)} [${c.status}] ${c.title.slice(0, 120)}`,
+        )
+        .join('\n');
+    }
+  }
+
+  const clientRepoPath = resolveClientRepoPath(projectSlug);
+  const experimentLabel =
+    experimentNumber !== null
+      ? `#${experimentNumber}`
+      : `(scope: experiment ${experimentId || 'unknown'})`;
+  const projectSlugSuffix = projectSlug ? ` (project \`${projectSlug}\`)` : '';
+  const parentPlanBlock = parentPlan
+    ? parentPlan
+    : '(plan_md not loaded — proceed with whatever context is in experiments.body)';
+
+  const body = loadPromptText('experiment-reinterpret-brief.md', {
+    experimentLabel,
+    experimentId: experimentId || '<unknown>',
+    clientRepoPath,
+    projectSlugSuffix,
+    parentPlanBlock,
+    childrenSummaryBlock: childrenSummary,
+  });
+  return `${header}${scope}\n\n${body}\n`;
+}
+
+/**
+ * Brief for the clean-result drafter. When the owner clicks "Done reviewing"
+ * the PATCH /api/experiments/<id> handler transitions the experiment to
+ * `clean_result_drafting` and queues a kind=apply run whose `request` begins
+ * with EXPERIMENT_CLEAN_RESULT_PREFIX. That session promotes
+ * `experiments.body` into a `clean_results` row, runs the clean-result-critic
+ * pair, and transitions the experiment to `awaiting_promotion` when the pair
+ * passes.
+ */
+async function buildExperimentCleanResultPrompt(
+  row: AgentRunRow,
+  header: string,
+  scope: string,
+): Promise<string> {
+  const experimentId =
+    row.scopeEntityKind === 'experiment' && row.scopeEntityId
+      ? row.scopeEntityId
+      : row.request.slice(EXPERIMENT_CLEAN_RESULT_PREFIX.length).trim().split(/\s/)[0] || '';
+  let experimentNumber: number | null = null;
+  let experimentBody = '';
+  let projectSlug: string | null = null;
+  if (experimentId) {
+    const expRows = await db()
+      .select({
+        number: schema.experiments.number,
+        projectId: schema.experiments.projectId,
+        body: schema.experiments.body,
+      })
+      .from(schema.experiments)
+      .where(eq(schema.experiments.id, experimentId))
+      .limit(1);
+    experimentNumber = expRows[0]?.number ?? null;
+    experimentBody = expRows[0]?.body ?? '';
+    const projectId = expRows[0]?.projectId ?? null;
+    if (projectId) {
+      const projectRows = await db()
+        .select({ slug: schema.projects.slug })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, projectId))
+        .limit(1);
+      projectSlug = projectRows[0]?.slug ?? null;
+    }
+  }
+
+  const clientRepoPath = resolveClientRepoPath(projectSlug);
+  const experimentLabel =
+    experimentNumber !== null
+      ? `#${experimentNumber}`
+      : `(scope: experiment ${experimentId || 'unknown'})`;
+  const projectSlugSuffix = projectSlug ? ` (project \`${projectSlug}\`)` : '';
+  const interpretationBody = experimentBody
+    ? experimentBody
+    : '(experiments.body is empty — abort with epm:failure citing missing interpretation)';
+
+  const body = loadPromptText('experiment-clean-result-brief.md', {
+    experimentLabel,
+    experimentId: experimentId || '<unknown>',
+    clientRepoPath,
+    projectSlugSuffix,
+    interpretationBody,
   });
   return `${header}${scope}\n\n${body}\n`;
 }
@@ -1244,36 +1414,6 @@ async function markExperimentPlanPending(
       .where(eq(schema.experiments.id, experimentId));
   }
 
-  // Anchored comments on prior plan versions were the owner asking for this
-  // revision; mark them resolved so they don't accumulate as ever-growing
-  // open feedback. The history view still shows them (resolved badge); the
-  // current plan starts fresh.
-  const priorPlanRuns = await db()
-    .select({ id: schema.agentRuns.id })
-    .from(schema.agentRuns)
-    .where(
-      and(
-        eq(schema.agentRuns.scopeEntityKind, 'experiment'),
-        eq(schema.agentRuns.scopeEntityId, experimentId),
-        eq(schema.agentRuns.kind, 'experiment'),
-        ne(schema.agentRuns.id, runId),
-      ),
-    );
-  if (priorPlanRuns.length > 0) {
-    await db()
-      .update(schema.comments)
-      .set({ resolvedAt: new Date(), resolvedSummaryMd: 'Auto-resolved: addressed in revised plan version.' })
-      .where(
-        and(
-          eq(schema.comments.entityKind, 'experiment_plan'),
-          inArray(
-            schema.comments.entityId,
-            priorPlanRuns.map((r) => r.id),
-          ),
-          isNull(schema.comments.resolvedAt),
-        ),
-      );
-  }
 
   const existing = await db()
     .select({ id: schema.approvalRequests.id })

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { agentRuns, experiments, podLifecycle, projectNarratives, projects } from '@sagan/db/schema';
+import { agentRuns, podLifecycle, projectNarratives, projects } from '@sagan/db/schema';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { ClarifyingQuestionsPanel } from '@/components/ClarifyingQuestionsPanel';
 import { Comments } from '@/components/Comments';
@@ -113,18 +113,6 @@ export default async function EntityPage({
     if (rows[0]) narrativeProject = { slug: rows[0].slug, isPublic: rows[0].isPublic };
   }
 
-  // When the experiment has a plan, PlanWithComments hosts the only Comments
-  // section (scoped to the plan version). Skip the page-level sidebar Comments
-  // in that case so the owner doesn't see two parallel comment threads.
-  let experimentHasPlan = false;
-  if (kind === 'experiment') {
-    const planRows = await db()
-      .select({ planMd: experiments.planMd })
-      .from(experiments)
-      .where(eq(experiments.id, entity.id))
-      .limit(1);
-    experimentHasPlan = Boolean(planRows[0]?.planMd?.trim());
-  }
 
   return (
     <AnchoredCommentsProvider>
@@ -222,7 +210,7 @@ export default async function EntityPage({
           <ProposedFollowUps experimentId={entity.id} />
         ) : null}
 
-        {experimentHasPlan ? null : <Comments entityKind={kind} entityId={entity.id} />}
+        <Comments entityKind={kind} entityId={entity.id} />
 
         {entity.meta && entity.meta.length > 0 ? (
           <details className="rounded-lg border border-[--color-border] bg-[--color-panel]">

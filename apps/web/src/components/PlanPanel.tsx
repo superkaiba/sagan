@@ -91,7 +91,7 @@ export async function PlanPanel({
   const canRevise =
     entityKind === 'experiment' &&
     (experimentStatus === 'plan_pending' || experimentStatus === 'awaiting_approval');
-  const showCommentable = entityKind === 'experiment' && runId !== null;
+  const showCommentable = entityKind === 'experiment';
 
   return (
     <section className="rounded-lg border border-[--color-border] bg-[--color-panel]">
@@ -118,7 +118,6 @@ export async function PlanPanel({
           <PlanWithComments
             experimentId={entityId}
             planMd={planMd}
-            planRunId={runId!}
             canRevise={canRevise}
           />
         ) : (

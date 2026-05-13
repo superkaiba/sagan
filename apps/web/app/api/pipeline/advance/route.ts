@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { agentRuns, cleanResults, dailyLogEntries, experiments, ideaCards, todos } from '@sagan/db/schema';
+import { agentRunEvents, agentRuns, cleanResults, dailyLogEntries, experiments, ideaCards, todos } from '@sagan/db/schema';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { db } from '@/lib/db';
@@ -334,6 +334,90 @@ async function approveLatestScopedRun(input: {
   return run.id;
 }
 
+/**
+ * Re-use the most recent existing plan for this experiment scope when the
+ * owner moves the card to queued/running. Without this, every approval→queued
+ * move triggers a fresh planning pass (the agent re-drafts from scratch)
+ * because cancelled / completed agent_runs are invisible to
+ * approveLatestScopedRun. If the experiment has a plan_md anywhere, copy it
+ * into a new agent_run with status=approved and fire APPROVED_CHANNEL so the
+ * dispatcher takes over — no re-planning.
+ *
+ * Excludes failed runs (their plan_md is suspect by definition).
+ */
+async function reuseLatestPlanIfAny(input: {
+  scopeEntityKind: EntityKind;
+  scopeEntityId: string;
+  actorUserId: string;
+  note: string;
+}) {
+  const rows = await db()
+    .select({
+      id: agentRuns.id,
+      kind: agentRuns.kind,
+      planMd: agentRuns.planMd,
+      planJson: agentRuns.planJson,
+      request: agentRuns.request,
+      provider: agentRuns.provider,
+      runpodAccount: agentRuns.runpodAccount,
+      chatSessionId: agentRuns.chatSessionId,
+    })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.scopeEntityKind, input.scopeEntityKind),
+        eq(agentRuns.scopeEntityId, input.scopeEntityId),
+        eq(agentRuns.kind, 'experiment'),
+        ne(agentRuns.status, 'failed'),
+        sql`${agentRuns.planMd} IS NOT NULL AND length(${agentRuns.planMd}) > 0`,
+      ),
+    )
+    .orderBy(desc(agentRuns.updatedAt))
+    .limit(1);
+  const source = rows[0];
+  if (!source) return null;
+
+  const inserted = await db()
+    .insert(agentRuns)
+    .values({
+      kind: 'experiment',
+      provider: source.provider,
+      status: 'approved',
+      request: `[plan-reused-from:${source.id}]\n\nApproved an existing plan without re-drafting. Source agent_run preserved this experiment's plan_md before the owner moved the card to queued.`,
+      planMd: source.planMd,
+      planJson: source.planJson,
+      scopeEntityKind: input.scopeEntityKind,
+      scopeEntityId: input.scopeEntityId,
+      runpodAccount: source.runpodAccount,
+      chatSessionId: source.chatSessionId,
+      approvalRequired: false,
+      approvedBy: input.actorUserId,
+      approvedAt: new Date(),
+    })
+    .returning({ id: agentRuns.id });
+  const newRunId = inserted[0]!.id;
+
+  await db().insert(agentRunEvents).values({
+    runId: newRunId,
+    eventType: 'plan_reused',
+    body: source.id,
+    metadata: { sourceRunId: source.id, actorUserId: input.actorUserId },
+  });
+  await db().execute(sql`SELECT pg_notify(${APPROVED_CHANNEL}, ${newRunId})`);
+  await appendDailyLogTrailBestEffort({
+    action: `Re-used existing plan for ${input.scopeEntityKind} ${input.scopeEntityId.slice(0, 8)}`,
+    why: input.note,
+    entityKind: input.scopeEntityKind,
+    entityId: input.scopeEntityId,
+    actorKind: 'user',
+    actorUserId: input.actorUserId,
+    agentRunId: newRunId,
+    correlationId: source.id,
+    detail: `Skipped re-planning; copied plan_md from agent_run ${source.id.slice(0, 8)}.`,
+  });
+  return newRunId;
+}
+
 function unsupported(stage: PipelineStage, kind: PipelineKind) {
   return NextResponse.json(
     { error: 'unsupported_stage', message: `${kind.replace('_', ' ')} cards cannot move to ${stage}.` },
@@ -426,15 +510,37 @@ async function advanceExperiment(input: z.infer<typeof advanceSchema>, actorUser
       });
       nextStatus = 'approved';
     } else {
-      const run = await queueAgentRun({
-        kind: 'experiment',
-        request: agentRequest({ kind: 'experiment', title: experiment.title, fromStage: input.fromStage, toStage: input.toStage }),
+      // No awaiting_approval run for this scope. Before paying for a fresh
+      // planning pass, see if any prior non-failed experiment-kind run on
+      // this scope already produced a plan_md we can re-use. If so, the
+      // plan IS done — copy it forward instead of re-drafting from scratch.
+      const reusedRun = await reuseLatestPlanIfAny({
         scopeEntityKind: 'experiment',
         scopeEntityId: input.id,
         actorUserId,
+        note: `Re-used existing plan after moving "${experiment.title}" to ${input.toStage}.`,
       });
-      agentRunId = run.runId;
-      message = run.existing ? 'An agent run is already active for this experiment.' : 'Queued the next experiment agent step.';
+      if (reusedRun) {
+        agentRunId = reusedRun;
+        message = 'Re-used the existing plan and notified the runner.';
+        await setExperimentStatus({
+          experimentId: input.id,
+          status: 'approved',
+          actorUserId,
+          note: `Re-used existing plan after moving to ${input.toStage}.`,
+        });
+        nextStatus = 'approved';
+      } else {
+        const run = await queueAgentRun({
+          kind: 'experiment',
+          request: agentRequest({ kind: 'experiment', title: experiment.title, fromStage: input.fromStage, toStage: input.toStage }),
+          scopeEntityKind: 'experiment',
+          scopeEntityId: input.id,
+          actorUserId,
+        });
+        agentRunId = run.runId;
+        message = run.existing ? 'An agent run is already active for this experiment.' : 'Queued the next experiment agent step.';
+      }
     }
   } else {
     const step = agentStepFor('experiment', input.toStage);

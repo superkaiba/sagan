@@ -24,6 +24,10 @@ const createSchema = z.object({
   status: z.enum(EXPERIMENT_STATUSES).default('proposed'),
   sourceKind: entityKindSchema.optional(),
   sourceId: z.string().uuid().optional(),
+  parentExperimentId: z.string().uuid().optional(),
+  autoApprovePlan: z.boolean().default(false),
+  body: z.string().max(200_000).optional(),
+  tags: z.array(z.string()).max(20).optional(),
 });
 
 const listQuerySchema = z.object({
@@ -101,6 +105,10 @@ export async function POST(req: Request) {
           : undefined,
       runpodAccount: parsed.data.runpodAccount,
       status: owner ? parsed.data.status : 'proposed',
+      body: parsed.data.body,
+      tags: parsed.data.tags ?? [],
+      parentExperimentId: owner ? parsed.data.parentExperimentId : undefined,
+      autoApprovePlan: owner ? parsed.data.autoApprovePlan : false,
       planJson: {
         createdFrom: owner ? 'sagan_experiment_proposal_api' : 'collaborator_experiment_proposal_api',
         proposedByUserId: session.user.id,

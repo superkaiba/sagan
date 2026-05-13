@@ -524,6 +524,8 @@ export const experiments = pgTable(
     assigneeKind: assigneeKindEnum('assignee_kind').notNull().default('agent'),
     tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
     hasCleanResult: boolean('has_clean_result').notNull().default(false),
+    autoApprovePlan: boolean('auto_approve_plan').notNull().default(false),
+    parentExperimentId: uuid('parent_experiment_id'),
     runpodAccount: runpodAccountEnum('runpod_account').notNull().default('team'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -13,9 +13,9 @@ import { join } from 'node:path';
 import { runAgentWithContinuation, stripSentinel } from './lib/run-agent.js';
 import { loadAgentsFromProject } from './lib/agent-loader.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
-import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db, schema } from './db.js';
-import { emitEvent, notifyPipelineChanged } from './queue.js';
+import { APPROVED_CHANNEL, emitEvent, notifyPipelineChanged } from './queue.js';
 import { env, requireEnv } from './env.js';
 import { log } from './log.js';
 import { pushToUser } from './lib/push.js';
@@ -684,7 +684,7 @@ Workflow stages and the sub-agents to invoke at each one (use the Agent tool wit
 8. **reviewing** — set status \`reviewing\`. Spawn \`interpretation-critic\` + \`codex-interpretation-critic\` for round 1, reconcile if needed. Same 3-round cap + round-3 rule. Then spawn \`clean-result-critic\` + \`codex-clean-result-critic\` for the clean-result write-up, same cap.
 9. **follow-ups** — once the critic pairs pass, spawn \`follow-up-proposer\` to draft follow-up experiments. Instruct it to emit two separate lists in its output:
    - \`auto_run\`: small, well-defined follow-ups that don't need owner sign-off — one extra seed, one extra eval condition, a smoke check, a scaling sanity check. Each must fit in <=2 GPU-hours of the same hardware class as the parent. The orchestrator auto-queues each as a child experiment in status \`followups_running\` (linked to the parent via \`metadata.parent_experiment_id\`) by POSTing to \`/api/experiments\` then approving its plan on the owner's behalf. These show up in the dashboard's "Follow-ups running" column.
-   - \`proposed\`: broader ideas — new directions, design extensions, follow-on questions. Do NOT auto-queue. Attach them to the parent experiment's body via \`sagan_state.py patch <N> --body-file …\` under a \`## Proposed follow-ups\` section so the owner sees them on the card and can decide to "Move to to-dos" (creates a row in \`todos\`).
+   - \`proposed\`: broader ideas — new directions, design extensions, follow-on questions. Do NOT auto-queue. Post each as its own comment on the parent experiment via POST /api/comments with \`kind: 'todo'\`, \`entityKind: 'experiment'\`, \`entityId: <parent_id>\`, \`body\` containing the title + rationale + size tag. The dashboard renders kind='todo' comments in a "Proposed follow-ups" section with a "Move to todo" button that POSTs to /api/todos with \`fromCommentId\` and auto-resolves the source comment on success.
    Post a single \`epm:follow-ups\` marker summarising both lists. If follow-up-proposer returns nothing useful, post \`epm:follow-ups\` with an empty payload and move on — do not block on follow-ups.
 10. **awaiting_promotion** — set status \`awaiting_promotion\` and post \`epm:awaiting-promotion\`. Stop. The parent experiment can sit here while auto-queued follow-ups still run (they have their own \`followups_running\` cards in the pipeline; the parent doesn't wait on them). Promotion is owner-driven and happens via the dashboard's Promote button (or \`python scripts/sagan_state.py promote <N> useful\`).
 
@@ -1058,6 +1058,52 @@ async function markAwaitingApproval(runId: string, planMd: string) {
       url: `/agent/${runId}`,
       data: { kind: 'awaiting_clarifications', runId },
     });
+    return;
+  }
+
+  // Auto-approval path: orchestrator-spawned follow-up children carry
+  // approvalRequired=false from pipeline/advance (set when the experiment
+  // has auto_approve_plan = true). Skip the human gate and go straight to
+  // approved + APPROVED_CHANNEL so the dispatcher picks the plan up.
+  if (row && !row.approvalRequired && row.kind === 'experiment') {
+    await db()
+      .update(schema.agentRuns)
+      .set({
+        status: 'approved',
+        approvedAt: new Date(),
+        planMd,
+        planJson,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.agentRuns.id, runId));
+    await emitEvent(runId, 'auto_approved', 'experiment.auto_approve_plan=true — skipping owner gate', {
+      plan_len: planMd.length,
+      structured_sections: planJson.sections.length,
+    });
+    if (row.scopeEntityKind === 'experiment' && row.scopeEntityId) {
+      const current = await db()
+        .select({ status: schema.experiments.status })
+        .from(schema.experiments)
+        .where(eq(schema.experiments.id, row.scopeEntityId))
+        .limit(1);
+      const prevStatus = current[0]?.status ?? null;
+      await db()
+        .update(schema.experiments)
+        .set({ status: 'approved', planJson, updatedAt: new Date() })
+        .where(eq(schema.experiments.id, row.scopeEntityId));
+      await db().insert(schema.workflowEvents).values({
+        entityKind: 'experiment',
+        entityId: row.scopeEntityId,
+        eventType: 'state_changed',
+        fromStatus: prevStatus,
+        toStatus: 'approved',
+        actorKind: 'runner',
+        note: 'Auto-approved follow-up plan (experiment.auto_approve_plan=true).',
+        metadata: { agentRunId: runId, autoApproved: true },
+      });
+    }
+    await db().execute(sql`SELECT pg_notify(${APPROVED_CHANNEL}, ${runId})`);
+    await notifyPipelineChanged(runId);
     return;
   }
 

@@ -3,6 +3,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { agentRuns, podLifecycle, projectNarratives, projects } from '@sagan/db/schema';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { Comments } from '@/components/Comments';
+import { ProposedFollowUps } from '@/components/ProposedFollowUps';
 import { EditableBody } from '@/components/EditableBody';
 import { CommentableBody } from '@/components/CommentableBody';
 import { EditableTitle } from '@/components/EditableTitle';
@@ -168,6 +169,10 @@ export default async function EntityPage({
           canManageRun={owner}
           showWhenEmpty={kind === 'experiment' || kind === 'todo'}
         />
+
+        {kind === 'experiment' ? (
+          <ProposedFollowUps experimentId={entity.id} />
+        ) : null}
 
         <Comments entityKind={kind} entityId={entity.id} />
 

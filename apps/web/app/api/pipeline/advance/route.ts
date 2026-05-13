@@ -249,6 +249,19 @@ async function queueAgentRun(input: {
     if (existing[0]) return { runId: existing[0].id, existing: true };
   }
 
+  // Auto-approve the planner output for orchestrator-spawned follow-up
+  // children — they're queued by the parent's orchestrator on the owner's
+  // behalf and shouldn't sit in awaiting_approval.
+  let autoApprove = false;
+  if (input.scopeEntityKind === 'experiment' && input.scopeEntityId) {
+    const expRow = await db()
+      .select({ autoApprovePlan: experiments.autoApprovePlan })
+      .from(experiments)
+      .where(eq(experiments.id, input.scopeEntityId))
+      .limit(1);
+    autoApprove = Boolean(expRow[0]?.autoApprovePlan);
+  }
+
   const inserted = await db()
     .insert(agentRuns)
     .values({
@@ -258,7 +271,7 @@ async function queueAgentRun(input: {
       request: input.request,
       scopeEntityKind: input.scopeEntityKind,
       scopeEntityId: input.scopeEntityId,
-      approvalRequired: input.kind === 'plan' || input.kind === 'experiment',
+      approvalRequired: (input.kind === 'plan' || input.kind === 'experiment') && !autoApprove,
     })
     .returning({ id: agentRuns.id });
   const runId = inserted[0]!.id;

@@ -266,10 +266,17 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     }
   }
 
-  // Group comments by thread root (parent or self).
-  const roots = items.filter((c) => !c.parentCommentId);
+  // Group comments by thread root (parent or self). kind='todo' roots are
+  // rendered by ProposedFollowUps (a separate "Proposed follow-ups" section
+  // with a Move-to-todo button) and shouldn't show up in the discussion
+  // thread list — their replies are also excluded.
+  const todoRootIds = new Set(items.filter((c) => c.kind === 'todo' && !c.parentCommentId).map((c) => c.id));
+  const visibleItems = items.filter(
+    (c) => c.kind !== 'todo' && !(c.parentCommentId && todoRootIds.has(c.parentCommentId)),
+  );
+  const roots = visibleItems.filter((c) => !c.parentCommentId);
   const repliesByParent = new Map<string, Comment[]>();
-  for (const c of items) {
+  for (const c of visibleItems) {
     if (c.parentCommentId) {
       const arr = repliesByParent.get(c.parentCommentId) ?? [];
       arr.push(c);

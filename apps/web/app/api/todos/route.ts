@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { desc, ne, sql } from 'drizzle-orm';
+import { desc, eq, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { todos } from '@sagan/db/schema';
+import { comments, todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
@@ -52,6 +52,12 @@ const createSchema = z.object({
     .default('inbox'),
   priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
   ownerNote: z.string().max(20_000).optional(),
+  linkedKind: z.string().max(40).optional(),
+  linkedId: z.string().uuid().optional(),
+  // When set, the originating comment is resolved (so the "Move to todo"
+  // button on a proposed-follow-up comment doesn't leave the proposal
+  // un-promoted-looking after the user accepts it).
+  fromCommentId: z.string().uuid().optional(),
 });
 
 export async function POST(req: Request) {
@@ -66,11 +72,27 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
+  const { fromCommentId, linkedKind, linkedId, ...todoValues } = parsed.data;
   const inserted = await db()
     .insert(todos)
-    .values(parsed.data)
+    .values({
+      ...todoValues,
+      linkedKind: linkedKind as typeof todos.$inferInsert['linkedKind'],
+      linkedId,
+    })
     .returning();
   const todo = inserted[0]!;
+  if (fromCommentId) {
+    await db()
+      .update(comments)
+      .set({
+        resolvedAt: new Date(),
+        resolvedBy: session.user.id,
+        resolvedSummaryMd: `Promoted to todo ${todo.id.slice(0, 8)}: ${todo.text.slice(0, 200)}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(comments.id, fromCommentId));
+  }
   await appendDailyLogTrailBestEffort({
     action: `Created task ${todo.text}`,
     why: 'A user added a task to track the next research or engineering action.',

@@ -6,7 +6,7 @@ description: >
   Owns: pod sync, launch, progressive monitoring, debugging, results collection.
   Does NOT own: writing experiment code (→ experiment-implementer) or pod
   lifecycle (→ /issue skill).
-model: opus
+model: opus[1m]
 skills:
   - experiment-runner
   - codebase-debugger

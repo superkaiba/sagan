@@ -23,6 +23,7 @@ import { log } from './log.js';
 import { recordTrail } from './trail.js';
 import { queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
+import { EXPERIMENT_ORCHESTRATOR_PREFIX } from './session.js';
 
 interface ParsedSpec {
   /** A descriptive name; defaults to <experiment_id>-<i>. */
@@ -154,29 +155,18 @@ export async function handleApprovedRun(runId: string): Promise<void> {
   // provision pods) is detected by an existing orchestrator run on this
   // scope, and goes straight to the dispatcher.
   if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
-    const existing = await db()
+    const orchestrators = await db()
       .select({ id: schema.agentRuns.id })
       .from(schema.agentRuns)
       .where(
         and(
           eq(schema.agentRuns.scopeEntityId, run.scopeEntityId),
           eq(schema.agentRuns.kind, 'apply'),
+          sql`${schema.agentRuns.request} LIKE ${`${EXPERIMENT_ORCHESTRATOR_PREFIX}${runId}%`}`,
         ),
-      );
-    const orchestratorExists = existing.some(() => true) && (
-      await db()
-        .select({ id: schema.agentRuns.id })
-        .from(schema.agentRuns)
-        .where(
-          and(
-            eq(schema.agentRuns.scopeEntityId, run.scopeEntityId),
-            eq(schema.agentRuns.kind, 'apply'),
-            sql`${schema.agentRuns.request} LIKE ${`experiment-orchestrator-for:${runId}%`}`,
-          ),
-        )
-        .limit(1)
-    ).length > 0;
-    if (orchestratorExists) {
+      )
+      .limit(1);
+    if (orchestrators.length > 0) {
       await dispatchApprovedExperiment(runId);
       return;
     }
@@ -190,7 +180,7 @@ export async function handleApprovedRun(runId: string): Promise<void> {
 }
 
 async function queuePostApprovalOrchestrator(parentRun: typeof schema.agentRuns.$inferSelect): Promise<void> {
-  const orchestratorRequest = `experiment-orchestrator-for:${parentRun.id}\n\nDrive experiment ${parentRun.scopeEntityId} from approved plan through awaiting_promotion. Sub-agents are loaded from .claude/agents/.`;
+  const orchestratorRequest = `${EXPERIMENT_ORCHESTRATOR_PREFIX}${parentRun.id}\n\nDrive experiment ${parentRun.scopeEntityId} from approved plan through awaiting_promotion. Sub-agents are loaded from .claude/agents/.`;
   const inserted = await db()
     .insert(schema.agentRuns)
     .values({

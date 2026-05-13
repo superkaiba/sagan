@@ -120,13 +120,28 @@ After those sections, include a fenced ```runpod-spec block containing valid JSO
   "containerDiskGb": 100,
   "cloudType": "SECURE",
   "estimatedMinutes": 180,
-  "dockerArgs": "bash -lc 'python run_experiment.py'",
+  "dockerArgs": "bash -lc 'cd /workspace/explore-persona-space && uv run python scripts/run_experiment_<N>.py'",
   "config": {
     "command": "short description or exact command the pod should run",
     "artifacts": ["expected artifact paths or URLs"]
+  },
+  "substitution_policy": {
+    "gpuType":     { "allowed": ["H100", "H200", "A100-SXM"], "min_vram_gb": 80 },
+    "gpuCount":    { "min": 1, "max": 1 },
+    "cloudType":   { "allowed": ["SECURE", "COMMUNITY"], "prefer": "SECURE" },
+    "dataCenterId":{ "allowed": "any", "prefer": ["US-CA-2", "EU-RO-1"] },
+    "account":     { "allowed": ["team", "personal"], "prefer": "team" },
+    "volumeGb":        { "min": 100 },
+    "containerDiskGb": { "min": 100 }
+  },
+  "consolidation": {
+    "may_merge_pods": true,
+    "merge_target_max_gpus_per_pod": 8
   }
 }
 ```
+
+The `substitution_policy` and `consolidation` blocks tell the `pod-provisioner` sub-agent what it is allowed to vary when RunPod returns `SUPPLY_CONSTRAINT`. The provisioner walks a ladder: consolidate sibling pods → swap cloudType/region → swap GPU family within `gpuType.allowed` (respecting `min_vram_gb`) → swap account → (only if you explicitly relax `gpuCount.min`) lower count. If you omit both blocks, the runner falls back to the legacy one-shot dispatcher with no substitutions — for non-experimental sanity checks that's fine, but for real runs always emit a policy so capacity tightness does not block the experiment unnecessarily. The defaults shown above are sensible for most LoRA SFT runs on a single 80GB-class GPU; tighten `gpuType.min_vram_gb` if you genuinely need >80GB or set `gpuCount.min` higher than `gpuCount` if you forbid scaling down.
 
 Choose the smallest GPU type/count that can plausibly run the approved experiment. If the experiment truly should not launch compute, do not use kind=experiment; write a blocker explaining that it should be handled as a planning/QA run instead.
 
@@ -144,7 +159,9 @@ The ## Compute and Hardware section must include a USD cost estimate alongside G
 
 Format: `GPU-hours × rate × gpuCount × pods = $X (compute) + ~$Y (storage at $0.10/GB-month for the run window) = ~$Z total`. Round to two significant figures. State the rate you used so the estimate is auditable. If the experiment runs in parallel across multiple pods, multiply through accordingly.
 
-If the experiment should run automatically on pod boot, set dockerArgs to the exact shell command. The dispatcher injects SAGAN_PROGRESS_URL, SAGAN_POD_PROGRESS_TOKEN, SAGAN_AGENT_RUN_ID, SAGAN_EXPERIMENT_ID, and SAGAN_RUN_INDEX into the pod. The experimenter command should POST progress updates as it runs:
+The dispatcher wraps `dockerArgs` with a Sagan bootstrap pre-amble before sending the spec to RunPod (see `services/runner/src/lib/pod-bootstrap.ts`). The wrapper does what `scripts/bootstrap_pod.sh` does locally over SSH in EPS-land — it clones `explore-persona-space` at `$SAGAN_EPS_BRANCH` (set by the orchestrator after the implementer pushes), installs `uv`, runs `uv sync --locked`, redirects HF/WandB/UV/Triton caches to `/workspace/.cache/*`, writes the forwarded `.env` into `/workspace/explore-persona-space/.env`, and POSTs start/done progress. **Do not repeat any of that in your `dockerArgs`.** Author just the experiment command — e.g. `bash -lc 'cd /workspace/explore-persona-space && uv run python scripts/run_experiment_<N>.py'`. Tokens (`GITHUB_TOKEN`, `HF_TOKEN`, `WANDB_API_KEY`, `OPENAI_API_KEY`, etc.) are forwarded from `/home/thomasjiralerspong/explore-persona-space/.env` on the runner VM into the pod's container env — you don't need to thread them through. Sentinel-skip: if your `dockerArgs` contains `git clone` or starts with `# sagan:no-wrap`, the wrapper steps aside and your command runs as-is (used by legacy plans only).
+
+The dispatcher also injects SAGAN_PROGRESS_URL, SAGAN_POD_PROGRESS_TOKEN, SAGAN_AGENT_RUN_ID, SAGAN_EXPERIMENT_ID, and SAGAN_RUN_INDEX. Your experiment script should POST mid-run progress updates so the dashboard shows accurate time-remaining:
 
 ```bash
 curl -sS -X POST "$SAGAN_PROGRESS_URL" \

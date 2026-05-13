@@ -11,6 +11,7 @@
     "apply-narrative-edit": "tsx scripts/apply-narrative-edit.ts",
     "import-github-project": "tsx scripts/import-github-project.ts",
     "runpod": "tsx scripts/runpod-cli.ts",
+    "pod-tool": "tsx scripts/pod-tool.ts",
     "snapshot-mentor": "tsx scripts/snapshot-mentor.ts",
     "typecheck": "tsc --noEmit"
   },

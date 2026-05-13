@@ -14,6 +14,8 @@
  * footgun). Set RUNPOD_TEAM_ID_TEAM to override.
  */
 
+import { wrapDockerArgsForBootstrap } from '../lib/pod-bootstrap.js';
+
 const GRAPHQL_URL = 'https://api.runpod.io/graphql';
 const ANTHROPIC_SAFETY_RESEARCH_TEAM_ID = 'cm8ipuyys0004l108gb23hody';
 
@@ -217,6 +219,13 @@ export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
 
   const account = spec.account ?? 'team';
   const gpuTypeId = GPU_TYPE_IDS[spec.gpuType] ?? spec.gpuType;
+  // Wrap the planner's dockerArgs with the Sagan bootstrap pre-amble (git
+  // clone client repo, install uv, sync deps, cache redirects, write .env)
+  // unless the planner already inlined their own bootstrap. See
+  // src/lib/pod-bootstrap.ts for the auto-skip rules.
+  const wrap = wrapDockerArgsForBootstrap({ dockerArgs: spec.dockerArgs, env: spec.env });
+  const finalDockerArgs = wrap.dockerArgs || spec.dockerArgs;
+  const finalEnv = { ...(spec.env ?? {}), ...wrap.envAdditions };
   const inputs: Record<string, string | number | boolean | Array<{ key: string; value: string }>> = {
     name: spec.name,
     gpuTypeId,
@@ -230,8 +239,8 @@ export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
     ports: '8888/http,22/tcp',
   };
   if (spec.dataCenterId) inputs.dataCenterId = spec.dataCenterId;
-  if (spec.dockerArgs) inputs.dockerArgs = spec.dockerArgs;
-  const env = Object.entries(spec.env ?? {})
+  if (finalDockerArgs) inputs.dockerArgs = finalDockerArgs;
+  const env = Object.entries(finalEnv)
     .filter(([key]) => key.trim())
     .map(([key, value]) => ({ key, value }));
   if (env.length > 0) inputs.env = env;

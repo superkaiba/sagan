@@ -34,6 +34,12 @@ const patchSchema = z.object({
   // this is an owner escape hatch.
   planMd: z.string().max(500_000).optional(),
   planJson: z.record(z.string(), z.unknown()).optional(),
+  // pod_spec is normally derived from plan_md's runpod-spec fenced block, but
+  // the experiment-orchestrator needs to splice in fields it discovers after
+  // planning — most importantly `env.SAGAN_EPS_BRANCH` once the implementer
+  // has pushed the per-experiment branch. Accept either an object or an array
+  // (the dispatcher's validatePodSpecs handles both shapes).
+  podSpec: z.union([z.record(z.string(), z.unknown()), z.array(z.record(z.string(), z.unknown()))]).optional(),
 });
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -84,7 +90,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // When the caller updates plan_md, derive pod_spec server-side from the
   // runpod-spec fenced block so the dispatcher (which reads pod_spec) stays
   // in sync. Throws on malformed JSON — that's the right failure mode here.
-  if (metadataUpdates.planMd !== undefined) {
+  // An explicit `podSpec` field in the same PATCH wins (the orchestrator
+  // uses this to splice in env.SAGAN_EPS_BRANCH after the implementer pushes).
+  if (metadataUpdates.planMd !== undefined && metadataUpdates.podSpec === undefined) {
     try {
       updateValues.podSpec = extractPodSpecFromPlanMd(metadataUpdates.planMd) as typeof updateValues.podSpec;
     } catch (err) {

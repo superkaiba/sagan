@@ -16,6 +16,8 @@
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { parse as dotenvParse } from 'dotenv';
 import { db, schema } from './db.js';
 import { emitEvent, QUEUED_CHANNEL } from './queue.js';
 import { dispatchBatch, stopPod, type DispatchPodSpec, type RunpodAccount } from './tools/runpod.js';
@@ -25,7 +27,7 @@ import { queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 import { EXPERIMENT_ORCHESTRATOR_PREFIX } from './session.js';
 
-interface ParsedSpec {
+export interface ParsedSpec {
   /** A descriptive name; defaults to <experiment_id>-<i>. */
   name?: string;
   gpuType: string; // 'H100' | 'H200' | 'A100' | 'L40S' | full RunPod ID
@@ -48,6 +50,12 @@ interface ParsedSpec {
   estimatedMinutes?: number;
   /** Optional W&B project pre-assignment for the resulting run. */
   wandbProject?: string;
+  /** Pod-provisioner substitution policy. Pass-through: the planner authors
+   * it, the pod-provisioner sub-agent reads it. Dispatcher itself does not
+   * interpret these fields. See .claude/agents/pod-provisioner.md. */
+  substitution_policy?: Record<string, unknown>;
+  /** Consolidation policy (e.g. may_merge_pods). Pass-through; see above. */
+  consolidation?: Record<string, unknown>;
 }
 
 export function validatePodSpecs(raw: unknown): ParsedSpec[] {
@@ -86,6 +94,14 @@ function validateSpec(raw: unknown, index: number): ParsedSpec {
       ? Math.floor(r.estimatedMinutes)
       : undefined,
     wandbProject: typeof r.wandbProject === 'string' ? r.wandbProject : undefined,
+    substitution_policy:
+      r.substitution_policy && typeof r.substitution_policy === 'object' && !Array.isArray(r.substitution_policy)
+        ? (r.substitution_policy as Record<string, unknown>)
+        : undefined,
+    consolidation:
+      r.consolidation && typeof r.consolidation === 'object' && !Array.isArray(r.consolidation)
+        ? (r.consolidation as Record<string, unknown>)
+        : undefined,
   };
 }
 
@@ -479,18 +495,189 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
   log.info('dispatch finished', { runId, succeeded, failed, podIds, partial });
 }
 
-function randomProgressToken() {
+export function randomProgressToken() {
   return randomBytes(32).toString('base64url');
 }
 
-function siteUrl() {
+export function siteUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL || 'https://sagan.superkaiba.com').replace(/\/+$/, '');
 }
 
-function parseRunpodDate(value: string | null): Date | undefined {
+export function parseRunpodDate(value: string | null): Date | undefined {
   if (!value) return undefined;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+/**
+ * Build the env vars Sagan injects into every dispatched pod. Used by both
+ * the one-shot batch dispatcher and the pod-provisioner CLI so behavior stays
+ * identical regardless of which path launches the pod.
+ *
+ * Layering, lowest precedence first:
+ *   1. Forwarded client-repo .env (curated allowlist — see CLIENT_ENV_ALLOWLIST).
+ *   2. spec.env from the planner / pod-provisioner.
+ *   3. SAGAN_* values authored here — these always win.
+ *
+ * The client-repo .env layer replaces the scp step in EPS's bootstrap_pod.sh:
+ * it gets GITHUB_TOKEN, HF_TOKEN, WANDB_API_KEY, etc. onto the pod without an
+ * SSH round-trip. Path is configurable via SAGAN_DEFAULT_CLIENT_REPO; the read
+ * is best-effort (missing file = no forwarded keys, with a debug log).
+ */
+export function buildPodEnv(opts: {
+  agentRunId: string;
+  experimentId: string | null;
+  runIndex: number;
+  progressToken: string;
+  userEnv?: Record<string, string>;
+}): Record<string, string> {
+  return {
+    ...readClientRepoEnvForPod(),
+    ...(opts.userEnv ?? {}),
+    SAGAN_PROGRESS_URL: `${siteUrl()}/api/runpods/progress`,
+    SAGAN_POD_PROGRESS_TOKEN: opts.progressToken,
+    SAGAN_AGENT_RUN_ID: opts.agentRunId,
+    SAGAN_EXPERIMENT_ID: opts.experimentId ?? '',
+    SAGAN_RUN_INDEX: String(opts.runIndex),
+  };
+}
+
+/**
+ * Keys the dispatcher will forward from the client repo's `.env` into the
+ * pod's container env. Anything outside this allowlist is dropped — Sagan-
+ * internal keys (DATABASE_*, RUNPOD_*, SAGAN_*) must never reach a pod.
+ */
+const CLIENT_ENV_ALLOWLIST = new Set([
+  'GITHUB_TOKEN',
+  'HF_TOKEN',
+  'HF_HUB_TOKEN',
+  'HUGGINGFACE_TOKEN',
+  'HUGGING_FACE_HUB_TOKEN',
+  'WANDB_API_KEY',
+  'WANDB_BASE_URL',
+  'WANDB_ENTITY',
+  'OPENAI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'GOOGLE_API_KEY',
+  'TOGETHER_API_KEY',
+]);
+
+function readClientRepoEnvForPod(): Record<string, string> {
+  const repoPath = process.env.SAGAN_DEFAULT_CLIENT_REPO;
+  if (!repoPath) return {};
+  const envPath = `${repoPath.replace(/\/+$/, '')}/.env`;
+  let raw: string;
+  try {
+    // Lazy load — dotenv is already a runner dependency (services/runner/src/env.ts).
+    // We use parse() rather than config() so process.env is not mutated.
+    raw = readFileSync(envPath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn('failed to read client repo .env for pod forwarding', {
+        envPath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return {};
+  }
+  const parsed = dotenvParse(raw);
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!CLIENT_ENV_ALLOWLIST.has(key)) continue;
+    if (typeof value !== 'string' || value.length === 0) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Side-effects for a single successfully-dispatched pod: emit the
+ * deploy_pod_started event, insert `runs` (if experiment-scoped) +
+ * `pod_lifecycle` + `run_artifacts` rows, and reflect the experiment status
+ * change. Used by both the one-shot batch dispatcher and the pod-provisioner
+ * CLI's `attempt` subcommand. Returns the inserted pod_lifecycle id.
+ */
+export async function commitDispatchedPod(opts: {
+  agentRunId: string;
+  experimentId: string | null;
+  account: RunpodAccount;
+  spec: ParsedSpec;
+  dispatchSpec: DispatchPodSpec;
+  pod: import('./tools/runpod.js').PodInfo;
+  progressToken: string;
+}): Promise<{ podLifecycleId: string | null; runId: string | null }> {
+  const { agentRunId, experimentId, account, spec, dispatchSpec, pod, progressToken } = opts;
+  const progressUrl = `${siteUrl()}/api/runpods/progress`;
+  await emitEvent(agentRunId, 'deploy_pod_started', pod.podId, {
+    gpuType: pod.gpuTypeId,
+    gpuCount: pod.gpuCount,
+    costPerHr: pod.costPerHr,
+    adjustedCostPerHr: pod.adjustedCostPerHr,
+  });
+  let createdRunId: string | null = null;
+  if (experimentId) {
+    const insertedRun = await db().insert(schema.runs).values({
+      experimentId,
+      configYaml: typeof spec.config === 'string' ? spec.config : JSON.stringify(spec.config ?? null),
+      notesMd: `Dispatched pod ${pod.podId} (${pod.name})`,
+      startedAt: new Date(),
+    }).returning({ id: schema.runs.id });
+    createdRunId = insertedRun[0]?.id ?? null;
+  }
+  const lifecycle = await db().insert(schema.podLifecycle).values({
+    agentRunId,
+    experimentId,
+    runId: createdRunId,
+    runpodPodId: pod.podId,
+    account,
+    name: pod.name,
+    gpuTypeId: pod.gpuTypeId,
+    gpuCount: pod.gpuCount,
+    costPerHr: pod.costPerHr,
+    adjustedCostPerHr: pod.adjustedCostPerHr,
+    uptimeSeconds: pod.uptimeSeconds,
+    lastStartedAt: parseRunpodDate(pod.lastStartedAt),
+    status: pod.sshHost ? 'running' : 'deploying',
+    desiredStatus: pod.desiredStatus,
+    sshHost: pod.sshHost,
+    sshPort: pod.sshPort,
+    lastCheckedAt: new Date(),
+    lastHeartbeatAt: pod.sshHost ? new Date() : undefined,
+    metadata: {
+      spec: dispatchSpec,
+      planSpec: spec,
+      dryRun: spec.dryRun === true || process.env.RUNPOD_DRY_RUN === '1',
+      saganProgress: {
+        token: progressToken,
+        url: progressUrl,
+        source: 'pending',
+        estimatedMinutes: spec.estimatedMinutes ?? null,
+      },
+    },
+  }).returning({ id: schema.podLifecycle.id });
+  await db().insert(schema.runArtifacts).values({
+    experimentId,
+    runId: createdRunId,
+    agentRunId,
+    podLifecycleId: lifecycle[0]?.id,
+    kind: 'runpod_pod',
+    uri: `runpod:${pod.podId}`,
+    status: 'pending',
+    metadata: {
+      podId: pod.podId,
+      name: pod.name,
+      gpuTypeId: pod.gpuTypeId,
+      gpuCount: pod.gpuCount,
+      costPerHr: pod.costPerHr,
+      adjustedCostPerHr: pod.adjustedCostPerHr,
+    },
+  });
+  if (experimentId && pod.sshHost) {
+    await setExperimentStatus(experimentId, 'running', 'RunPod pod is running.');
+  } else if (experimentId) {
+    await setExperimentStatus(experimentId, 'queued', 'RunPod pod dispatched; waiting for runtime.');
+  }
+  return { podLifecycleId: lifecycle[0]?.id ?? null, runId: createdRunId };
 }
 
 async function finalizeApprovedNonExperiment(run: typeof schema.agentRuns.$inferSelect) {
@@ -571,7 +758,7 @@ async function fail(runId: string, err: string) {
   }
 }
 
-async function setExperimentStatus(
+export async function setExperimentStatus(
   experimentId: string,
   status: typeof schema.experiments.$inferSelect['status'],
   note: string,

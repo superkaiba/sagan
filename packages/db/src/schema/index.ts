@@ -201,6 +201,7 @@ export const edgeTypeEnum = pgEnum('edge_type', [
 ]);
 
 export const agentRunKindEnum = pgEnum('agent_run_kind', [
+  'classify',
   'plan',
   'apply',
   'qa',
@@ -546,6 +547,11 @@ export const experiments = pgTable(
     autoApprovePlan: boolean('auto_approve_plan').notNull().default(false),
     parentExperimentId: uuid('parent_experiment_id'),
     runpodAccount: runpodAccountEnum('runpod_account').notNull().default('team'),
+    // Set when the planning-stage classifier demotes this experiment into a
+    // todo. Old experiment stays in archive; pointer lets the dashboard show
+    // "converted to todo".
+    convertedToKind: entityKindEnum('converted_to_kind'),
+    convertedToId: uuid('converted_to_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -621,6 +627,11 @@ export const todos = pgTable(
     linkedKind: entityKindEnum('linked_kind'),
     linkedId: uuid('linked_id'),
     ownerNote: text('owner_note'),
+    // Set when the planning-stage classifier promotes this todo into an
+    // experiment. The old todo stays in the archive as a paper trail; the
+    // pointer lets the dashboard show "converted to experiment #N".
+    convertedToKind: entityKindEnum('converted_to_kind'),
+    convertedToId: uuid('converted_to_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

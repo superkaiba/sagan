@@ -232,6 +232,13 @@
       "when": 1778701857444,
       "tag": "0032_famous_war_machine",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1778710644768,
+      "tag": "0033_far_elektra",
+      "breakpoints": true
     }
   ]
 }

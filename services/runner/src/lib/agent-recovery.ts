@@ -12,6 +12,7 @@ const CONTINUATION_RE = /stream ended without result|completed without final res
 const AUTO_FOLLOWUP_MARKER_RE = /\[auto-(?:continuation|recovery)-for:[0-9a-f-]+\]/i;
 
 const TODO_RECOVERY_TARGET: Record<AgentRunRow['kind'], typeof schema.todos.$inferSelect['status']> = {
+  classify: 'planning',
   plan: 'planning',
   apply: 'running',
   qa: 'interpreting',

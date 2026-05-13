@@ -40,7 +40,7 @@ const pipelineKindSchema = z.enum(['experiment', 'clean_result', 'todo', 'idea',
 
 type PipelineStage = z.infer<typeof pipelineStageSchema>;
 type PipelineKind = z.infer<typeof pipelineKindSchema>;
-type AgentRunKind = 'plan' | 'apply' | 'qa' | 'experiment';
+type AgentRunKind = 'classify' | 'plan' | 'apply' | 'qa' | 'experiment';
 type AgentRunStatus =
   | 'queued'
   | 'running'
@@ -175,12 +175,18 @@ function cardPayload(input: {
 }
 
 function agentStepFor(kind: PipelineKind, stage: PipelineStage): AgentRunKind | null {
+  // Drag-to-planning fires a classifier first for any card that could be
+  // either kind. The classifier emits `KIND: todo|experiment` and the runner
+  // dispatches the right downstream planner (with conversion when the
+  // verdict disagrees with the current entity kind). See session.ts.
+  if ((kind === 'experiment' || kind === 'idea' || kind === 'todo') && stage === 'planning') {
+    return 'classify';
+  }
   if (kind === 'experiment' || kind === 'idea') {
-    if (stage === 'planning' || stage === 'running') return 'experiment';
+    if (stage === 'running') return 'experiment';
     if (stage === 'interpreting' || stage === 'review') return 'qa';
   }
   if (kind === 'todo') {
-    if (stage === 'planning') return 'plan';
     if (stage === 'running') return 'apply';
     if (stage === 'interpreting' || stage === 'review') return 'qa';
   }
@@ -197,6 +203,40 @@ function agentRequest(input: {
   toStage: PipelineStage;
 }) {
   const movement = input.fromStage ? `Moved from ${input.fromStage} to ${input.toStage}` : `Moved to ${input.toStage}`;
+  // Planning-stage classifier: any card (todo, experiment, idea) routed to
+  // planning runs the classifier first. The runner reads the verdict and
+  // dispatches the downstream planner with conversion if needed.
+  if (
+    input.toStage === 'planning' &&
+    (input.kind === 'todo' || input.kind === 'experiment' || input.kind === 'idea')
+  ) {
+    return [
+      `${movement} on the Pipeline board.`,
+      '',
+      `Classify this card before planning: "${input.title}".`,
+      '',
+      'Decide whether this card belongs as a TODO or an EXPERIMENT:',
+      '',
+      '- TODO = a discrete engineering, infrastructure, or housekeeping change with a definite "done" condition. Code change, refactor, prompt edit, doc update, dashboard tweak, dependency bump.',
+      '- EXPERIMENT = a research question that needs a hypothesis, an empirical protocol, training or evaluation, and review of results.',
+      '',
+      'Read the card\'s title and body. Do not draft a plan — that runs after classification.',
+      '',
+      'Output exactly two lines and nothing else:',
+      '',
+      '```',
+      'KIND: todo',
+      '<one-sentence reason>',
+      '```',
+      '',
+      'or',
+      '',
+      '```',
+      'KIND: experiment',
+      '<one-sentence reason>',
+      '```',
+    ].join('\n');
+  }
   switch (input.kind) {
     case 'experiment':
     case 'idea':

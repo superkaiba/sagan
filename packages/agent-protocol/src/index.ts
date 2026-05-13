@@ -19,7 +19,7 @@ export const ENTITY_KINDS = [
 export type EntityKind = (typeof ENTITY_KINDS)[number];
 export const entityKindSchema = z.enum(ENTITY_KINDS);
 
-export const AGENT_RUN_KINDS = ['plan', 'apply', 'qa', 'experiment'] as const;
+export const AGENT_RUN_KINDS = ['classify', 'plan', 'apply', 'qa', 'experiment'] as const;
 export type AgentRunKind = (typeof AGENT_RUN_KINDS)[number];
 export const agentRunKindSchema = z.enum(AGENT_RUN_KINDS);
 

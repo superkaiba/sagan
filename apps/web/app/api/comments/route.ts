@@ -94,6 +94,12 @@ const createSchema = z.object({
   entityId: z.string().uuid(),
   body: z.string().min(1).max(10_000),
   askAgent: z.enum(['Claude', 'Codex']).optional(),
+  // Explicit kind for non-discussion comments. Owners use this to file
+  // proposed follow-ups on an experiment in `reviewing` status — those land
+  // as kind='todo' rows that the review panel renders with Q/T checkboxes.
+  // When omitted, kind is derived from body (`@claude`/`@codex` → ask_claude,
+  // otherwise discussion).
+  kind: z.enum(['todo']).optional(),
   parentCommentId: z.string().uuid().optional(),
   // Google-Docs-style anchor: the selected text snippet the comment targets.
   // Only set on root comments; replies inherit the root's anchor visually.
@@ -199,7 +205,7 @@ export async function POST(req: Request) {
       parentCommentId: normalizedParentCommentId,
       authorUserId: session.user.id,
       authorKind: 'human',
-      kind: requestedAgent ? 'ask_claude' : 'discussion',
+      kind: parsed.data.kind ?? (requestedAgent ? 'ask_claude' : 'discussion'),
       body: parsed.data.body,
       mentions: mentionsForAgent(requestedAgent),
       anchoredQuote:

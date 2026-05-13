@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { extractPodSpecFromPlanMd } from '@sagan/api';
-import { approvalRequests, experiments, runs, workflowEvents } from '@sagan/db/schema';
+import { agentRuns, approvalRequests, experiments, runs, workflowEvents } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { EXPERIMENT_STATUSES, experimentTurn, setExperimentStatus } from '@/lib/workflow';
+
+const EXPERIMENT_CLEAN_RESULT_PREFIX = 'experiment-clean-result-for:';
+const QUEUED_CHANNEL = 'agent_run_queued';
 
 const EXPERIMENT_KINDS = ['experiment', 'infra', 'survey'] as const;
 const COMPUTE_SIZES = ['none', 'small', 'medium', 'large'] as const;
@@ -134,6 +137,39 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       note,
     });
     if (transitioned) experiment = transitioned;
+  }
+
+  // When the owner closes review by PATCHing `clean_result_drafting`, queue a
+  // single agent_run that promotes experiments.body into a clean_results row
+  // and runs the clean-result-critic pair. Idempotent: skips when an existing
+  // queued/running run with the same prefix is already in flight on this
+  // experiment.
+  if (status === 'clean_result_drafting') {
+    const existing = await db()
+      .select({ id: agentRuns.id, status: agentRuns.status, request: agentRuns.request })
+      .from(agentRuns)
+      .where(and(eq(agentRuns.scopeEntityKind, 'experiment'), eq(agentRuns.scopeEntityId, id)));
+    const alreadyQueued = existing.some(
+      (r) =>
+        (r.status === 'queued' || r.status === 'running') &&
+        r.request.startsWith(EXPERIMENT_CLEAN_RESULT_PREFIX),
+    );
+    if (!alreadyQueued) {
+      const inserted = await db()
+        .insert(agentRuns)
+        .values({
+          kind: 'apply',
+          provider: 'claude_code',
+          status: 'queued',
+          request: `${EXPERIMENT_CLEAN_RESULT_PREFIX}${id}`,
+          scopeEntityKind: 'experiment',
+          scopeEntityId: id,
+          approvalRequired: false,
+        })
+        .returning({ id: agentRuns.id });
+      const runId = inserted[0]!.id;
+      await db().execute(sql`SELECT pg_notify(${QUEUED_CHANNEL}, ${runId})`);
+    }
   }
 
   await appendDailyLogTrailBestEffort({

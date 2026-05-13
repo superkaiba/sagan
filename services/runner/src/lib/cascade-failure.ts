@@ -31,6 +31,7 @@ const ACTIVE_EXPERIMENT_STATUSES = [
   'uploading',
   'verifying',
   'reviewing',
+  'clean_result_drafting',
   'followups_running',
 ] as const;
 const ACTIVE_CLEAN_RESULT_STATUSES = ['draft', 'reviewing'] as const;

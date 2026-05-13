@@ -42,6 +42,7 @@ const ACTIVE_EXPERIMENT_STATUSES = [
   'verifying',
   'interpreting',
   'reviewing',
+  'clean_result_drafting',
   'awaiting_promotion',
   'followups_running',
   'blocked',

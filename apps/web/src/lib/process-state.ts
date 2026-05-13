@@ -70,8 +70,12 @@ export function deriveProcessState(input: {
   }
   if (['verifying'].includes(status)) return state('Verifying', status, 'info');
   if (['interpreting', 'followups_running'].includes(status)) return state('Analyzing', status, 'info');
-  if (['reviewing'].includes(status)) return state(input.entityKind === 'clean_result' ? 'Critic review' : 'Code reviewer', status, 'approval');
-  if (['awaiting_promotion', 'draft'].includes(status)) return state('Writing result', status, 'info');
+  if (['reviewing'].includes(status)) {
+    if (input.entityKind === 'clean_result') return state('Critic review', status, 'approval');
+    return state('Owner review', status, 'approval');
+  }
+  if (['clean_result_drafting'].includes(status)) return state('Writing clean result', status, 'info');
+  if (['awaiting_promotion', 'draft'].includes(status)) return state('Awaiting promotion', status, 'approval');
   return state(titleize(status), status, 'neutral');
 }
 

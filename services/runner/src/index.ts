@@ -25,6 +25,7 @@ import { pushToUser } from './lib/push.js';
 import { queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
 import { log } from './log.js';
 import { startPodLifecycleWatcher, stopPodsForRun } from './watcher.js';
+import { startFollowupsWatcher } from './lib/followups-watcher.js';
 
 const controller = new AbortController();
 const activeAgentRunIds = new Set<string>();
@@ -55,6 +56,7 @@ async function main() {
     controller.signal,
   );
   startPodLifecycleWatcher(controller.signal);
+  startFollowupsWatcher(controller.signal);
 
   // Daily lit review at 06:00 (server local time). Manual trigger via the
   // `RUN_LIT_REVIEW_AT_BOOT=1` env to run on startup as well.

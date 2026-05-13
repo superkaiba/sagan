@@ -21,6 +21,7 @@ export const EXPERIMENT_STATUSES = [
   'verifying',
   'interpreting',
   'reviewing',
+  'clean_result_drafting',
   'awaiting_promotion',
   'followups_running',
   'shared',
@@ -60,11 +61,13 @@ export function experimentTurn(status: string) {
     case 'uploading':
     case 'verifying':
     case 'interpreting':
-    case 'reviewing':
     case 'followups_running':
+    case 'clean_result_drafting':
       return 'Sagan turn: run and verify';
+    case 'reviewing':
+      return 'Owner turn: review interpretation and propose follow-ups';
     case 'awaiting_promotion':
-      return 'Owner turn: review clean result';
+      return 'Owner turn: promote clean result';
     case 'blocked':
       return 'Owner turn: unblock or revise';
     default:

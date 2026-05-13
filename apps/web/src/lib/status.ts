@@ -8,6 +8,7 @@ const LABELS: Record<string, string> = {
   plan_pending: 'plan pending',
   awaiting_approval: 'awaiting approval',
   awaiting_promotion: 'awaiting promotion',
+  clean_result_drafting: 'writing clean result',
   clean_result_promotion: 'clean result promotion',
   experiment_plan: 'experiment plan',
   queue_launch: 'queue launch',
@@ -26,7 +27,7 @@ export function statusTone(status: string | null | undefined): StatusTone {
     return 'approval';
   }
   if (['blocked', 'failed', 'rejected', 'falsified'].includes(normalized)) return 'danger';
-  if (['running', 'deploying', 'queued', 'implementing', 'testing', 'uploading', 'verifying', 'followups_running', 'reading', 'in_progress'].includes(normalized)) return 'running';
+  if (['running', 'deploying', 'queued', 'implementing', 'testing', 'uploading', 'verifying', 'followups_running', 'clean_result_drafting', 'reading', 'in_progress'].includes(normalized)) return 'running';
   if (['approved', 'completed', 'shared', 'done', 'done_experiment', 'done_impl', 'read', 'published', 'supported', 'active', 'useful', 'resolved'].includes(normalized)) {
     return 'success';
   }

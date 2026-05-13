@@ -515,18 +515,19 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
       </div>
       {reviseError ? <p className="text-xs text-[--color-danger]">{reviseError}</p> : null}
 
-      <div ref={threadsRef} className="rounded-lg border border-[--color-border] divide-y divide-[--color-border]">
+      <div ref={threadsRef} className="space-y-2">
         {visibleRoots.length === 0 ? (
-          <p className="p-3 text-sm text-[--color-muted]">No comments yet.</p>
+          <p className="rounded-lg border border-[--color-border] p-3 text-sm text-[--color-muted]">No comments yet.</p>
         ) : (
           orderedVisibleRoots.map((root) => {
             const replies = repliesByParent.get(root.id) ?? [];
             const collapsed = collapsedIds.has(root.id);
+            const baseClass = 'rounded-lg border border-[--color-border] bg-[--color-panel] shadow-sm divide-y divide-[--color-border]';
             return (
               <div
                 key={root.id}
                 data-comment-thread-id={root.id}
-                className={alignAnchoredThreads ? 'transition-[margin-top] duration-150 ease-out' : undefined}
+                className={`${baseClass} ${alignAnchoredThreads ? 'transition-[margin-top] duration-150 ease-out' : ''}`}
                 style={alignAnchoredThreads ? { marginTop: threadMargins.get(root.id) ?? 0 } : undefined}
               >
                 {renderComment(root, false, replies.length)}

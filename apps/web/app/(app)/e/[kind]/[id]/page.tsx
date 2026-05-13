@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { agentRuns, podLifecycle } from '@sagan/db/schema';
+import { agentRuns, podLifecycle, projectNarratives, projects } from '@sagan/db/schema';
 import { isEntityKind, KIND_LABELS, loadEntity } from '@/lib/entity';
 import { Comments } from '@/components/Comments';
 import { EditableBody } from '@/components/EditableBody';
@@ -13,6 +13,7 @@ import { LoadProjectNarrative } from '@/components/LoadProjectNarrative';
 import { LiteratureIntelligencePanel } from '@/components/LiteratureIntelligencePanel';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { AgentActivityPanel } from '@/components/AgentActivityPanel';
+import { NarrativePublishControl } from '@/components/NarrativePublishControl';
 import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
 import { isIdeationSourceKind } from '@/lib/ideation';
@@ -95,6 +96,19 @@ export default async function EntityPage({
   const numberMeta = entity.meta?.find((m) => m.label === '#');
   const titlePrefix = kind === 'experiment' && numberMeta ? `#${numberMeta.value}` : null;
 
+  // For project_narratives, fetch the parent project's slug + public flag so
+  // the publish control can offer a "View public page" link after publishing.
+  let narrativeProject: { slug: string; isPublic: boolean } | null = null;
+  if (kind === 'project_narrative') {
+    const rows = await db()
+      .select({ slug: projects.slug, isPublic: projects.public })
+      .from(projectNarratives)
+      .innerJoin(projects, eq(projects.id, projectNarratives.projectId))
+      .where(eq(projectNarratives.id, entity.id))
+      .limit(1);
+    if (rows[0]) narrativeProject = { slug: rows[0].slug, isPublic: rows[0].isPublic };
+  }
+
   return (
     <AnchoredCommentsProvider>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -114,6 +128,14 @@ export default async function EntityPage({
           <p className="flex flex-wrap items-center justify-center gap-2 text-sm">
             {entity.status ? <StatusBadge status={entity.status} /> : null}
             <ProcessStateBadge state={processState} />
+            {owner && kind === 'project_narrative' && entity.status ? (
+              <NarrativePublishControl
+                narrativeId={entity.id}
+                status={entity.status as 'draft' | 'published' | 'archived'}
+                projectSlug={narrativeProject?.slug ?? null}
+                projectIsPublic={narrativeProject?.isPublic ?? false}
+              />
+            ) : null}
           </p>
           {owner && isIdeationSourceKind(kind) ? (
             <StartIdeationButton sourceKind={kind} sourceId={entity.id} />

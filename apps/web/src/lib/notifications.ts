@@ -4,6 +4,8 @@ import {
   entityMemberships,
   notifications,
   notificationPreferences,
+  projectNarratives,
+  projects,
   users,
 } from '@sagan/db/schema';
 import { db } from './db';
@@ -123,6 +125,7 @@ export async function notifyUsers(input: {
     .where(inArray(users.id, userIds));
   const recipientEmails = new Map(recipientRows.map((row) => [row.id, row.email]));
 
+  const links = await resolveEntityLinks(input.entityKind, input.entityId);
   const now = new Date();
   const rows = await Promise.all(userIds.map(async (userId) => {
     const preference = prefs.get(userId);
@@ -144,8 +147,7 @@ export async function notifyUsers(input: {
         text: formatNotificationEmail({
           title: input.title,
           body: input.body,
-          entityKind: input.entityKind,
-          entityId: input.entityId,
+          links,
         }),
       });
       emailStatus = result.status;
@@ -176,27 +178,56 @@ export async function notifyUsers(input: {
   return db().insert(notifications).values(rows).returning({ id: notifications.id });
 }
 
+interface EntityLinks {
+  publicUrl: string | null;
+  ownerUrl: string | null;
+  mentorUrl: string | null;
+}
+
 function formatNotificationEmail(input: {
   title: string;
   body?: string;
-  entityKind?: EntityKind;
-  entityId?: string;
+  links: EntityLinks;
 }) {
   const lines = [input.title, ''];
   if (input.body) lines.push(input.body, '');
-  const ownerUrl = entityUrl(input.entityKind, input.entityId, 'owner');
-  const mentorUrl = entityUrl(input.entityKind, input.entityId, 'mentor');
-  if (ownerUrl) lines.push(`Dashboard: ${ownerUrl}`);
-  if (mentorUrl && mentorUrl !== ownerUrl) lines.push(`Mentor view: ${mentorUrl}`);
+  // Public URL goes first — it's the only link a non-owner commenter can use.
+  // Owners can click either it or the internal Dashboard view below.
+  if (input.links.publicUrl) lines.push(`View: ${input.links.publicUrl}`);
+  if (input.links.ownerUrl) lines.push(`Dashboard: ${input.links.ownerUrl}`);
+  if (input.links.mentorUrl && input.links.mentorUrl !== input.links.ownerUrl) {
+    lines.push(`Mentor view: ${input.links.mentorUrl}`);
+  }
   return lines.join('\n').trim();
 }
 
-function entityUrl(entityKind?: EntityKind, entityId?: string, audience?: 'owner' | 'mentor') {
-  if (!entityKind || !entityId) return null;
+async function resolveEntityLinks(
+  entityKind?: EntityKind,
+  entityId?: string,
+): Promise<EntityLinks> {
+  if (!entityKind || !entityId) return { publicUrl: null, ownerUrl: null, mentorUrl: null };
   const base = (process.env.NEXT_PUBLIC_SITE_URL || 'https://sagan.superkaiba.com').replace(/\/+$/, '');
-  if (audience === 'mentor' && entityKind === 'clean_result') {
-    return `${base}/mentor/updates?result=${encodeURIComponent(entityId)}`;
+
+  // Comments on a published narrative of a public project: surface the
+  // public /p/<slug> URL alongside the internal entity page so public
+  // commenters can click straight back to the thread.
+  let publicUrl: string | null = null;
+  if (entityKind === 'project_narrative') {
+    const rows = await db()
+      .select({ slug: projects.slug, isPublic: projects.public })
+      .from(projectNarratives)
+      .innerJoin(projects, eq(projects.id, projectNarratives.projectId))
+      .where(eq(projectNarratives.id, entityId))
+      .limit(1);
+    const row = rows[0];
+    if (row?.isPublic) publicUrl = `${base}/p/${row.slug}`;
   }
-  if (entityKind === 'clean_result') return `${base}/clean-results/${entityId}`;
-  return `${base}/e/${entityKind}/${entityId}`;
+
+  const ownerUrl =
+    entityKind === 'clean_result'
+      ? `${base}/clean-results/${entityId}`
+      : `${base}/e/${entityKind}/${entityId}`;
+  const mentorUrl =
+    entityKind === 'clean_result' ? `${base}/mentor/updates?result=${encodeURIComponent(entityId)}` : null;
+  return { publicUrl, ownerUrl, mentorUrl };
 }

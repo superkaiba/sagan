@@ -2,6 +2,8 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from './db.js';
 import { sendEmail } from './email.js';
 
+const { projectNarratives, projects } = schema;
+
 type CommentRow = typeof schema.comments.$inferSelect;
 type EntityKind = CommentRow['entityKind'];
 
@@ -33,6 +35,7 @@ export async function notifyClaudeFinished(input: {
     .from(schema.users)
     .where(inArray(schema.users.id, userIds));
   const recipientEmails = new Map(recipientRows.map((row) => [row.id, row.email]));
+  const links = await resolveEntityLinks(input.entityKind, input.entityId);
   const now = new Date();
   const rows = await Promise.all(userIds.map(async (userId) => {
     const emailAllowed = prefs.get(userId)?.emailClaudeReplies ?? true;
@@ -46,8 +49,7 @@ export async function notifyClaudeFinished(input: {
         text: formatNotificationEmail({
           title: `${input.agentName ?? 'Claude'} answered a comment`,
           body: truncate(input.body, 500),
-          entityKind: input.entityKind,
-          entityId: input.entityId,
+          links,
         }),
       });
       emailStatus = result.status;
@@ -126,27 +128,51 @@ function truncate(value: string, max: number) {
   return value.length > max ? `${value.slice(0, max)}...` : value;
 }
 
+interface EntityLinks {
+  publicUrl: string | null;
+  ownerUrl: string | null;
+  mentorUrl: string | null;
+}
+
 function formatNotificationEmail(input: {
   title: string;
   body?: string;
-  entityKind?: EntityKind;
-  entityId?: string;
+  links: EntityLinks;
 }) {
   const lines = [input.title, ''];
   if (input.body) lines.push(input.body, '');
-  const ownerUrl = entityUrl(input.entityKind, input.entityId, 'owner');
-  const mentorUrl = entityUrl(input.entityKind, input.entityId, 'mentor');
-  if (ownerUrl) lines.push(`Dashboard: ${ownerUrl}`);
-  if (mentorUrl && mentorUrl !== ownerUrl) lines.push(`Mentor view: ${mentorUrl}`);
+  if (input.links.publicUrl) lines.push(`View: ${input.links.publicUrl}`);
+  if (input.links.ownerUrl) lines.push(`Dashboard: ${input.links.ownerUrl}`);
+  if (input.links.mentorUrl && input.links.mentorUrl !== input.links.ownerUrl) {
+    lines.push(`Mentor view: ${input.links.mentorUrl}`);
+  }
   return lines.join('\n').trim();
 }
 
-function entityUrl(entityKind?: EntityKind, entityId?: string, audience?: 'owner' | 'mentor') {
-  if (!entityKind || !entityId) return null;
+async function resolveEntityLinks(
+  entityKind?: EntityKind,
+  entityId?: string,
+): Promise<EntityLinks> {
+  if (!entityKind || !entityId) return { publicUrl: null, ownerUrl: null, mentorUrl: null };
   const base = (process.env.NEXT_PUBLIC_SITE_URL || 'https://sagan.superkaiba.com').replace(/\/+$/, '');
-  if (audience === 'mentor' && entityKind === 'clean_result') {
-    return `${base}/mentor/updates?result=${encodeURIComponent(entityId)}`;
+
+  let publicUrl: string | null = null;
+  if (entityKind === 'project_narrative') {
+    const rows = await db()
+      .select({ slug: projects.slug, isPublic: projects.public })
+      .from(projectNarratives)
+      .innerJoin(projects, eq(projects.id, projectNarratives.projectId))
+      .where(eq(projectNarratives.id, entityId))
+      .limit(1);
+    const row = rows[0];
+    if (row?.isPublic) publicUrl = `${base}/p/${row.slug}`;
   }
-  if (entityKind === 'clean_result') return `${base}/clean-results/${entityId}`;
-  return `${base}/e/${entityKind}/${entityId}`;
+
+  const ownerUrl =
+    entityKind === 'clean_result'
+      ? `${base}/clean-results/${entityId}`
+      : `${base}/e/${entityKind}/${entityId}`;
+  const mentorUrl =
+    entityKind === 'clean_result' ? `${base}/mentor/updates?result=${encodeURIComponent(entityId)}` : null;
+  return { publicUrl, ownerUrl, mentorUrl };
 }

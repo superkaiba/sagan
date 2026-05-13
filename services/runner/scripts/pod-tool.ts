@@ -395,11 +395,11 @@ async function cmdRecordSubstitution(args: string[]) {
 // Required flags:
 //   --pod-id <runpod-id>
 // Optional flags:
-//   --account team|personal     defaults to 'team'
+//   --account team|personal     defaults to 'personal'
 
 async function cmdStop(args: string[]) {
   const podId = requireFlag(args, 'pod-id');
-  const account = parseAccount(flag(args, 'account'), 'team');
+  const account = parseAccount(flag(args, 'account'), 'personal');
   try {
     const info = await runpodStopPod(podId, account);
     // Reflect stopped state on pod_lifecycle so the watcher doesn't keep polling.

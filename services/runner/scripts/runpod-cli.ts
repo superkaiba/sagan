@@ -1,9 +1,9 @@
 /**
  * Tiny CLI for poking the RunPod adapter without going through Claude.
  *
- *   pnpm --filter @sagan/runner runpod list [--account=team|personal]
- *   pnpm --filter @sagan/runner runpod get <podId> [--account=team]
- *   pnpm --filter @sagan/runner runpod terminate <podId> [--account=team]
+ *   pnpm --filter @sagan/runner runpod list [--account=personal|team]
+ *   pnpm --filter @sagan/runner runpod get <podId> [--account=personal]
+ *   pnpm --filter @sagan/runner runpod terminate <podId> [--account=personal]
  */
 import '../src/env.js';
 import {
@@ -16,7 +16,7 @@ import {
 function getAccount(args: string[]): RunpodAccount {
   const flag = args.find((a) => a.startsWith('--account='));
   const value = flag?.split('=')[1];
-  return value === 'personal' ? 'personal' : 'team';
+  return value === 'team' ? 'team' : 'personal';
 }
 
 async function main() {
@@ -40,14 +40,14 @@ async function main() {
     }
     case 'get': {
       const id = rest.find((a) => !a.startsWith('--'));
-      if (!id) throw new Error('usage: runpod get <podId> [--account=team]');
+      if (!id) throw new Error('usage: runpod get <podId> [--account=personal]');
       const info = await getPod(id, account);
       console.log(JSON.stringify(info, null, 2));
       return;
     }
     case 'terminate': {
       const id = rest.find((a) => !a.startsWith('--'));
-      if (!id) throw new Error('usage: runpod terminate <podId> [--account=team]');
+      if (!id) throw new Error('usage: runpod terminate <podId> [--account=personal]');
       const ok = await terminatePod(id, account);
       console.log(ok ? `terminated ${id}` : `terminate returned non-truthy for ${id}`);
       return;
@@ -55,7 +55,7 @@ async function main() {
     default:
       console.error(
         'usage:\n' +
-          '  runpod list [--account=team|personal]\n' +
+          '  runpod list [--account=personal|team]\n' +
           '  runpod get <podId> [--account=...]\n' +
           '  runpod terminate <podId> [--account=...]',
       );

@@ -455,7 +455,7 @@ async function reuseLatestPlanIfAny(input: {
       request: `[plan-reused${prior ? `:from:${prior.id}` : ''}]\n\nApproved the existing experiment plan without re-drafting. Dispatcher reads plan_md / pod_spec from experiments.`,
       scopeEntityKind: input.scopeEntityKind,
       scopeEntityId: input.scopeEntityId,
-      runpodAccount: prior?.runpodAccount ?? 'team',
+      runpodAccount: prior?.runpodAccount ?? 'personal',
       chatSessionId: prior?.chatSessionId,
       approvalRequired: false,
       approvedBy: input.actorUserId,

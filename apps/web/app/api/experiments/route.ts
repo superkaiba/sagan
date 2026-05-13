@@ -20,7 +20,7 @@ const createSchema = z.object({
   hypothesis: z.string().max(50_000).optional(),
   projectId: z.string().uuid().optional(),
   beliefId: z.string().uuid().optional(),
-  runpodAccount: z.enum(['team', 'personal']).default('team'),
+  runpodAccount: z.enum(['team', 'personal']).default('personal'),
   status: z.enum(EXPERIMENT_STATUSES).default('proposed'),
   sourceKind: entityKindSchema.optional(),
   sourceId: z.string().uuid().optional(),

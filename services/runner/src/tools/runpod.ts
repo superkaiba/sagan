@@ -2,12 +2,13 @@
  * RunPod GraphQL client. TypeScript port of the explore-persona-space
  * Python adapter (scripts/runpod_api.py). Two scopes:
  *
- *   - account = 'team'     → uses RUNPOD_API_KEY_TEAM + RUNPOD_TEAM_ID_TEAM.
- *                            Falls back to legacy RUNPOD_API_KEY/RUNPOD_TEAM_ID
- *                            so existing setups work without changes.
- *   - account = 'personal' → uses RUNPOD_API_KEY_PERSONAL.
+ *   - account = 'personal' → uses RUNPOD_API_KEY_PERSONAL. (default)
  *                            No team header sent (RunPod rejects X-Team-Id on
  *                            personal-account API keys).
+ *   - account = 'team'     → uses RUNPOD_API_KEY_TEAM + RUNPOD_TEAM_ID_TEAM.
+ *                            Falls back to legacy RUNPOD_API_KEY/RUNPOD_TEAM_ID.
+ *                            Kept so historic pod_lifecycle rows
+ *                            (account='team') can still be terminated/queried.
  *
  * The team scope is hard-pinned to Anthropic Safety Research by default, since
  * RunPod silently returns zero pods if the wrong scope is used (a confusing
@@ -83,33 +84,40 @@ interface AccountAuth {
 }
 
 function resolveAuth(account: RunpodAccount): AccountAuth {
+  const personalKey = (process.env.RUNPOD_API_KEY_PERSONAL ?? '').trim();
   if (account === 'personal') {
-    const apiKey = (process.env.RUNPOD_API_KEY_PERSONAL ?? '').trim();
-    if (!apiKey) {
+    if (!personalKey) {
       throw new RunPodError(
         'RUNPOD_API_KEY_PERSONAL is not set. Add it to .env to use account=personal.',
       );
     }
-    return { apiKey, teamId: null };
+    return { apiKey: personalKey, teamId: null };
   }
-  // account === 'team' — fall through empty strings, not just undefined.
-  const apiKey =
-    (process.env.RUNPOD_API_KEY_TEAM?.trim() ||
-      process.env.RUNPOD_API_KEY?.trim() ||
-      '');
+  // account === 'team' — historic pod_lifecycle rows still resolve here. Fall
+  // through empty strings (not just undefined) and, when team-specific vars
+  // are missing, fall back to the personal key so legacy 'team'-labeled pods
+  // can still be terminated/queried. RunPod ignores X-Team-Id on personal-
+  // account keys, so we drop the header when we fall back.
+  const teamKey =
+    process.env.RUNPOD_API_KEY_TEAM?.trim() ||
+    process.env.RUNPOD_API_KEY?.trim() ||
+    '';
+  if (!teamKey) {
+    if (!personalKey) {
+      throw new RunPodError(
+        'No RunPod API key configured (set RUNPOD_API_KEY_PERSONAL in .env).',
+      );
+    }
+    return { apiKey: personalKey, teamId: null };
+  }
   const teamId =
     process.env.RUNPOD_TEAM_ID_TEAM?.trim() ||
     process.env.RUNPOD_TEAM_ID?.trim() ||
     ANTHROPIC_SAFETY_RESEARCH_TEAM_ID;
-  if (!apiKey) {
-    throw new RunPodError(
-      'RUNPOD_API_KEY_TEAM (or legacy RUNPOD_API_KEY) is not set. Add it to .env to use account=team.',
-    );
-  }
   if (!teamId) {
     throw new RunPodError('RUNPOD_TEAM_ID resolved to empty for account=team.');
   }
-  return { apiKey, teamId };
+  return { apiKey: teamKey, teamId };
 }
 
 async function graphql<T>(
@@ -194,7 +202,7 @@ function parsePod(raw: RawPod): PodInfo {
 // ─── Public surface ─────────────────────────────────────────────────────────
 
 export interface DispatchPodSpec {
-  /** Account scope. Default 'team'. */
+  /** Account scope. Default 'personal'. */
   account?: RunpodAccount;
   /** Human-readable pod name. */
   name: string;
@@ -217,7 +225,7 @@ export interface DispatchPodSpec {
 export async function dispatchPod(spec: DispatchPodSpec): Promise<PodInfo> {
   if (spec.dryRun || isDryRun()) return dryRunPod(spec);
 
-  const account = spec.account ?? 'team';
+  const account = spec.account ?? 'personal';
   const gpuTypeId = GPU_TYPE_IDS[spec.gpuType] ?? spec.gpuType;
   // Wrap the planner's dockerArgs with the Sagan bootstrap pre-amble (git
   // clone client repo, install uv, sync deps, cache redirects, write .env)
@@ -325,7 +333,7 @@ export async function dispatchBatch(specs: DispatchPodSpec[]): Promise<
   });
 }
 
-export async function getPod(podId: string, account: RunpodAccount = 'team'): Promise<PodInfo> {
+export async function getPod(podId: string, account: RunpodAccount = 'personal'): Promise<PodInfo> {
   if (isDryRunPodId(podId)) return dryRunPodInfo(podId, account, 'RUNNING');
 
   const data = await graphql<{ pod: RawPod | null }>(
@@ -343,7 +351,7 @@ export async function getPod(podId: string, account: RunpodAccount = 'team'): Pr
   return parsePod(data.pod);
 }
 
-export async function listPods(account: RunpodAccount = 'team'): Promise<PodInfo[]> {
+export async function listPods(account: RunpodAccount = 'personal'): Promise<PodInfo[]> {
   if (isDryRun()) return [];
 
   const data = await graphql<{ myself: { pods?: RawPod[] } | null }>(
@@ -364,7 +372,7 @@ export async function listPods(account: RunpodAccount = 'team'): Promise<PodInfo
 
 export async function terminatePod(
   podId: string,
-  account: RunpodAccount = 'team',
+  account: RunpodAccount = 'personal',
 ): Promise<boolean> {
   if (isDryRunPodId(podId)) return true;
 
@@ -378,7 +386,7 @@ export async function terminatePod(
 
 export async function stopPod(
   podId: string,
-  account: RunpodAccount = 'team',
+  account: RunpodAccount = 'personal',
 ): Promise<PodInfo> {
   if (isDryRunPodId(podId)) return dryRunPodInfo(podId, account, 'STOPPED');
 
@@ -400,7 +408,7 @@ export async function stopPod(
 export async function resumePod(
   podId: string,
   gpuCount: number,
-  account: RunpodAccount = 'team',
+  account: RunpodAccount = 'personal',
 ): Promise<PodInfo> {
   if (isDryRunPodId(podId)) return { ...dryRunPodInfo(podId, account, 'RUNNING'), gpuCount };
 
@@ -425,7 +433,7 @@ export async function waitForSsh(
   podId: string,
   timeoutMs = 600_000,
   pollIntervalMs = 10_000,
-  account: RunpodAccount = 'team',
+  account: RunpodAccount = 'personal',
 ): Promise<PodInfo> {
   if (isDryRunPodId(podId)) return dryRunPodInfo(podId, account, 'RUNNING');
 

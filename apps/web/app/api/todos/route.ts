@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server';
-import { desc, ne } from 'drizzle-orm';
+import { desc, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
+
+const PIPELINE_CHANNEL = 'pipeline_changed';
+
+async function notifyPipelineChanged(payload: string) {
+  try {
+    await db().execute(sql`SELECT pg_notify(${PIPELINE_CHANNEL}, ${payload})`);
+  } catch {
+    // Best effort; the dashboard SSE endpoint also polls timestamps.
+  }
+}
 
 export async function GET() {
   try {
@@ -23,6 +33,7 @@ export async function GET() {
 
 const createSchema = z.object({
   text: z.string().min(1).max(500),
+  bodyMd: z.string().max(20_000).optional(),
   status: z
     .enum([
       'inbox',
@@ -40,6 +51,7 @@ const createSchema = z.object({
     ])
     .default('inbox'),
   priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
+  ownerNote: z.string().max(20_000).optional(),
 });
 
 export async function POST(req: Request) {
@@ -69,5 +81,6 @@ export async function POST(req: Request) {
     actorUserId: session.user.id,
     correlationId: todo.id,
   });
+  await notifyPipelineChanged(`todo:${todo.id}:created`);
   return NextResponse.json({ todo: inserted[0] });
 }

@@ -371,11 +371,177 @@ a[href]:active,
   border-color: var(--color-attention) !important;
 }
 
+.sagan-card-approve-button {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-attention) 40%, transparent),
+    0 0 18px color-mix(in srgb, var(--color-attention) 44%, transparent);
+}
+
+.sagan-cloud-strip {
+  position: relative;
+}
+
+.sagan-cloud-strip[data-active='true']::after {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  width: 42%;
+  height: 1px;
+  background: color-mix(in srgb, currentColor 75%, transparent);
+  content: '';
+  transform: translateX(-115%);
+  animation: sagan-cloud-work 1.8s linear infinite;
+}
+
+@keyframes sagan-cloud-work {
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.sagan-runpod-live-icon {
+  animation: sagan-runpod-live 1.4s ease-in-out infinite;
+}
+
+@keyframes sagan-runpod-live {
+  0%,
+  100% {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-sagan-approval-pulse {
     animation: none;
     box-shadow: 0 0 0 3px var(--color-attention);
   }
+
+  .sagan-cloud-strip[data-active='true']::after,
+  .sagan-runpod-live-icon {
+    animation: none;
+  }
+}
+
+.sagan-approval-list {
+  --sagan-bucket-border: var(--color-border);
+  --sagan-bucket-bg: var(--color-panel);
+  --sagan-bucket-fg: var(--color-muted);
+  border: 1px solid var(--sagan-bucket-border);
+  background: var(--color-panel);
+  box-shadow: var(--shadow-inset);
+}
+
+.sagan-approval-list[data-tone='plan'] {
+  --sagan-bucket-border: var(--color-approval-border);
+  --sagan-bucket-bg: var(--color-approval-bg);
+  --sagan-bucket-fg: var(--color-approval);
+}
+
+.sagan-approval-list[data-tone='promotion'] {
+  --sagan-bucket-border: var(--color-info-border);
+  --sagan-bucket-bg: var(--color-info-bg);
+  --sagan-bucket-fg: var(--color-info);
+}
+
+.sagan-approval-list[data-tone='blocked'] {
+  --sagan-bucket-border: var(--color-danger-border);
+  --sagan-bucket-bg: var(--color-danger-bg);
+  --sagan-bucket-fg: var(--color-danger);
+}
+
+.sagan-approval-list[data-active='true'] {
+  background: color-mix(in srgb, var(--sagan-bucket-bg) 82%, var(--color-panel));
+  animation: sagan-approval-bucket-glow 2.4s ease-in-out infinite;
+}
+
+.sagan-approval-summary {
+  display: flex;
+  min-height: 2.25rem;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+}
+
+.sagan-approval-summary::-webkit-details-marker {
+  display: none;
+}
+
+.sagan-approval-summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.sagan-approval-chevron {
+  transition: transform 160ms ease;
+}
+
+.sagan-approval-list[open] .sagan-approval-chevron {
+  transform: rotate(180deg);
+}
+
+.sagan-approval-items {
+  max-height: min(14rem, 32vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border-top: 1px solid color-mix(in srgb, var(--sagan-bucket-border) 58%, var(--color-border));
+}
+
+.sagan-approval-items li + li {
+  border-top: 1px solid color-mix(in srgb, var(--sagan-bucket-border) 35%, var(--color-border));
+}
+
+.sagan-approval-item {
+  display: block;
+  padding: 0.5rem 0.625rem;
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .sagan-approval-summary:hover,
+  .sagan-approval-item:hover {
+    background: color-mix(in srgb, var(--sagan-bucket-bg) 52%, var(--color-hover));
+  }
+}
+
+@keyframes sagan-approval-bucket-glow {
+  0%,
+  100% {
+    box-shadow:
+      var(--shadow-inset),
+      0 0 0 0 color-mix(in srgb, var(--sagan-bucket-fg) 0%, transparent),
+      0 0 11px 0 color-mix(in srgb, var(--sagan-bucket-fg) 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      var(--shadow-inset),
+      0 0 0 3px color-mix(in srgb, var(--sagan-bucket-fg) 18%, transparent),
+      0 0 20px 2px color-mix(in srgb, var(--sagan-bucket-fg) 30%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.sagan-approval-list[data-active='true'] {
+    animation: none;
+    box-shadow:
+      var(--shadow-inset),
+      0 0 0 2px color-mix(in srgb, var(--sagan-bucket-fg) 24%, transparent);
+  }
+}
+
+/* Saved HTML narratives can include their own <style> blocks. Keep their
+ * document layout rules, but make the app-level font picker authoritative. */
+.narrative-html {
+  font-family: var(--font-sans) !important;
+}
+
+.narrative-html code {
+  font-family: var(--font-mono) !important;
 }
 
 /* Anchored-comment highlights inside narratives. Wrapped imperatively after

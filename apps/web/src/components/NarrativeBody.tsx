@@ -58,19 +58,25 @@ const HtmlInner = memo(function HtmlInner({ body }: { body: string }) {
 });
 
 function MarkdownNarrative({ body }: { body: string }) {
-  // No anchor wrapping on the markdown path: react-markdown owns its child
-  // text nodes and re-renders would clobber any imperatively inserted marks.
-  // Project narratives all author as HTML, so this is mostly a fallback for
-  // legacy bodies.
-  return <Markdown>{body}</Markdown>;
+  const ref = useRef<HTMLDivElement>(null);
+  useAnchorBehaviors(ref);
+  return (
+    <div ref={ref} className="relative">
+      <MarkdownInner body={body} />
+    </div>
+  );
 }
+
+const MarkdownInner = memo(function MarkdownInner({ body }: { body: string }) {
+  return <Markdown>{body}</Markdown>;
+});
 
 /**
  * Manage anchor wrapping, hover sync, scroll-to-mark, and the floating
  * "Comment" selection popover. Returns nothing when no anchor context is
  * present, leaving the narrative untouched.
  */
-function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
+export function useAnchorBehaviors(ref: React.RefObject<HTMLDivElement | null>) {
   const ctx = useAnchoredComments();
   const [popover, setPopover] = useState<{
     left: number;

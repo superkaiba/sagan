@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, Link2, X } from 'lucide-react';
+import { Check, Link2, Maximize2, X } from 'lucide-react';
 
 export function RouteModal({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -34,6 +34,10 @@ export function RouteModal({ children }: { children: ReactNode }) {
     }
   }
 
+  function openFullPage() {
+    window.location.assign(window.location.href);
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 p-3 md:p-6"
@@ -56,14 +60,25 @@ export function RouteModal({ children }: { children: ReactNode }) {
           className="flex items-center justify-between gap-2 border-b border-[--color-border] px-3 py-2"
           style={{ backgroundColor: 'var(--color-muted-bg)' }}
         >
-          <button
-            type="button"
-            onClick={copyLink}
-            className="inline-flex min-h-9 items-center gap-2 border border-[--color-border] bg-[--color-bg] px-3 text-xs font-semibold text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
-          >
-            {copied ? <Check aria-hidden="true" className="h-4 w-4" /> : <Link2 aria-hidden="true" className="h-4 w-4" />}
-            {copied ? 'Copied' : 'Copy link'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={copyLink}
+              className="inline-flex min-h-9 items-center gap-2 border border-[--color-border] bg-[--color-bg] px-3 text-xs font-semibold text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+            >
+              {copied ? <Check aria-hidden="true" className="h-4 w-4" /> : <Link2 aria-hidden="true" className="h-4 w-4" />}
+              {copied ? 'Copied' : 'Copy link'}
+            </button>
+            <button
+              type="button"
+              onClick={openFullPage}
+              className="inline-flex min-h-9 items-center gap-2 border border-[--color-border] bg-[--color-bg] px-3 text-xs font-semibold text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg] aria-disabled:pointer-events-none aria-disabled:opacity-50"
+              title="Open page"
+            >
+              <Maximize2 aria-hidden="true" className="h-4 w-4" />
+              Open page
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => router.back()}

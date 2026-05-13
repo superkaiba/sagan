@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { agentRuns } from '@sagan/db/schema';
+import { agentRunEvents, agentRuns } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
@@ -43,8 +43,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (updated.length === 0) {
     return NextResponse.json({ error: 'not_awaiting_approval' }, { status: 409 });
   }
-  await db().execute(sql`SELECT pg_notify(${APPROVED_CHANNEL}, ${id})`);
   const run = updated[0]!;
+  await db().insert(agentRunEvents).values({
+    runId: id,
+    eventType: 'approved',
+    body: parsed.data.note ?? 'Owner approved the plan.',
+    metadata: { actorUserId: session.user.id },
+  });
+  await db().execute(sql`SELECT pg_notify(${APPROVED_CHANNEL}, ${id})`);
   if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
     await setExperimentStatus({
       experimentId: run.scopeEntityId,

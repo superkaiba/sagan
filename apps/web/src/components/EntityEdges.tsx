@@ -174,7 +174,7 @@ export function EntityEdges({
     <section className="space-y-3">
       <div className="flex items-baseline justify-between">
         <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">
-          Linked
+          Related records
         </h2>
         <button
           type="button"

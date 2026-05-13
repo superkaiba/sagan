@@ -1,18 +1,32 @@
 'use client';
 
 import Link from 'next/link';
-import { Fragment, useEffect, useMemo, useRef, useState, useTransition, type DragEvent, type MouseEvent } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Archive, ExternalLink, GripVertical, Loader2, RotateCcw, Sparkles } from 'lucide-react';
+import { AlertTriangle, Archive, CheckCircle2, Cloud, ExternalLink, GripVertical, Loader2, RotateCcw, Server } from 'lucide-react';
 import { Panel } from '@/components/ui';
+import { ProcessStateBadge } from '@/components/ProcessStateBadge';
 import { cn } from '@/lib/cn';
-import { formatRelativeTime } from '@/lib/status';
-import type { DashboardPipelineCard, PipelineCardRun, PipelineRunStatus, PipelineStageKey } from '@/lib/dashboard';
+import { formatRelativeTime, statusTone } from '@/lib/status';
+import { effectiveRunPodRate, estimateRunPodSpendUsd, formatUsd, formatUsdPerHour } from '@/lib/runpod-cost';
+import type { DashboardPipelineCard, PipelineCardPod, PipelineCardRun, PipelineRunStatus, PipelineStageKey } from '@/lib/dashboard';
 
 type PipelineStage = { key: PipelineStageKey; title: string };
 type PipelineCardKind = DashboardPipelineCard['kind'];
 type DropTarget = { stage: PipelineStageKey; beforeKey: string | null };
 const PIPELINE_ORDER_STORAGE_KEY = 'sagan:pipeline-card-order';
+const PIPELINE_STAGE_NOTE_PREFIX = 'sagan:pipeline-stage=';
 
 type AdvanceCard = DashboardPipelineCard & {
   key: string;
@@ -30,6 +44,31 @@ type AdvanceResponse =
       error: string;
       message?: string;
     };
+
+type CreatedTodo = {
+  id: string;
+  text: string;
+  bodyMd: string | null;
+  status: string;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  createdAt: string;
+  updatedAt: string;
+};
+
+const ISSUE_DEFAULTS_BY_STAGE: Record<PipelineStageKey, { status: string; priority: 'low' | 'normal' | 'high' | 'urgent' }> = {
+  later: { status: 'inbox', priority: 'low' },
+  idea: { status: 'open', priority: 'normal' },
+  planning: { status: 'planning', priority: 'normal' },
+  approval: { status: 'planning', priority: 'high' },
+  queued: { status: 'planning', priority: 'normal' },
+  running: { status: 'running', priority: 'normal' },
+  interpreting: { status: 'interpreting', priority: 'normal' },
+  clean_results: { status: 'awaiting_promotion', priority: 'normal' },
+  blocked: { status: 'blocked', priority: 'high' },
+  review: { status: 'awaiting_promotion', priority: 'normal' },
+  done: { status: 'done', priority: 'normal' },
+  archived: { status: 'archived', priority: 'normal' },
+};
 
 const dropTargets: Record<PipelineCardKind, PipelineStageKey[]> = {
   experiment: ['later', 'idea', 'planning', 'approval', 'queued', 'running', 'interpreting', 'blocked', 'review', 'done', 'archived'],
@@ -120,6 +159,11 @@ function writeStoredCardOrder(cards: DashboardPipelineCard[]) {
   }
 }
 
+function timestampTitle(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
 const RUN_LABEL: Record<PipelineRunStatus, string> = {
   queued: 'queued',
   running: 'running',
@@ -136,6 +180,38 @@ const RUN_LABEL: Record<PipelineRunStatus, string> = {
 const RUN_FAILED_STATUSES: PipelineRunStatus[] = ['failed', 'blocked', 'cancelled', 'rejected'];
 const RUN_ACTIVE_STATUSES: PipelineRunStatus[] = ['queued', 'running', 'approved', 'deploying'];
 
+function cloudStepLabel(kind: string) {
+  if (kind === 'apply') return 'applying';
+  if (kind === 'qa') return 'reviewing';
+  if (kind === 'experiment' || kind === 'plan') return 'planning';
+  return 'working';
+}
+
+function optimisticRunKind(kind: PipelineCardKind, stage: PipelineStageKey) {
+  if (stage === 'interpreting' || stage === 'review') return 'qa';
+  if (kind === 'todo' && stage === 'running') return 'apply';
+  if (kind === 'experiment' || kind === 'idea') return 'experiment';
+  return 'plan';
+}
+
+function podStatusClass(status: string) {
+  if (status === 'running') return 'border-[--color-running-border] bg-[--color-running-bg] text-[--color-running]';
+  if (status === 'blocked') return 'border-[--color-danger-border] bg-[--color-danger-bg] text-[--color-danger]';
+  if (status === 'retrying' || status === 'stop_requested') {
+    return 'border-[--color-warning-border] bg-[--color-warning-bg] text-[--color-warning]';
+  }
+  return 'border-[--color-info-border] bg-[--color-info-bg] text-[--color-info]';
+}
+
+function podStripLabel(pods: PipelineCardPod[], status: string) {
+  const noun = pods.length === 1 ? 'RunPod' : 'RunPods';
+  if (status === 'running') return `${pods.length} ${noun} up`;
+  if (status === 'blocked') return `${noun} blocked`;
+  if (status === 'stop_requested') return `${noun} stopping`;
+  if (status === 'retrying') return `${noun} retrying`;
+  return `${noun} starting`;
+}
+
 function SessionStrip({
   run,
   onRetry,
@@ -150,25 +226,26 @@ function SessionStrip({
   return (
     <div
       className={cn(
-        'mt-2 flex items-center gap-2 rounded-md border px-2 py-1 text-[11px]',
+        'sagan-cloud-strip mt-2 flex items-center gap-2 overflow-hidden border px-2 py-1 text-[11px]',
         failed
           ? 'border-[--color-danger-border] bg-[--color-danger-bg] text-[--color-danger]'
           : active
             ? 'border-[--color-info-border] bg-[--color-info-bg] text-[--color-info]'
             : 'border-[--color-border] bg-[--color-muted-bg] text-[--color-muted]',
       )}
-      data-clickable="true"
+      data-active={active ? 'true' : undefined}
+      data-card-control="true"
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
     >
       {failed ? (
         <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
       ) : active ? (
-        <Sparkles className={cn('h-3 w-3 shrink-0', run.status === 'running' && 'animate-pulse')} aria-hidden="true" />
+        <Cloud className="h-3 w-3 shrink-0" aria-hidden="true" />
       ) : (
-        <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
+        <Cloud className="h-3 w-3 shrink-0" aria-hidden="true" />
       )}
-      <span className="font-medium">claude · {RUN_LABEL[run.status]}</span>
+      <span className="font-medium">Cloud {cloudStepLabel(run.kind)} · {RUN_LABEL[run.status]}</span>
       <Link
         href={run.href}
         className="ml-1 inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
@@ -194,6 +271,40 @@ function SessionStrip({
   );
 }
 
+function RunPodStrip({ pods }: { pods: PipelineCardPod[] }) {
+  if (pods.length === 0) return null;
+  const primary = pods.find((pod) => pod.status === 'running') ?? pods[0]!;
+  const gpu = primary.gpuTypeId ? `${primary.gpuCount ?? '-'}x ${primary.gpuTypeId}` : null;
+  const spend = estimateRunPodSpendUsd(primary);
+  const rate = effectiveRunPodRate(primary);
+
+  return (
+    <div
+      className={cn('mt-2 flex items-center gap-2 border px-2 py-1 text-[11px]', podStatusClass(primary.status))}
+      data-card-control="true"
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      title={pods.map((pod) => `${pod.podId}: ${pod.status}`).join('\n')}
+    >
+      <Server className={cn('h-3 w-3 shrink-0', primary.status === 'running' && 'sagan-runpod-live-icon')} aria-hidden="true" />
+      <span className="font-medium">{podStripLabel(pods, primary.status)}</span>
+      <span className="font-mono">{primary.podId.slice(0, 8)}</span>
+      {gpu ? <span className="truncate">{gpu}</span> : null}
+      {spend == null ? null : <span className="font-mono">{formatUsd(spend)}</span>}
+      {rate == null ? null : <span className="truncate">{formatUsdPerHour(rate)}</span>}
+      <Link
+        href={`/runpods?pod=${encodeURIComponent(primary.podId)}`}
+        className="ml-auto inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+        title="View RunPods"
+        draggable={false}
+      >
+        <span>{primary.status}</span>
+        <ExternalLink className="h-3 w-3" aria-hidden="true" />
+      </Link>
+    </div>
+  );
+}
+
 function PipelineCard({
   card,
   pending,
@@ -203,6 +314,7 @@ function PipelineCard({
   onDragEnd,
   onRetry,
   onArchive,
+  onApprove,
 }: {
   card: DashboardPipelineCard;
   pending: boolean;
@@ -212,24 +324,42 @@ function PipelineCard({
   onDragEnd: () => void;
   onRetry: (card: DashboardPipelineCard) => void;
   onArchive: (card: DashboardPipelineCard) => void;
+  onApprove: (card: DashboardPipelineCard) => void;
 }) {
+  const router = useRouter();
   const suppressClick = useRef(false);
   const attentionColumn = card.stage === 'approval' || card.stage === 'review';
   const needsOwner = Boolean(card.ownerAction) && attentionColumn;
+  const approvalLabel = card.stage === 'approval' ? 'Approve & dispatch' : card.stage === 'review' ? 'Approve' : null;
 
-  function handleClick(event: MouseEvent<HTMLAnchorElement>) {
-    if (pending || suppressClick.current) {
-      event.preventDefault();
+  function openCard(event?: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) {
+    if (pending || suppressClick.current || event?.defaultPrevented) return;
+    const target = event?.target;
+    if (target instanceof Element && target.closest('a,button,[data-card-control="true"]')) return;
+    if (event && 'metaKey' in event && (event.metaKey || event.ctrlKey)) {
+      window.open(card.href, '_blank', 'noopener,noreferrer');
+      return;
     }
+    router.push(card.href);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    openCard(event);
   }
 
   return (
     <article
       draggable={!pending}
+      role="link"
+      tabIndex={pending ? -1 : 0}
       aria-busy={pending}
       data-clickable="true"
       data-owner-attention={needsOwner ? 'true' : 'false'}
       data-pipeline-card-key={card.key}
+      onClick={openCard}
+      onKeyDown={handleKeyDown}
       onDragStart={(event) => {
         suppressClick.current = true;
         onDragStart(card, event);
@@ -251,14 +381,6 @@ function PipelineCard({
         pending && 'cursor-wait opacity-70',
       )}
     >
-      <Link
-        href={card.href}
-        data-clickable="true"
-        draggable={false}
-        onClick={handleClick}
-        className="absolute inset-0 z-0"
-        aria-label={`Open ${card.title}`}
-      />
       <div className="relative z-10 pointer-events-none">
         <div className="flex items-start gap-2">
           <GripVertical className="mt-0.5 h-4 w-4 text-[--color-muted]" aria-hidden="true" />
@@ -271,17 +393,52 @@ function PipelineCard({
           {pending ? <Loader2 className="mt-0.5 h-4 w-4 animate-spin text-[--color-muted]" aria-hidden="true" /> : null}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 pr-8 text-xs text-[--color-muted]">
+          {card.marker ? (
+            <span className="border border-[--color-border] bg-[--color-muted-bg] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[--color-fg]">
+              {card.marker}
+            </span>
+          ) : null}
           <span>{KIND_LABELS[card.kind]}</span>
-          <span>{formatRelativeTime(card.updatedAt)}</span>
+          <ProcessStateBadge state={card.processState} compact />
+          <time dateTime={card.createdAt} title={timestampTitle(card.createdAt)}>
+            Created {formatRelativeTime(card.createdAt)}
+          </time>
+          <time dateTime={card.updatedAt} title={timestampTitle(card.updatedAt)}>
+            Updated {formatRelativeTime(card.updatedAt)}
+          </time>
         </div>
         {needsOwner && card.ownerAction ? (
           <p className="mt-2 text-xs font-semibold leading-4 text-[--color-attention]">{card.ownerAction}</p>
         ) : null}
         {card.project ? <p className="mt-2 truncate text-xs text-[--color-muted]">{card.project}</p> : null}
       </div>
+      {needsOwner && approvalLabel ? (
+        <div className="relative z-20 mt-3 pr-8">
+          <button
+            type="button"
+            draggable={false}
+            disabled={pending}
+            data-card-control="true"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onApprove(card);
+            }}
+            className="sagan-card-approve-button inline-flex w-full items-center justify-center gap-1.5 border border-[--color-attention] bg-[--color-attention] px-2.5 py-1.5 text-xs font-semibold text-[--color-attention-fg] shadow-[var(--shadow-lift)] hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-[--color-focus] disabled:cursor-wait disabled:opacity-60"
+          >
+            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />}
+            {approvalLabel}
+          </button>
+        </div>
+      ) : null}
       {card.run ? (
         <div className="relative z-20">
           <SessionStrip run={card.run} retrying={retrying} onRetry={() => onRetry(card)} />
+        </div>
+      ) : null}
+      {card.pods?.length ? (
+        <div className="relative z-20">
+          <RunPodStrip pods={card.pods} />
         </div>
       ) : null}
       {card.stage !== 'archived' ? (
@@ -318,12 +475,77 @@ export function PipelineBoard({
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
+  const [creatingStage, setCreatingStage] = useState<PipelineStageKey | null>(null);
+  const [creatingIssueStage, setCreatingIssueStage] = useState<PipelineStageKey | null>(null);
+  const [draftIssueTitle, setDraftIssueTitle] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const skipNextOrderPersist = useRef(true);
 
   function handleArchive(card: DashboardPipelineCard) {
     void moveCard(card, { stage: 'archived', beforeKey: null });
+  }
+
+  function handleApprove(card: DashboardPipelineCard) {
+    const targetStage = card.stage === 'approval' ? 'queued' : card.stage === 'review' ? 'done' : null;
+    if (!targetStage) return;
+    void moveCard(card, { stage: targetStage, beforeKey: null });
+  }
+
+  async function handleCreateIssue(stage: PipelineStageKey, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const title = draftIssueTitle.trim();
+    if (!title || creatingIssueStage) return;
+
+    setCreatingIssueStage(stage);
+    setNotice(`Creating issue in ${stage}...`);
+    const defaults = ISSUE_DEFAULTS_BY_STAGE[stage];
+
+    try {
+      const res = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text: title,
+          status: defaults.status,
+          priority: defaults.priority,
+          ownerNote: `${PIPELINE_STAGE_NOTE_PREFIX}${stage}`,
+        }),
+      });
+      const data = (await res.json().catch(() => ({ error: 'invalid_response' }))) as { todo?: CreatedTodo; error?: string };
+      if (!res.ok || !data.todo) {
+        throw new Error(data.error ?? 'Issue creation failed.');
+      }
+
+      const todo = data.todo;
+      const card: DashboardPipelineCard = {
+        key: `todo-${todo.id}`,
+        id: todo.id,
+        stage,
+        kind: 'todo',
+        title: todo.text,
+        detail: todo.bodyMd,
+        status: todo.status,
+        project: null,
+        ownerAction: todo.priority === 'urgent' || todo.status === 'blocked' ? `Owner turn: ${todo.priority} task` : null,
+        processState: { label: 'Scoping', detail: todo.status, tone: 'neutral' },
+        createdAt: todo.createdAt,
+        updatedAt: todo.updatedAt,
+        href: `/e/todo/${todo.id}`,
+        tone: todo.priority === 'urgent' ? 'approval' : statusTone(todo.status),
+        run: null,
+      };
+
+      setCards((current) => insertCardAtTarget(current, card, { stage, beforeKey: null }));
+      setDraftIssueTitle('');
+      setCreatingStage(null);
+      setNotice(`Created "${todo.text}" in ${stage}.`);
+      startTransition(() => router.refresh());
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Issue creation failed.');
+    } finally {
+      setCreatingIssueStage(null);
+    }
   }
 
   async function handleRetry(card: DashboardPipelineCard) {
@@ -369,27 +591,6 @@ export function PipelineBoard({
     }
     writeStoredCardOrder(cards);
   }, [cards]);
-
-  // Live updates: subscribe to /api/pipeline/events and refresh the route
-  // whenever the server reports that any pipeline-relevant entity moved.
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
-    const es = new EventSource('/api/pipeline/events');
-    let refreshScheduled = false;
-    const scheduleRefresh = () => {
-      if (refreshScheduled) return;
-      refreshScheduled = true;
-      window.setTimeout(() => {
-        refreshScheduled = false;
-        startTransition(() => router.refresh());
-      }, 200);
-    };
-    es.addEventListener('changed', scheduleRefresh);
-    es.addEventListener('error', () => {
-      // EventSource auto-reconnects; nothing to do here.
-    });
-    return () => es.close();
-  }, [router, startTransition]);
 
   const draggingCard = useMemo(
     () => cards.find((card) => card.key === draggingKey) ?? null,
@@ -483,13 +684,27 @@ export function PipelineBoard({
       setCards((current) => {
         if (!data.card) return current;
         const removeKey = data.removeKey ?? card.key;
-        const merged = data.card.key === card.key ? { ...card, ...data.card } : data.card;
+        const merged: DashboardPipelineCard = data.card.key === card.key ? { ...card, ...data.card } : data.card;
+        if (data.agentRunId) {
+          merged.run = {
+            id: data.agentRunId,
+            kind: optimisticRunKind(merged.kind, target.stage),
+            status: 'queued',
+            updatedAt: new Date().toISOString(),
+            lastError: null,
+            href: `/agent/${data.agentRunId}`,
+            canRetry: false,
+          };
+        }
         return insertCardAtTarget(current, merged, target, [removeKey, data.card.key]);
       });
       setNotice(
         data.message ??
           (target.stage === 'archived' ? 'Moved to archived.' : data.agentRunId ? 'Queued the next agent step.' : 'Pipeline stage updated.'),
       );
+      if (data.agentRunId) {
+        startTransition(() => router.refresh());
+      }
     } catch (err) {
       setCards(previousCards);
       setNotice(err instanceof Error ? err.message : 'Pipeline move failed.');
@@ -582,11 +797,59 @@ export function PipelineBoard({
                             }}
                             onRetry={handleRetry}
                             onArchive={handleArchive}
+                            onApprove={handleApprove}
                           />
                         </Fragment>
                       ))}
                       {dropActive && validDrop && dropTarget?.beforeKey === null ? <DropMarker /> : null}
                     </>
+                  )}
+                  {creatingStage === stage.key ? (
+                    <form
+                      onSubmit={(event) => void handleCreateIssue(stage.key, event)}
+                      className="border border-[--color-border] bg-[--color-panel] p-2 shadow-[var(--shadow-inset)]"
+                    >
+                      <input
+                        autoFocus
+                        type="text"
+                        value={draftIssueTitle}
+                        onChange={(event) => setDraftIssueTitle(event.target.value)}
+                        placeholder="Issue title"
+                        className="w-full border border-[--color-border] bg-[--color-bg] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-focus]"
+                        disabled={creatingIssueStage === stage.key}
+                      />
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreatingStage(null);
+                            setDraftIssueTitle('');
+                          }}
+                          className="border border-[--color-border] px-2 py-1 text-xs text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                          disabled={creatingIssueStage === stage.key}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="border border-[--color-accent] bg-[--color-accent] px-2 py-1 text-xs font-medium text-[--color-accent-fg] disabled:opacity-60"
+                          disabled={!draftIssueTitle.trim() || creatingIssueStage === stage.key}
+                        >
+                          {creatingIssueStage === stage.key ? 'Creating...' : 'Create'}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatingStage(stage.key);
+                        setDraftIssueTitle('');
+                      }}
+                      className="border border-dashed border-[--color-border] px-3 py-2 text-left text-xs font-medium text-[--color-muted] hover:border-[--color-accent] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                    >
+                      + New issue
+                    </button>
                   )}
                 </div>
               </Panel>

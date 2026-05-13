@@ -12,6 +12,7 @@ import type { EntityKind } from '@/lib/entity';
 const QUEUED_CHANNEL = 'agent_run_queued';
 const APPROVED_CHANNEL = 'agent_run_approved';
 const PIPELINE_CHANNEL = 'pipeline_changed';
+const PIPELINE_STAGE_NOTE_PREFIX = 'sagan:pipeline-stage=';
 
 async function notifyPipelineChanged(payload: string) {
   try {
@@ -89,6 +90,16 @@ const todoStatusByStage: Partial<Record<PipelineStage, (typeof todos.$inferSelec
   archived: 'archived',
 };
 
+function setPipelineStageOwnerNote(ownerNote: string | null | undefined, stage: PipelineStage) {
+  const remaining = (ownerNote ?? '')
+    .split('\n')
+    .filter((line) => !line.trim().startsWith(PIPELINE_STAGE_NOTE_PREFIX))
+    .join('\n')
+    .trim();
+  const marker = `${PIPELINE_STAGE_NOTE_PREFIX}${stage}`;
+  return remaining ? `${marker}\n${remaining}` : marker;
+}
+
 const cleanResultStatusByStage: Partial<Record<PipelineStage, (typeof cleanResults.$inferSelect)['status']>> = {
   clean_results: 'reviewing',
   interpreting: 'draft',
@@ -113,16 +124,37 @@ function entityHref(kind: PipelineKind | EntityKind, id: string) {
   return `/e/${kind}/${id}`;
 }
 
+function iso(value: Date | string | null | undefined) {
+  if (!value) return new Date().toISOString();
+  return typeof value === 'string' ? new Date(value).toISOString() : value.toISOString();
+}
+
+function experimentMarker(number: number | null | undefined) {
+  return typeof number === 'number' ? `#${number}` : null;
+}
+
+async function markerForExperimentId(experimentId: string | null | undefined) {
+  if (!experimentId) return null;
+  const rows = await db()
+    .select({ number: experiments.number })
+    .from(experiments)
+    .where(eq(experiments.id, experimentId))
+    .limit(1);
+  return experimentMarker(rows[0]?.number);
+}
+
 function cardPayload(input: {
   key: string;
   id: string;
   kind: PipelineKind;
   stage: PipelineStage;
+  marker?: string | null;
   title: string;
   detail?: string | null;
   status: string;
   project?: string | null;
   ownerAction?: string | null;
+  createdAt?: Date | string | null;
   href?: string;
 }) {
   return {
@@ -130,11 +162,13 @@ function cardPayload(input: {
     id: input.id,
     kind: input.kind,
     stage: input.stage,
+    marker: input.marker ?? null,
     title: input.title,
     detail: input.detail ?? null,
     status: input.status,
     project: input.project ?? null,
     ownerAction: input.ownerAction ?? null,
+    createdAt: iso(input.createdAt),
     updatedAt: new Date().toISOString(),
     href: input.href ?? entityHref(input.kind, input.id),
     tone: statusTone(input.status),
@@ -168,9 +202,9 @@ function agentRequest(input: {
     case 'experiment':
     case 'idea':
       if (input.toStage === 'interpreting' || input.toStage === 'review') {
-        return `${movement} on the Pipeline board.\n\nInterpret the current evidence for "${input.title}". Use the scoped record, identify missing artifacts or blockers, and produce the next concrete review note.`;
+        return `${movement} on the Pipeline board.\n\nInterpret the current evidence for the scoped experiment. Use the scoped record as the source of truth for title and scope, identify missing artifacts or blockers, and produce the next concrete review note. Do not rename, retitle, or otherwise mutate the scoped issue/experiment.`;
       }
-      return `${movement} on the Pipeline board.\n\nDraft the next experiment plan for "${input.title}". Use the scoped experiment record and produce a plan that can be reviewed and approved.`;
+      return `${movement} on the Pipeline board.\n\nDraft the next experiment plan for the scoped experiment. Use the scoped experiment record as the source of truth for title and scope, and produce a plan that can be reviewed and approved. Do not rename, retitle, or otherwise mutate the scoped issue/experiment.`;
     case 'todo':
       if (input.toStage === 'running') {
         return `${movement} on the Pipeline board.\n\nAdvance this task now: "${input.title}". Use the scoped task context and make the smallest useful change or report the exact blocker.`;
@@ -321,10 +355,12 @@ async function advanceExperiment(input: z.infer<typeof advanceSchema>, actorUser
   const rows = await db()
     .select({
       id: experiments.id,
+      number: experiments.number,
       title: experiments.title,
       hypothesis: experiments.hypothesis,
       status: experiments.status,
       priority: experiments.priority,
+      createdAt: experiments.createdAt,
     })
     .from(experiments)
     .where(eq(experiments.id, input.id))
@@ -402,12 +438,14 @@ async function advanceExperiment(input: z.infer<typeof advanceSchema>, actorUser
       id: input.id,
       kind: 'experiment',
       stage: input.toStage,
+      marker: experimentMarker(experiment.number),
       title: experiment.title,
       detail: experiment.hypothesis,
       status: nextStatus,
       ownerAction: ['plan_pending', 'awaiting_approval', 'blocked', 'awaiting_promotion'].includes(nextStatus)
         ? experimentTurn(nextStatus)
         : null,
+      createdAt: experiment.createdAt,
     }),
   });
 }
@@ -424,6 +462,8 @@ async function advanceCleanResult(input: z.infer<typeof advanceSchema>, actorUse
       status: cleanResults.status,
       artifactStatus: cleanResults.artifactStatus,
       sourceDailyLogEntryId: cleanResults.sourceDailyLogEntryId,
+      experimentId: cleanResults.experimentId,
+      createdAt: cleanResults.createdAt,
     })
     .from(cleanResults)
     .where(eq(cleanResults.id, input.id))
@@ -498,10 +538,12 @@ async function advanceCleanResult(input: z.infer<typeof advanceSchema>, actorUse
       id: input.id,
       kind: 'clean_result',
       stage: input.toStage,
+      marker: await markerForExperimentId(result.experimentId),
       title: result.title,
       detail: result.claim,
       status,
       ownerAction: ['reviewing', 'blocked'].includes(status) ? 'Owner turn: review clean result' : null,
+      createdAt: result.createdAt,
     }),
   });
 }
@@ -510,7 +552,16 @@ async function advanceTodo(input: z.infer<typeof advanceSchema>, actorUserId: st
   const status = todoStatusByStage[input.toStage];
   if (!status) return unsupported(input.toStage, 'todo');
   const rows = await db()
-    .select({ id: todos.id, text: todos.text, bodyMd: todos.bodyMd, priority: todos.priority, linkedKind: todos.linkedKind, linkedId: todos.linkedId })
+    .select({
+      id: todos.id,
+      text: todos.text,
+      bodyMd: todos.bodyMd,
+      priority: todos.priority,
+      ownerNote: todos.ownerNote,
+      linkedKind: todos.linkedKind,
+      linkedId: todos.linkedId,
+      createdAt: todos.createdAt,
+    })
     .from(todos)
     .where(eq(todos.id, input.id))
     .limit(1);
@@ -520,7 +571,7 @@ async function advanceTodo(input: z.infer<typeof advanceSchema>, actorUserId: st
   const nextPriority = input.toStage === 'later' ? 'low' : todo.priority === 'low' ? 'normal' : todo.priority;
   await db()
     .update(todos)
-    .set({ status, priority: nextPriority, updatedAt: new Date() })
+    .set({ status, priority: nextPriority, ownerNote: setPipelineStageOwnerNote(todo.ownerNote, input.toStage), updatedAt: new Date() })
     .where(eq(todos.id, input.id));
 
   let agentRunId: string | undefined;
@@ -557,10 +608,12 @@ async function advanceTodo(input: z.infer<typeof advanceSchema>, actorUserId: st
       id: input.id,
       kind: 'todo',
       stage: input.toStage,
+      marker: todo.linkedKind === 'experiment' ? await markerForExperimentId(todo.linkedId) : null,
       title: todo.text,
       detail: todo.bodyMd,
       status,
       ownerAction: nextPriority === 'urgent' || status === 'blocked' ? `Owner turn: ${nextPriority} task` : null,
+      createdAt: todo.createdAt,
       href: entityHref('todo', input.id),
     }),
   });
@@ -587,6 +640,7 @@ async function advanceIdea(input: z.infer<typeof advanceSchema>, actorUserId: st
         title: idea.title,
         detail: idea.bodyMd,
         status: 'archived',
+        createdAt: idea.createdAt,
         href: `/ideation/${idea.sessionId}#idea-${idea.id}`,
       }),
     });
@@ -610,7 +664,14 @@ async function advanceIdea(input: z.infer<typeof advanceSchema>, actorUserId: st
         ideationSessionId: idea.sessionId,
       },
     })
-    .returning({ id: experiments.id, title: experiments.title, hypothesis: experiments.hypothesis, status: experiments.status });
+    .returning({
+      id: experiments.id,
+      number: experiments.number,
+      title: experiments.title,
+      hypothesis: experiments.hypothesis,
+      status: experiments.status,
+      createdAt: experiments.createdAt,
+    });
   const experiment = inserted[0]!;
   await db()
     .update(ideaCards)
@@ -650,10 +711,12 @@ async function advanceIdea(input: z.infer<typeof advanceSchema>, actorUserId: st
       id: experiment.id,
       kind: 'experiment',
       stage: 'planning',
+      marker: experimentMarker(experiment.number),
       title: experiment.title,
       detail: experiment.hypothesis,
       status: experiment.status,
       ownerAction: experimentTurn(experiment.status),
+      createdAt: experiment.createdAt,
       href: entityHref('experiment', experiment.id),
     }),
     removeKey: `idea-${idea.id}`,
@@ -671,6 +734,7 @@ async function advanceAutomation(input: z.infer<typeof advanceSchema>, actorUser
       status: agentRuns.status,
       scopeEntityKind: agentRuns.scopeEntityKind,
       scopeEntityId: agentRuns.scopeEntityId,
+      createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, input.id))
@@ -722,10 +786,12 @@ async function advanceAutomation(input: z.infer<typeof advanceSchema>, actorUser
       id: run.id,
       kind: 'automation',
       stage: input.toStage === 'running' ? 'queued' : input.toStage,
+      marker: run.scopeEntityKind === 'experiment' ? await markerForExperimentId(run.scopeEntityId) : null,
       title: run.request,
       detail: run.scopeEntityKind && run.scopeEntityId ? `${run.scopeEntityKind} ${run.scopeEntityId.slice(0, 8)}` : run.kind,
       status: nextStatus,
       ownerAction: nextStatus === 'awaiting_approval' ? 'Owner turn: approve automation run' : null,
+      createdAt: run.createdAt,
       href: entityHref('automation', run.id),
     }),
   });

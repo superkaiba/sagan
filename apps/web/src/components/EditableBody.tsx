@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { RichBody } from './RichBody';
+import { CommentableBody } from './CommentableBody';
 
 interface Props {
   kind: 'project' | 'belief' | 'todo' | 'lit_item' | 'project_narrative' | 'experiment' | 'run' | 'daily_log_entry' | 'clean_result';
@@ -70,10 +70,10 @@ export function EditableBody({ kind, id, initialBody, endpoint, field }: Props) 
           type="button"
           onClick={() => setEditing(true)}
           className="float-right text-xs text-[--color-muted] opacity-0 transition group-hover:opacity-100 hover:text-[--color-fg]"
-        >
-          Edit
-        </button>
-        <RichBody>{initialBody}</RichBody>
+      >
+        Edit
+      </button>
+        <CommentableBody body={initialBody} />
       </section>
     );
   }

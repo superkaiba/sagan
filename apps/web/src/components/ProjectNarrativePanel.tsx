@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Markdown } from './Markdown';
+import { CommentableBody } from './CommentableBody';
 
 interface Narrative {
   id: string;
@@ -96,7 +96,7 @@ export function ProjectNarrativePanel({ projectId, projectTitle, published, late
         </div>
       </div>
       {showing.bodyMd.trim() ? (
-        <Markdown>{showing.bodyMd}</Markdown>
+        <CommentableBody body={showing.bodyMd} />
       ) : (
         <p className="text-sm text-[--color-muted]">Empty. Click Edit → to write.</p>
       )}

@@ -22,10 +22,13 @@ import { runInsightScan } from './jobs/insight-scan.js';
 import { runProjectLitReview } from './jobs/project-lit-review.js';
 import { runTrackedJob, type JobContext } from './jobs/job-runs.js';
 import { pushToUser } from './lib/push.js';
+import { queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
 import { log } from './log.js';
 import { startPodLifecycleWatcher, stopPodsForRun } from './watcher.js';
 
 const controller = new AbortController();
+const activeAgentRunIds = new Set<string>();
+let shuttingDown = false;
 
 async function main() {
   log.info('runner starting');
@@ -33,11 +36,16 @@ async function main() {
     {
       async onQueued(runId) {
         log.info('handling queued run', { runId });
-        const outcome = await runSession(runId);
-        log.info('queued run finished', {
-          runId,
-          outcome: outcome.ok ? outcome.status : 'failed',
-        });
+        activeAgentRunIds.add(runId);
+        try {
+          const outcome = await runSession(runId);
+          log.info('queued run finished', {
+            runId,
+            outcome: outcome.ok ? outcome.status : 'failed',
+          });
+        } finally {
+          activeAgentRunIds.delete(runId);
+        }
       },
       async onApproved(runId) {
         log.info('handling approved run', { runId });
@@ -198,10 +206,44 @@ function parseRunId(payload?: string): string | null {
 }
 
 async function shutdown(reason: string, code = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   log.info(`runner shutting down (${reason})`);
   controller.abort();
+  await markActiveAgentRunsInterrupted(reason).catch((err) =>
+    log.error('failed to mark active runs interrupted during shutdown', { err: String(err) }),
+  );
   await close();
   process.exit(code);
+}
+
+async function markActiveAgentRunsInterrupted(reason: string) {
+  const runIds = Array.from(activeAgentRunIds);
+  if (runIds.length === 0) return;
+  const message = `Runner stopped during active session (${reason}); queued automatic recovery.`;
+  const now = new Date();
+  const interrupted = await db()
+    .update(schema.agentRuns)
+    .set({
+      status: 'failed',
+      lastError: message,
+      completedAt: now,
+      updatedAt: now,
+    })
+    .where(and(inArray(schema.agentRuns.id, runIds), eq(schema.agentRuns.status, 'running')))
+    .returning({ id: schema.agentRuns.id });
+
+  for (const row of interrupted) {
+    await db().insert(schema.agentRunEvents).values({
+      runId: row.id,
+      eventType: 'failed',
+      body: message,
+      metadata: { reason },
+    });
+    await queueAutomaticRecoveryRun(row.id, message).catch((err) =>
+      log.warn('failed to queue recovery for interrupted run', { runId: row.id, err: String(err) }),
+    );
+  }
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));

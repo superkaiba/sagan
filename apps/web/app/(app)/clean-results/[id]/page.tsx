@@ -1,10 +1,10 @@
 import { notFound } from 'next/navigation';
-import { desc, eq, or } from 'drizzle-orm';
-import { cleanResults, cleanResultVersions, runArtifacts } from '@sagan/db/schema';
+import { eq } from 'drizzle-orm';
+import { cleanResults } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { Markdown } from '@/components/Markdown';
 import { Comments } from '@/components/Comments';
-import { EntityEdges } from '@/components/EntityEdges';
+import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
+import { CommentableBody } from '@/components/CommentableBody';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { EditableBody } from '@/components/EditableBody';
 import { EditableTitle } from '@/components/EditableTitle';
@@ -26,30 +26,11 @@ export default async function CleanResultPage({ params }: { params: Promise<{ id
   const rows = await db().select().from(cleanResults).where(eq(cleanResults.id, id)).limit(1);
   const result = rows[0];
   if (!result) return notFound();
-  const filters = [
-    result.runId ? eq(runArtifacts.runId, result.runId) : undefined,
-    result.agentRunId ? eq(runArtifacts.agentRunId, result.agentRunId) : undefined,
-    result.experimentId ? eq(runArtifacts.experimentId, result.experimentId) : undefined,
-  ].filter((condition): condition is NonNullable<typeof condition> => Boolean(condition));
-  const [artifacts, versions] = await Promise.all([
-    filters.length
-      ? db()
-          .select()
-          .from(runArtifacts)
-          .where(filters.length === 1 ? filters[0]! : or(...filters))
-          .orderBy(runArtifacts.createdAt)
-      : Promise.resolve([]),
-    db()
-      .select()
-      .from(cleanResultVersions)
-      .where(eq(cleanResultVersions.cleanResultId, id))
-      .orderBy(desc(cleanResultVersions.createdAt))
-      .limit(20),
-  ]);
   const owner = isOwner(session);
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <AnchoredCommentsProvider>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <main className="min-w-0 space-y-6">
         <header className="space-y-3">
           <p className="text-xs uppercase tracking-wide text-[--color-muted]">Clean result</p>
@@ -89,50 +70,15 @@ export default async function CleanResultPage({ params }: { params: Promise<{ id
           <EditableBody kind="clean_result" id={result.id} initialBody={result.bodyMd} />
         ) : (
           <section className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
-            <Markdown>{result.bodyMd}</Markdown>
+            <CommentableBody body={result.bodyMd} />
           </section>
         )}
       </main>
 
       <aside className="min-w-0 space-y-4 xl:border-l xl:border-[--color-border] xl:pl-5">
-        <section className="rounded-lg border border-[--color-border]">
-          <div className="border-b border-[--color-border] px-4 py-2 text-sm font-medium">Verified artifacts</div>
-          {artifacts.length === 0 ? (
-            <p className="p-4 text-sm text-[--color-muted]">No artifacts linked.</p>
-          ) : (
-            <div className="divide-y divide-[--color-border]">
-              {artifacts.map((artifact) => (
-                <div key={artifact.id} className="space-y-1 px-4 py-2 text-sm">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{artifact.kind}</span>
-                    <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{artifact.status}</span>
-                  </div>
-                  <p className="break-all font-mono text-xs text-[--color-muted]">{artifact.uri}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <EntityEdges entityKind="clean_result" entityId={result.id} />
-
-        <section className="rounded-lg border border-[--color-border]">
-          <div className="border-b border-[--color-border] px-4 py-2 text-sm font-medium">Versions</div>
-          {versions.length === 0 ? (
-            <p className="p-4 text-sm text-[--color-muted]">No versions yet.</p>
-          ) : (
-            <div className="divide-y divide-[--color-border]">
-              {versions.map((version) => (
-                <div key={version.id} className="px-4 py-2 text-xs text-[--color-muted]">
-                  {new Date(version.createdAt).toLocaleString()} · {version.authorKind}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
         <Comments entityKind="clean_result" entityId={result.id} />
       </aside>
-    </div>
+      </div>
+    </AnchoredCommentsProvider>
   );
 }

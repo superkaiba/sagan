@@ -12,6 +12,7 @@ import { eq, and, inArray, sql, asc, lt } from 'drizzle-orm';
 import { log } from './log.js';
 import { recordTrail } from './trail.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
+import { queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
 
 export const QUEUED_CHANNEL = 'agent_run_queued';
 export const APPROVED_CHANNEL = 'agent_run_approved';
@@ -103,13 +104,22 @@ async function recoverStaleRunningRuns() {
       agentRunId: row.id,
       detail: `previousUpdatedAt=${row.updatedAt.toISOString()}; cutoff=${cutoff.toISOString()}`,
     });
-    await cascadeAgentRunFailureToScope({
-      runId: row.id,
-      scopeEntityKind: row.scopeEntityKind,
-      scopeEntityId: row.scopeEntityId,
-      reason: 'stale',
-      detail: `No runner activity for ${staleMinutes} minutes.`,
+    const recovered = await queueAutomaticRecoveryRun(
+      row.id,
+      `Runner marked this run stale after ${staleMinutes} minutes without an update.`,
+    ).catch((err) => {
+      log.warn('failed to queue stale recovery run', { runId: row.id, err: String(err) });
+      return false;
     });
+    if (!recovered) {
+      await cascadeAgentRunFailureToScope({
+        runId: row.id,
+        scopeEntityKind: row.scopeEntityKind,
+        scopeEntityId: row.scopeEntityId,
+        reason: 'stale',
+        detail: `No runner activity for ${staleMinutes} minutes.`,
+      });
+    }
     await notifyPipelineChanged(row.id);
   }
 }

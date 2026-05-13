@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { agentRuns } from '@sagan/db/schema';
+import { agentRunEvents, agentRuns } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
@@ -45,6 +45,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: 'not_awaiting_approval' }, { status: 409 });
   }
   const run = updated[0]!;
+  await db().insert(agentRunEvents).values({
+    runId: id,
+    eventType: 'rejected',
+    body: parsed.data.note ?? 'Owner rejected the plan.',
+    metadata: { actorUserId: session.user.id },
+  });
   if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) {
     await setExperimentStatus({
       experimentId: run.scopeEntityId,

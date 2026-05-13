@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BookOpen,
+  Cloud,
   Inbox,
   Kanban,
+  Newspaper,
   Settings,
   type LucideIcon,
 } from 'lucide-react';
@@ -15,6 +17,7 @@ import styles from './AppNav.module.css';
 export interface AppNavCounts {
   approvals?: number;
   pipeline?: number;
+  runpods?: number;
   literature?: number;
   log?: number;
 }
@@ -35,7 +38,14 @@ const PRIMARY: NavItem[] = [
     icon: Kanban,
     countKey: 'pipeline',
   },
+  { label: 'RunPods', href: '/runpods', match: ['/runpods'], icon: Cloud, countKey: 'runpods' },
   { label: 'Approvals', href: '/approvals', match: ['/approvals'], icon: Inbox, countKey: 'approvals' },
+  {
+    label: 'Project Log',
+    href: '/projects/updates',
+    match: ['/projects', '/projects/updates', '/e/project', '/e/project_narrative'],
+    icon: Newspaper,
+  },
   {
     label: 'Literature',
     href: '/literature',
@@ -57,14 +67,11 @@ const SECONDARY: NavItem[] = [
       '/clean-results',
       '/mentor/daily',
       '/log',
-      '/projects',
       '/admin/health',
       '/mentor/updates',
       '/e/clean_result',
       '/e/weekly_digest',
       '/e/daily_log_entry',
-      '/e/project',
-      '/e/project_narrative',
     ],
     icon: Settings,
   },

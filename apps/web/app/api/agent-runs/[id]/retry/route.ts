@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { agentRuns, cleanResults, experiments, todos } from '@sagan/db/schema';
+import { agentRunEvents, agentRuns, cleanResults, experiments, todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
@@ -69,6 +69,12 @@ ${source.lastError ?? '(no recorded reason)'}`;
     .returning({ id: agentRuns.id });
   const newRunId = inserted[0]!.id;
 
+  await db().insert(agentRunEvents).values({
+    runId: source.id,
+    eventType: 'manual_resume_queued',
+    body: newRunId,
+    metadata: { actorUserId: session.user.id },
+  });
   await db().execute(sql`SELECT pg_notify(${QUEUED_CHANNEL}, ${newRunId})`);
 
   // PR1's cascade may have moved the scoped entity to `blocked` when the
@@ -119,6 +125,6 @@ ${source.lastError ?? '(no recorded reason)'}`;
     ok: true,
     runId: newRunId,
     sourceRunId: source.id,
-    message: `Queued a fresh Claude Code session (retry of ${source.id.slice(0, 8)}).`,
+    message: `Queued a resumed Claude Code session from ${source.id.slice(0, 8)}.`,
   });
 }

@@ -3,9 +3,10 @@ import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 
 /**
- * SSE stream that emits a `changed` event whenever any pipeline-relevant
- * entity (todos, experiments, clean_results, agent_runs) has a newer
- * updated_at than the last tick. Clients re-fetch the board on each event.
+ * SSE stream that emits a `changed` event whenever any dashboard-relevant
+ * entity has a newer timestamp than the last tick. Clients re-fetch the
+ * current route on each event, which updates the board and sidebar without a
+ * full page reload.
  *
  * Polling is used (not Postgres LISTEN) because Vercel serverless functions
  * cannot hold a dedicated database connection. The runner still emits
@@ -57,7 +58,26 @@ export async function GET(req: Request) {
               COALESCE((SELECT MAX(updated_at) FROM todos), 'epoch'::timestamptz),
               COALESCE((SELECT MAX(updated_at) FROM experiments), 'epoch'::timestamptz),
               COALESCE((SELECT MAX(updated_at) FROM clean_results), 'epoch'::timestamptz),
-              COALESCE((SELECT MAX(updated_at) FROM agent_runs), 'epoch'::timestamptz)
+              COALESCE((SELECT MAX(updated_at) FROM agent_runs), 'epoch'::timestamptz),
+              COALESCE((SELECT MAX(updated_at) FROM pod_lifecycle), 'epoch'::timestamptz),
+              COALESCE((SELECT MAX(updated_at) FROM approval_requests), 'epoch'::timestamptz),
+              COALESCE((SELECT MAX(updated_at) FROM daily_log_entries), 'epoch'::timestamptz),
+              COALESCE((SELECT MAX(created_at) FROM workflow_events), 'epoch'::timestamptz),
+              COALESCE(
+                (
+                  SELECT MAX(
+                    GREATEST(
+                      drafted_at,
+                      COALESCE(edited_at, 'epoch'::timestamptz),
+                      COALESCE(sent_at, 'epoch'::timestamptz)
+                    )
+                  )
+                  FROM weekly_digests
+                ),
+                'epoch'::timestamptz
+              ),
+              COALESCE((SELECT MAX(updated_at) FROM project_narratives), 'epoch'::timestamptz),
+              COALESCE((SELECT MAX(updated_at) FROM projects), 'epoch'::timestamptz)
             ) AS max_ts
           `);
           const raw = (rows as unknown as Array<{ max_ts: string | Date }>)[0]?.max_ts;

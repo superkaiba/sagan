@@ -5,17 +5,19 @@
  * plan_md when the model invokes ExitPlanMode, and finalizes the run row when
  * the SDKResultMessage arrives.
  */
-import { type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { type CanUseTool, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { readFile } from 'node:fs/promises';
 import { runAgentWithContinuation } from './lib/run-agent.js';
 import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
-import { and, asc, eq, ilike, isNull, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
 import { db, schema } from './db.js';
-import { emitEvent, notifyPipelineChanged, notifyQueued } from './queue.js';
+import { emitEvent, notifyPipelineChanged } from './queue.js';
 import { env, requireEnv } from './env.js';
 import { log } from './log.js';
 import { pushToUser } from './lib/push.js';
 import { recordTrail } from './trail.js';
 import { notifyClaudeFinished } from './notifications.js';
+import { queueAutomaticContinuationRun, queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
 
 type AgentRunRow = typeof schema.agentRuns.$inferSelect;
 type StructuredPlan = {
@@ -59,12 +61,14 @@ export async function runSession(runId: string): Promise<Outcome> {
 
   const options: Options = {
     cwd: env.RUNNER_REPO_ROOT,
-    permissionMode: row.kind === 'plan' || row.kind === 'experiment' ? 'plan' : 'acceptEdits',
+    permissionMode: 'bypassPermissions',
+    allowDangerouslySkipPermissions: true,
     env: process.env as Record<string, string>,
     pathToClaudeCodeExecutable: env.CLAUDE_CLI_PATH,
+    ...toolPolicyForRunKind(row.kind),
     // Conservative tool restriction: disable Bash and write tools for QA mode.
     ...(row.kind === 'qa'
-      ? { allowedTools: ['Read', 'Grep', 'Glob'], disallowedTools: ['Bash', 'Edit', 'Write'] }
+      ? { tools: ['Read', 'Grep', 'Glob'], canUseTool: readOnlyToolGuard('qa') }
       : {}),
     ...(chatResumeId ? { resume: chatResumeId } : chatStartId ? { sessionId: chatStartId } : {}),
   };
@@ -82,6 +86,38 @@ export async function runSession(runId: string): Promise<Outcome> {
 
   const result = await runWithStreaming(runId, row, prompt, options, chatResumeId);
   return result;
+}
+
+const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', 'ExitPlanMode'] as const;
+
+function toolPolicyForRunKind(kind: AgentRunRow['kind']): Pick<Options, 'tools' | 'canUseTool'> {
+  if (kind !== 'plan' && kind !== 'experiment') return {};
+
+  return {
+    // Restrict the actual tool surface. `allowedTools` only auto-approves
+    // tools; it does not hide everything else from Claude Code.
+    tools: [...READ_ONLY_TOOLS],
+    canUseTool: readOnlyToolGuard(kind),
+  };
+}
+
+function readOnlyToolGuard(kind: AgentRunRow['kind']): CanUseTool {
+  const allowed = new Set<string>(READ_ONLY_TOOLS);
+  return async (toolName, input, options) => {
+    if (allowed.has(toolName)) {
+      return { behavior: 'allow', toolUseID: options.toolUseID };
+    }
+
+    const command = typeof input.command === 'string' ? input.command : null;
+    const suffix = command ? ` Command was: ${command.slice(0, 240)}` : '';
+    return {
+      behavior: 'deny',
+      toolUseID: options.toolUseID,
+      message:
+        `${kind} runs are read-only. Use the scoped record and repo reads only; do not spawn agents, run shell commands, edit files, or mutate issue titles.` +
+        suffix,
+    };
+  };
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -197,7 +233,19 @@ async function runWithStreaming(
       }
     }
 
-    // Stream ended without a result — treat as a soft failure.
+    // Stream ended without a result. If Claude wrote an approval plan to the
+    // plan file but failed before ExitPlanMode/result, recover that plan
+    // instead of making the user restart from scratch.
+    if (row.kind === 'plan' || row.kind === 'experiment') {
+      const recoveredPlan = await recoverPlanFromFile(runId, row.kind);
+      if (recoveredPlan) {
+        await emitEvent(runId, 'plan_recovered', 'Recovered plan from Claude-written plan file.', {
+          plan_len: recoveredPlan.length,
+        });
+        await markAwaitingApproval(runId, recoveredPlan);
+        return { ok: true, status: 'awaiting_approval', planMd: recoveredPlan };
+      }
+    }
     const errMsg = 'stream ended without result';
     await markFailed(runId, errMsg);
     return { ok: false, error: errMsg };
@@ -263,6 +311,10 @@ async function handleMessage(runId: string, message: SDKMessage) {
         if (block.type === 'text') {
           await emitEvent(runId, 'assistant_text', truncate(block.text, 4000));
         } else if (block.type === 'tool_use') {
+          const fileChange = summarizeFileChangeTool(block.name, block.input);
+          if (fileChange) {
+            await emitEvent(runId, 'file_change', fileChange.body, fileChange.metadata);
+          }
           await emitEvent(runId, 'tool_call', block.name, {
             tool: block.name,
             input: redactInput(block.input),
@@ -300,6 +352,32 @@ async function handleMessage(runId: string, message: SDKMessage) {
   }
 }
 
+async function recoverPlanFromFile(runId: string, kind: AgentRunRow['kind']): Promise<string | null> {
+  const rows = await db()
+    .select({
+      body: schema.agentRunEvents.body,
+      createdAt: schema.agentRunEvents.createdAt,
+    })
+    .from(schema.agentRunEvents)
+    .where(and(eq(schema.agentRunEvents.runId, runId), eq(schema.agentRunEvents.eventType, 'file_change')))
+    .orderBy(desc(schema.agentRunEvents.createdAt))
+    .limit(10);
+
+  for (const row of rows) {
+    const path = row.body?.match(/\bwrote\s+(.+\.md)\s*$/)?.[1]?.trim();
+    if (!path || !path.includes('/.claude/plans/')) continue;
+    try {
+      const plan = (await readFile(path, 'utf8')).trim();
+      if (!plan.includes('## Goal') || !plan.includes('## Approval Checklist')) continue;
+      if (kind === 'experiment' && !plan.includes('```runpod-spec')) continue;
+      return plan;
+    } catch (err) {
+      log.warn('failed to recover plan file', { runId, path, err: String(err) });
+    }
+  }
+  return null;
+}
+
 async function loadRun(runId: string): Promise<AgentRunRow | null> {
   const rows = await db()
     .select()
@@ -316,7 +394,14 @@ async function buildPrompt(row: AgentRunRow): Promise<string> {
       ? `\nScope: ${row.scopeEntityKind} ${row.scopeEntityId}`
       : '';
   if (row.kind === 'experiment') {
-    return `${header}${scope}\n\n${experimentPlanningInstructions()}\n\nUser request:\n${row.request}`;
+    const scopedContext = await buildScopedEntityContext(row);
+    return `${header}${scope}
+
+${experimentPlanningInstructions()}
+${scopedContext ? `\nScoped experiment record:\n${scopedContext}\n` : ''}
+
+User request:
+${row.request}`;
   }
   if (row.kind === 'qa') {
     if (!COMMENT_RESPONDER_RE.test(row.request)) {
@@ -499,9 +584,15 @@ async function buildScopedEntityContext(row: AgentRunRow): Promise<string> {
     case 'experiment': {
       const experimentRows = await db()
         .select({
+          number: schema.experiments.number,
           title: schema.experiments.title,
+          body: schema.experiments.body,
           hypothesis: schema.experiments.hypothesis,
           status: schema.experiments.status,
+          priority: schema.experiments.priority,
+          kind: schema.experiments.kind,
+          computeSize: schema.experiments.computeSize,
+          runpodAccount: schema.experiments.runpodAccount,
           planJson: schema.experiments.planJson,
           configYaml: schema.experiments.configYaml,
         })
@@ -513,11 +604,17 @@ async function buildScopedEntityContext(row: AgentRunRow): Promise<string> {
       return truncate(
         [
           `kind: experiment`,
+          `number: ${experiment.number ?? 'null'}`,
           `title: ${experiment.title}`,
+          `recordKind: ${experiment.kind}`,
           `hypothesis: ${experiment.hypothesis ?? 'null'}`,
           `status: ${experiment.status}`,
+          `priority: ${experiment.priority}`,
+          `computeSize: ${experiment.computeSize ?? 'null'}`,
+          `runpodAccount: ${experiment.runpodAccount}`,
           `planJson: ${JSON.stringify(experiment.planJson ?? null)}`,
           `configYaml:\n${experiment.configYaml ?? ''}`,
+          `body:\n${experiment.body ?? ''}`,
         ].join('\n'),
         12000,
       );
@@ -666,6 +763,10 @@ function experimentPlanningInstructions() {
   return `You are drafting an adversarial experiment plan for Sagan.
 
 Do not launch anything. Do not edit files. Produce one approval-ready markdown plan.
+Use the provided scoped experiment record as the source of truth for the
+experiment title and scope. Do not rename, retitle, or otherwise mutate the
+scoped issue/experiment. Keep the run request as instructions, not as a title.
+Stay in the current session; do not spawn subagents.
 
 Before finalizing, run this reasoning loop internally:
 1. Planner: propose the experiment.
@@ -688,7 +789,26 @@ The final answer must use these exact markdown headings:
 ## Likely Clean Result
 ## Approval Checklist
 
-The Approval Checklist must explicitly cover goal, hypothesis, prediction, kill criterion, compute/hardware, artifacts, verification, risks, and likely clean-result shape.`;
+After those sections, include a fenced \`\`\`runpod-spec block containing valid JSON for the pod(s) to dispatch after approval. This block is required because the runner reads it automatically. Use either one object or an array of objects with this shape:
+
+\`\`\`runpod-spec
+{
+  "name": "short-descriptive-name",
+  "gpuType": "H100",
+  "gpuCount": 1,
+  "volumeGb": 100,
+  "containerDiskGb": 100,
+  "cloudType": "SECURE",
+  "config": {
+    "command": "short description or exact command the pod should run",
+    "artifacts": ["expected artifact paths or URLs"]
+  }
+}
+\`\`\`
+
+Choose the smallest GPU type/count that can plausibly run the approved experiment. If the experiment truly should not launch compute, do not use kind=experiment; write a blocker explaining that it should be handled as a planning/QA run instead.
+
+The Approval Checklist must explicitly cover goal, hypothesis, prediction, kill criterion, compute/hardware, artifacts, verification, risks, likely clean-result shape, and whether the runpod-spec matches the plan.`;
 }
 
 export function parseStructuredPlan(planMd: string): StructuredPlan {
@@ -939,7 +1059,11 @@ async function markFailed(runId: string, error: string) {
     agentRunId: runId,
     detail: error.slice(0, 500),
   });
-  if (row) {
+  await notifyPipelineChanged(runId);
+  const continued = await queueAutomaticContinuationRun(runId, error);
+  const recovered = continued ? false : await queueAutomaticRecoveryRun(runId, error);
+
+  if (row && !continued && !recovered) {
     await cascadeAgentRunFailureToScope({
       runId,
       scopeEntityKind: row.scopeEntityKind,
@@ -949,7 +1073,6 @@ async function markFailed(runId: string, error: string) {
     });
   }
   await notifyPipelineChanged(runId);
-  await maybeQueueContinuationRun(runId, error);
 }
 
 async function maybePersistChatReply(runId: string, body: string, role: 'assistant' | 'system' = 'assistant') {
@@ -970,97 +1093,38 @@ async function maybePersistChatReply(runId: string, body: string, role: 'assista
     .where(eq(schema.chatSessions.id, row.chatSessionId));
 }
 
-const CONTINUATION_RE = /stream ended without result|completed without final response|max turns|aborted|stopped before/i;
-const AUTO_CONTINUATION_MARKER_RE = /\[auto-continuation-for:[0-9a-f-]+\]/i;
-
-async function maybeQueueContinuationRun(sourceRunId: string, reason: string) {
-  if (!CONTINUATION_RE.test(reason)) return;
-  const source = await loadRun(sourceRunId);
-  if (!source) return;
-  if (AUTO_CONTINUATION_MARKER_RE.test(source.request)) {
-    await emitEvent(sourceRunId, 'auto_continuation_skipped', 'continuation depth cap reached');
-    await recordTrail({
-      action: `Skipped continuation after ${sourceRunId.slice(0, 8)}`,
-      why: 'The failed run was already an auto-continuation; the runner caps continuation chains at one retry.',
-      entityKind: source.scopeEntityKind,
-      entityId: source.scopeEntityId,
-      agentRunId: sourceRunId,
-      detail: reason.slice(0, 500),
-    });
-    return;
-  }
-
-  const marker = `[auto-continuation-for:${sourceRunId}]`;
-  const existing = await db()
-    .select({ id: schema.agentRuns.id })
-    .from(schema.agentRuns)
-    .where(ilike(schema.agentRuns.request, `%${marker}%`))
-    .limit(1);
-  if (existing.length > 0) return;
-
-  const events = await db()
-    .select({
-      eventType: schema.agentRunEvents.eventType,
-      body: schema.agentRunEvents.body,
-      createdAt: schema.agentRunEvents.createdAt,
-    })
-    .from(schema.agentRunEvents)
-    .where(eq(schema.agentRunEvents.runId, sourceRunId))
-    .orderBy(schema.agentRunEvents.createdAt)
-    .limit(60);
-
-  const transcript = events
-    .map((e) => {
-      const body = e.body ? `: ${truncate(e.body, 600)}` : '';
-      return `- ${e.createdAt.toISOString()} ${e.eventType}${body}`;
-    })
-    .join('\n');
-
-  const request = `${marker}
-
-The previous Claude Code run stopped before a final result.
-
-Review what it already did, then continue to a final useful result. Do not repeat completed work. If continuing would be unsafe or underspecified, stop with a clear blocker and the exact question the user should answer.
-
-Original request:
-${source.request}
-
-Stop reason:
-${reason}
-
-Previous run transcript:
-${transcript}`;
-
-  const inserted = await db()
-    .insert(schema.agentRuns)
-    .values({
-      kind: source.kind,
-      provider: source.provider,
-      status: 'queued',
-      request,
-      approvalRequired: source.approvalRequired,
-      scopeEntityKind: source.scopeEntityKind,
-      scopeEntityId: source.scopeEntityId,
-      runpodAccount: source.runpodAccount,
-    })
-    .returning({ id: schema.agentRuns.id });
-  const continuationId = inserted[0]!.id;
-  await emitEvent(sourceRunId, 'auto_continuation_queued', continuationId);
-  await recordTrail({
-    action: `Queued continuation run ${continuationId.slice(0, 8)} after ${sourceRunId.slice(0, 8)}`,
-    why: 'The previous agent stopped before a final result, so another run will review the transcript and continue.',
-    entityKind: source.scopeEntityKind,
-    entityId: source.scopeEntityId,
-    agentRunId: continuationId,
-    correlationId: sourceRunId,
-    detail: reason.slice(0, 500),
-  });
-  await notifyQueued(continuationId);
-}
-
 function truncate(s: string | undefined, n: number): string {
   if (!s) return '';
   return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+function summarizeFileChangeTool(
+  toolName: string,
+  input: unknown,
+): { body: string; metadata: Record<string, unknown> } | null {
+  if (!['Edit', 'MultiEdit', 'Write', 'NotebookEdit'].includes(toolName)) return null;
+  const values = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
+  const filePath =
+    typeof values.file_path === 'string'
+      ? values.file_path
+      : typeof values.path === 'string'
+        ? values.path
+        : typeof values.notebook_path === 'string'
+          ? values.notebook_path
+          : null;
+  const target = filePath ?? 'unknown file';
+  const action =
+    toolName === 'Write'
+      ? 'wrote'
+      : toolName === 'MultiEdit'
+        ? 'edited'
+        : toolName === 'NotebookEdit'
+          ? 'edited notebook'
+          : 'edited';
+  return {
+    body: `${action} ${target}`,
+    metadata: { tool: toolName, path: filePath, input: redactInput(input) },
+  };
 }
 
 function redactInput(input: unknown): unknown {

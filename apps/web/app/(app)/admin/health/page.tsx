@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireOwner } from '@/lib/access';
 import { loadHealthSummary } from '@/lib/health';
+import { effectiveRunPodRate, estimateRunPodSpendUsd, formatUsd, formatUsdPerHour } from '@/lib/runpod-cost';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,13 +68,19 @@ export default async function HealthPage() {
 
       <Table
         title="Active pods"
-        headers={['status', 'pod', 'run', 'error']}
-        rows={health.activePods.map((pod) => [
-          pod.status,
-          pod.runpodPodId ?? pod.id.slice(0, 8),
-          pod.agentRunId ? <Link key={pod.agentRunId} href={`/agent/${pod.agentRunId}`} className="hover:underline">{pod.agentRunId.slice(0, 8)}</Link> : '',
-          pod.lastError?.slice(0, 120) ?? '',
-        ])}
+        headers={['status', 'pod', 'run', 'spent', 'rate', 'error']}
+        rows={health.activePods.map((pod) => {
+          const spend = estimateRunPodSpendUsd(pod);
+          const rate = effectiveRunPodRate(pod);
+          return [
+            pod.status,
+            pod.runpodPodId ?? pod.id.slice(0, 8),
+            pod.agentRunId ? <Link key={pod.agentRunId} href={`/agent/${pod.agentRunId}`} className="hover:underline">{pod.agentRunId.slice(0, 8)}</Link> : '',
+            spend == null ? 'pending' : formatUsd(spend),
+            formatUsdPerHour(rate),
+            pod.lastError?.slice(0, 120) ?? '',
+          ];
+        })}
       />
     </div>
   );

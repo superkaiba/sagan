@@ -1,9 +1,11 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from './db.js';
-import { emitEvent } from './queue.js';
+import { emitEvent, notifyPipelineChanged } from './queue.js';
 import { getPod, stopPod, type PodInfo, type RunpodAccount } from './tools/runpod.js';
 import { log } from './log.js';
 import { recordTrail } from './trail.js';
+import { queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
+import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 
 const DEFAULT_WATCH_INTERVAL_MS = 60_000;
 const ACTIVE_POD_STATUSES = ['deploying', 'running', 'retrying', 'stop_requested'];
@@ -103,6 +105,9 @@ async function refreshPod(row: PodLifecycleRow) {
       status,
       sshHost: pod.sshHost,
       sshPort: pod.sshPort,
+      costPerHr: pod.costPerHr,
+      adjustedCostPerHr: pod.adjustedCostPerHr,
+      uptimeSeconds: pod.uptimeSeconds,
     });
     if (status === 'running') {
       await markAgentRunRunning(row.agentRunId);
@@ -112,6 +117,7 @@ async function refreshPod(row: PodLifecycleRow) {
   if (row.experimentId && status === 'running') {
     await setExperimentWorkflowStatus(row.experimentId, 'running', 'RunPod pod is running.');
   }
+  await notifyPipelineChanged(row.agentRunId ?? row.experimentId ?? row.runpodPodId);
 }
 
 async function updatePodFromInfo(row: PodLifecycleRow, pod: PodInfo, status: string) {
@@ -122,6 +128,10 @@ async function updatePodFromInfo(row: PodLifecycleRow, pod: PodInfo, status: str
       name: pod.name || row.name,
       gpuTypeId: pod.gpuTypeId ?? row.gpuTypeId,
       gpuCount: pod.gpuCount ?? row.gpuCount,
+      costPerHr: pod.costPerHr ?? row.costPerHr,
+      adjustedCostPerHr: pod.adjustedCostPerHr ?? row.adjustedCostPerHr,
+      uptimeSeconds: pod.uptimeSeconds ?? row.uptimeSeconds,
+      lastStartedAt: parseRunpodDate(pod.lastStartedAt) ?? row.lastStartedAt,
       status,
       desiredStatus: pod.desiredStatus,
       sshHost: pod.sshHost,
@@ -134,6 +144,12 @@ async function updatePodFromInfo(row: PodLifecycleRow, pod: PodInfo, status: str
       updatedAt: now,
     })
     .where(eq(schema.podLifecycle.id, row.id));
+}
+
+function parseRunpodDate(value: string | null): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 async function handlePodRefreshError(row: PodLifecycleRow, message: string) {
@@ -151,13 +167,21 @@ async function handlePodRefreshError(row: PodLifecycleRow, message: string) {
     })
     .where(eq(schema.podLifecycle.id, row.id));
 
+  let recovered = false;
+  if (blocked && row.agentRunId) {
+    recovered = await queueAutomaticRecoveryRun(row.agentRunId, message).catch((err) => {
+      log.warn('failed to queue RunPod recovery run', { runId: row.agentRunId, err: String(err) });
+      return false;
+    });
+  }
+
   if (row.agentRunId) {
     await emitEvent(row.agentRunId, blocked ? 'runpod_blocked' : 'runpod_retry', message.slice(0, 1000), {
       podId: row.runpodPodId,
       retryCount,
       maxRetries: row.maxRetries,
     });
-    if (blocked) {
+    if (blocked && !recovered) {
       await db()
         .update(schema.agentRuns)
         .set({
@@ -174,12 +198,20 @@ async function handlePodRefreshError(row: PodLifecycleRow, message: string) {
         agentRunId: row.agentRunId,
         detail: message.slice(0, 500),
       });
+      await cascadeAgentRunFailureToScope({
+        runId: row.agentRunId,
+        scopeEntityKind: row.experimentId ? 'experiment' : undefined,
+        scopeEntityId: row.experimentId ?? undefined,
+        reason: 'failed',
+        detail: message,
+      });
     }
   }
 
-  if (blocked && row.experimentId) {
+  if (blocked && row.experimentId && !row.agentRunId) {
     await setExperimentWorkflowStatus(row.experimentId, 'blocked', message.slice(0, 1000));
   }
+  await notifyPipelineChanged(row.agentRunId ?? row.experimentId ?? row.runpodPodId);
 }
 
 async function markAgentRunRunning(agentRunId: string) {

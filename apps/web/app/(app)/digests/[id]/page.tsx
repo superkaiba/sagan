@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import { weeklyDigests } from '@sagan/db/schema';
 import { db } from '@/lib/db';
+import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
+import { CommentableBody } from '@/components/CommentableBody';
 import { Comments } from '@/components/Comments';
 import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
@@ -28,7 +30,8 @@ export default async function DigestEditPage({
   if (!row) return notFound();
 
   return (
-    <div className="space-y-4">
+    <AnchoredCommentsProvider>
+      <div className="space-y-4">
       <header className="space-y-1">
         <Link href="/digests" className="text-xs text-[--color-muted] hover:text-[--color-fg]">
           ← all digests
@@ -52,10 +55,11 @@ export default async function DigestEditPage({
         <DigestEditor id={row.id} initialBody={row.bodyMd} sent={!!row.sentAt} />
       ) : (
         <section className="whitespace-pre-wrap rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 text-sm">
-          {row.bodyMd}
+          <CommentableBody body={row.bodyMd} />
         </section>
       )}
       <Comments entityKind="weekly_digest" entityId={row.id} />
-    </div>
+      </div>
+    </AnchoredCommentsProvider>
   );
 }

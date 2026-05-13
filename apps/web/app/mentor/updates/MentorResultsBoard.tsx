@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ExternalLink, MessageSquare, X } from 'lucide-react';
+import { ExternalLink, Maximize2, MessageSquare, X } from 'lucide-react';
+import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
+import { CommentableBody } from '@/components/CommentableBody';
 import { Comments } from '@/components/Comments';
 import { Markdown, normalizeGitHubMarkdown } from '@/components/Markdown';
 import type { CleanResult } from '@/lib/mentor-results-data';
@@ -183,51 +185,64 @@ export function MentorResultsBoard({
                 </h2>
                 <p className="mt-1 text-xs text-[--color-muted]">{sourceLabel(active)}</p>
               </div>
-              <button
-                type="button"
-                onClick={closeOverlay}
-                aria-label="Close overlay"
-                className="rounded-md border border-[--color-border] p-1.5 text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
-                style={{ backgroundColor: 'var(--color-bg)' }}
-              >
-                <X aria-hidden="true" className="h-4 w-4" />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={`/clean-results/${active.id}`}
+                  aria-label="Open page"
+                  title="Open page"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[--color-border] text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                  style={{ backgroundColor: 'var(--color-bg)' }}
+                >
+                  <Maximize2 aria-hidden="true" className="h-4 w-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={closeOverlay}
+                  aria-label="Close overlay"
+                  className="rounded-md border border-[--color-border] p-1.5 text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                  style={{ backgroundColor: 'var(--color-bg)' }}
+                >
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
             </header>
 
-            <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_22rem]">
-              <main className="min-h-0 overflow-y-auto p-4 md:p-6">
-                {active.url ? (
-                  <div className="mb-4 flex flex-wrap gap-2 text-xs">
-                    <a
-                      href={active.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex min-h-8 items-center gap-1 border border-[--color-border] px-2 py-1 font-medium hover:bg-[--color-hover]"
-                    >
-                      GitHub issue
-                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                    </a>
-                  </div>
-                ) : null}
-                <Markdown>{active.body}</Markdown>
-              </main>
+            <AnchoredCommentsProvider>
+              <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_22rem]">
+                <main className="min-h-0 overflow-y-auto p-4 md:p-6">
+                  {active.url ? (
+                    <div className="mb-4 flex flex-wrap gap-2 text-xs">
+                      <a
+                        href={active.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-8 items-center gap-1 border border-[--color-border] px-2 py-1 font-medium hover:bg-[--color-hover]"
+                      >
+                        GitHub issue
+                        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                      </a>
+                    </div>
+                  ) : null}
+                  <CommentableBody body={active.body} />
+                </main>
 
-              <aside className="min-h-0 overflow-y-auto border-t border-[--color-border] p-4 lg:border-l lg:border-t-0">
-                {signedIn ? (
-                  <Comments entityKind="clean_result" entityId={active.id} />
-                ) : (
-                  <div className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 text-sm">
-                    <p className="text-[--color-muted]">Sign in to comment or ask Claude/Codex about this result.</p>
-                    <a
-                      href={`/api/auth/google/start?signup=1&next=${encodeURIComponent(`/mentor/updates?result=${active.id}`)}`}
-                      className="mt-3 inline-block rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg]"
-                    >
-                      Sign in with Google
-                    </a>
-                  </div>
-                )}
-              </aside>
-            </div>
+                <aside className="min-h-0 overflow-y-auto border-t border-[--color-border] p-4 lg:border-l lg:border-t-0">
+                  {signedIn ? (
+                    <Comments entityKind="clean_result" entityId={active.id} />
+                  ) : (
+                    <div className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 text-sm">
+                      <p className="text-[--color-muted]">Sign in to comment or ask Claude/Codex about this result.</p>
+                      <a
+                        href={`/api/auth/google/start?signup=1&next=${encodeURIComponent(`/mentor/updates?result=${active.id}`)}`}
+                        className="mt-3 inline-block rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg]"
+                      >
+                        Sign in with Google
+                      </a>
+                    </div>
+                  )}
+                </aside>
+              </div>
+            </AnchoredCommentsProvider>
           </section>
         </div>
       ) : null}

@@ -1,10 +1,11 @@
-import { BarChart3, Bot, FolderOpen, HeartPulse, KeyRound, LogOut, Mail, ScrollText, ShieldCheck } from 'lucide-react';
+import { BarChart3, Bot, FolderOpen, HeartPulse, KeyRound, LogOut, Mail, Newspaper, ScrollText, ShieldCheck } from 'lucide-react';
 import { ThemeControl } from '@/components/ThemeControl';
 import { ListRow, PageHeader, Panel, buttonClassName } from '@/components/ui';
 
 const LINKS = [
   { title: 'Results', href: '/results', detail: 'Daily log, weekly digests, and finding history.', icon: BarChart3 },
   { title: 'Projects', href: '/projects', detail: 'Project records and narrative drafts.', icon: FolderOpen },
+  { title: 'Project updates', href: '/projects/updates', detail: 'Daily updates, weekly digests, clean results, and summary docs by project.', icon: Newspaper },
   { title: 'Automation', href: '/automation', detail: 'Dispatch and inspect agent runs.', icon: Bot },
   { title: 'Log', href: '/log', detail: 'Chronological research, approval, and automation activity.', icon: ScrollText },
   { title: 'Weekly digests', href: '/digests', detail: 'Draft, edit, and share advisor updates.', icon: Mail },

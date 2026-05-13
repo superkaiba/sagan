@@ -3,6 +3,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Markdown } from '@/components/Markdown';
+import {
+  effectiveRunPodRate,
+  estimateRunPodSpendUsd,
+  estimateRunPodUptimeSeconds,
+  formatDuration,
+  formatRunway,
+  formatUsd,
+  formatUsdPerHour,
+} from '@/lib/runpod-cost';
+import type { RunPodAccountSummary } from '@/lib/runpod-api';
 
 interface RunEvent {
   id: string;
@@ -32,15 +42,22 @@ interface RunPodLifecycle {
   name: string | null;
   gpuTypeId: string | null;
   gpuCount: number | null;
+  costPerHr: number | null;
+  adjustedCostPerHr: number | null;
+  uptimeSeconds: number | null;
   status: string;
   desiredStatus: string | null;
   sshHost: string | null;
   sshPort: number | null;
+  lastStartedAt: string | null;
   retryCount: number;
   maxRetries: number;
   blockedReason: string | null;
   lastError: string | null;
   lastCheckedAt: string | null;
+  stoppedAt: string | null;
+  terminatedAt: string | null;
+  createdAt: string;
 }
 
 interface RunArtifact {
@@ -61,11 +78,13 @@ interface Props {
   initialPlanJson: unknown;
   initialEvents: RunEvent[];
   initialPods: RunPodLifecycle[];
+  runpodAccounts: RunPodAccountSummary[];
   initialArtifacts: RunArtifact[];
   canManageRun: boolean;
 }
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'rejected', 'blocked']);
+const METERING_POD_STATUSES = new Set(['deploying', 'running', 'retrying', 'stop_requested']);
 const ACTIVE_STALE_AFTER_MS = 10 * 60 * 1000;
 
 function formatAge(ms: number) {
@@ -77,7 +96,7 @@ function formatAge(ms: number) {
 }
 
 function continuationSource(request: string) {
-  return request.match(/\[auto-continuation-for:([^\]]+)\]/)?.[1] ?? null;
+  return request.match(/\[auto-(?:continuation|recovery)-for:([^\]]+)\]/)?.[1] ?? null;
 }
 
 export function RunStream({
@@ -89,6 +108,7 @@ export function RunStream({
   initialPlanJson,
   initialEvents,
   initialPods,
+  runpodAccounts,
   initialArtifacts,
   canManageRun,
 }: Props) {
@@ -232,12 +252,28 @@ export function RunStream({
     : null;
   const sourceRunId = continuationSource(request);
   const continuationEvents = events.filter((ev) => ev.eventType === 'auto_continuation_queued');
+  const recoveryEvents = events.filter((ev) => ev.eventType === 'auto_recovery_queued');
+  const manualResumeEvents = events.filter((ev) => ev.eventType === 'manual_resume_queued');
   const latestContinuationId = continuationEvents.at(-1)?.body?.trim() ?? null;
+  const latestRecoveryId = recoveryEvents.at(-1)?.body?.trim() ?? null;
+  const latestManualResumeId = manualResumeEvents.at(-1)?.body?.trim() ?? null;
   const planApprovalNote =
     showApproval && kind === 'plan'
       ? 'Approving accepts the plan. Execution may continue as a separate apply or continuation run depending on the workflow.'
       : null;
   const hasActivePods = pods.some((pod) => ['deploying', 'running', 'retrying'].includes(pod.status));
+  const activePodSpend = pods
+    .filter((pod) => METERING_POD_STATUSES.has(pod.status))
+    .map((pod) => estimateRunPodSpendUsd(pod))
+    .filter((value): value is number => value != null)
+    .reduce((sum, value) => sum + value, 0);
+  const activePodRate = pods
+    .filter((pod) => METERING_POD_STATUSES.has(pod.status))
+    .map((pod) => effectiveRunPodRate(pod))
+    .filter((value): value is number => value != null)
+    .reduce((sum, value) => sum + value, 0);
+  const runpodAccountByKey = new Map(runpodAccounts.map((account) => [account.account, account]));
+  const primaryRunpodAccount = pods[0] ? runpodAccountByKey.get(pods[0].account as 'team' | 'personal') : null;
 
   return (
     <div className="space-y-4">
@@ -247,6 +283,7 @@ export function RunStream({
         <span className="text-xs text-[--color-muted]">
           {events.length} event{events.length === 1 ? '' : 's'}
           {latestEventAt !== null ? ` · latest ${formatAge(now - latestEventAt)}` : ''}
+          {primaryRunpodAccount && activePodRate > 0 ? ` · ${formatRunway(primaryRunpodAccount.clientBalance, activePodRate)}` : ''}
         </span>
         <button
           type="button"
@@ -263,7 +300,7 @@ export function RunStream({
             className="rounded-md border border-[--color-danger-border] bg-[--color-danger-bg] px-2 py-1 text-xs font-medium text-[--color-danger] hover:border-[--color-danger] disabled:opacity-50"
             title="Spawn a new Claude Code session that picks up where this one stopped"
           >
-            Retry
+            Resume
           </button>
         ) : null}
         <button
@@ -282,13 +319,13 @@ export function RunStream({
         </p>
       ) : null}
 
-      {sourceRunId || latestContinuationId ? (
+      {sourceRunId || latestContinuationId || latestRecoveryId || latestManualResumeId ? (
         <section className="rounded-lg border border-[--color-border] bg-[--color-panel] p-4 text-sm">
-          <h2 className="font-medium">Continuation</h2>
+          <h2 className="font-medium">Resume history</h2>
           <div className="mt-2 space-y-1 text-[--color-muted]">
             {sourceRunId ? (
               <p>
-                This run continues{' '}
+                This run resumes{' '}
                 <a className="text-[--color-accent] hover:underline" href={`/agent/${sourceRunId}`}>
                   {sourceRunId.slice(0, 8)}
                 </a>
@@ -300,6 +337,24 @@ export function RunStream({
                 A continuation was queued as{' '}
                 <a className="text-[--color-accent] hover:underline" href={`/agent/${latestContinuationId}`}>
                   {latestContinuationId.slice(0, 8)}
+                </a>
+                .
+              </p>
+            ) : null}
+            {latestRecoveryId ? (
+              <p>
+                An automatic recovery run was queued as{' '}
+                <a className="text-[--color-accent] hover:underline" href={`/agent/${latestRecoveryId}`}>
+                  {latestRecoveryId.slice(0, 8)}
+                </a>
+                .
+              </p>
+            ) : null}
+            {latestManualResumeId ? (
+              <p>
+                A manual resume was queued as{' '}
+                <a className="text-[--color-accent] hover:underline" href={`/agent/${latestManualResumeId}`}>
+                  {latestManualResumeId.slice(0, 8)}
                 </a>
                 .
               </p>
@@ -321,8 +376,18 @@ export function RunStream({
               <h2 className="text-sm font-medium">RunPod lifecycle</h2>
               <p className="mt-1 text-xs text-[--color-muted]">
                 Stop requests preserve the attached RunPod volume.
+                {activePodSpend > 0 ? ` Estimated active spend: ${formatUsd(activePodSpend)}.` : ''}
+                {primaryRunpodAccount && activePodRate > 0
+                  ? ` Estimated runway for this run: ${formatRunway(primaryRunpodAccount.clientBalance, activePodRate)}.`
+                  : ''}
               </p>
             </div>
+            <a
+              href="/runpods"
+              className="rounded-md border border-[--color-border] px-2 py-1 text-xs hover:border-[--color-fg]"
+            >
+              RunPods
+            </a>
             {canManageRun && hasActivePods ? (
               <button
                 type="button"
@@ -338,6 +403,13 @@ export function RunStream({
             <div className="grid gap-2 md:grid-cols-2">
               {pods.map((pod) => (
                 <div key={pod.id} className="rounded-md border border-[--color-border] bg-[--color-bg] p-3 text-sm">
+                  {(() => {
+                    const rate = effectiveRunPodRate(pod);
+                    const uptimeSeconds = estimateRunPodUptimeSeconds(pod);
+                    const spend = estimateRunPodSpendUsd(pod);
+                    const account = runpodAccountByKey.get(pod.account as 'team' | 'personal');
+                    return (
+                      <>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="font-mono text-xs">{pod.podId}</span>
                     <span className="rounded-full bg-[--color-muted-bg] px-2 py-0.5 text-xs">{pod.status}</span>
@@ -345,6 +417,14 @@ export function RunStream({
                   <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-[--color-muted]">
                     <dt>GPU</dt>
                     <dd className="text-[--color-fg]">{pod.gpuCount ?? '-'} x {pod.gpuTypeId ?? '-'}</dd>
+                    <dt>Rate</dt>
+                    <dd className="text-[--color-fg]">{formatUsdPerHour(rate)}</dd>
+                    <dt>Spent</dt>
+                    <dd className="text-[--color-fg]">{formatUsd(spend)}</dd>
+                    <dt>Runway</dt>
+                    <dd className="text-[--color-fg]">{formatRunway(account?.clientBalance ?? null, rate)}</dd>
+                    <dt>Uptime</dt>
+                    <dd className="text-[--color-fg]">{formatDuration(uptimeSeconds)}</dd>
                     <dt>Desired</dt>
                     <dd className="text-[--color-fg]">{pod.desiredStatus ?? '-'}</dd>
                     <dt>SSH</dt>
@@ -359,6 +439,9 @@ export function RunStream({
                       {pod.blockedReason ?? pod.lastError}
                     </p>
                   ) : null}
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
             </div>

@@ -42,6 +42,10 @@ Sagan never reaches into a client repo at runtime.
 - When showing a dev or preview server from this VM, bind to `0.0.0.0` and
   report the external VM URL `http://35.226.138.62:<port>/...`. Do not give
   `localhost` URLs to the user.
+- Every completed web/app change must end with a user-reachable link. Prefer
+  a verified Vercel deployment for production-ready work. If production deploy
+  is not appropriate, create or keep alive an online preview/dev URL on the VM
+  and report `http://35.226.138.62:<port>/...`; never stop at "open localhost".
 - For production changes: run checks, commit, push to the Vercel-connected
   branch, and report the Vercel deployment URL/status when available.
 - Do not use destructive git commands (`git reset --hard`, `git checkout --`,

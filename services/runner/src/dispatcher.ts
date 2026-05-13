@@ -20,6 +20,8 @@ import { emitEvent } from './queue.js';
 import { dispatchBatch, type DispatchPodSpec, type RunpodAccount } from './tools/runpod.js';
 import { log } from './log.js';
 import { recordTrail } from './trail.js';
+import { queueAutomaticRecoveryRun } from './lib/agent-recovery.js';
+import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 
 interface ParsedSpec {
   /** A descriptive name; defaults to <experiment_id>-<i>. */
@@ -213,6 +215,8 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
       await emitEvent(runId, 'deploy_pod_started', r.pod.podId, {
         gpuType: r.pod.gpuTypeId,
         gpuCount: r.pod.gpuCount,
+        costPerHr: r.pod.costPerHr,
+        adjustedCostPerHr: r.pod.adjustedCostPerHr,
       });
       let createdRunId: string | null = null;
       if (experimentId) {
@@ -233,6 +237,10 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
         name: r.pod.name,
         gpuTypeId: r.pod.gpuTypeId,
         gpuCount: r.pod.gpuCount,
+        costPerHr: r.pod.costPerHr,
+        adjustedCostPerHr: r.pod.adjustedCostPerHr,
+        uptimeSeconds: r.pod.uptimeSeconds,
+        lastStartedAt: parseRunpodDate(r.pod.lastStartedAt),
         status: r.pod.sshHost ? 'running' : 'deploying',
         desiredStatus: r.pod.desiredStatus,
         sshHost: r.pod.sshHost,
@@ -258,6 +266,8 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
           name: r.pod.name,
           gpuTypeId: r.pod.gpuTypeId,
           gpuCount: r.pod.gpuCount,
+          costPerHr: r.pod.costPerHr,
+          adjustedCostPerHr: r.pod.adjustedCostPerHr,
         },
       });
       if (experimentId && r.pod.sshHost) {
@@ -301,6 +311,12 @@ export async function dispatchApprovedExperiment(runId: string): Promise<void> {
   });
 
   log.info('dispatch finished', { runId, succeeded, failed, podIds });
+}
+
+function parseRunpodDate(value: string | null): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 async function finalizeApprovedNonExperiment(run: typeof schema.agentRuns.$inferSelect) {
@@ -354,9 +370,6 @@ async function fail(runId: string, err: string) {
       updatedAt: new Date(),
     })
     .where(eq(schema.agentRuns.id, runId));
-  if (run?.scopeEntityKind === 'experiment' && run.scopeEntityId) {
-    await setExperimentStatus(run.scopeEntityId, 'blocked', err.slice(0, 1000));
-  }
   await emitEvent(runId, 'runpod_blocked', err.slice(0, 1000));
   await recordTrail({
     action: `RunPod dispatch failed for run ${runId.slice(0, 8)}`,
@@ -366,6 +379,22 @@ async function fail(runId: string, err: string) {
     agentRunId: runId,
     detail: err.slice(0, 500),
   });
+  const recovered = await queueAutomaticRecoveryRun(runId, err).catch((recoveryErr) => {
+    log.warn('failed to queue automatic recovery after dispatch failure', {
+      runId,
+      err: recoveryErr instanceof Error ? recoveryErr.message : String(recoveryErr),
+    });
+    return false;
+  });
+  if (!recovered) {
+    await cascadeAgentRunFailureToScope({
+      runId,
+      scopeEntityKind: run?.scopeEntityKind,
+      scopeEntityId: run?.scopeEntityId,
+      reason: 'failed',
+      detail: err,
+    });
+  }
 }
 
 async function setExperimentStatus(

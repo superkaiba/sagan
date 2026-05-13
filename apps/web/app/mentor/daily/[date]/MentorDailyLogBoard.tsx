@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { X } from 'lucide-react';
+import { Maximize2, X } from 'lucide-react';
+import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
+import { CommentableBody } from '@/components/CommentableBody';
 import { Comments } from '@/components/Comments';
 import { Markdown } from '@/components/Markdown';
 import { StatusBadge } from '@/components/ui';
@@ -127,59 +129,71 @@ export function MentorDailyLogBoard({
                 <p className="text-xs text-[--color-muted]">Clean log · {active.day}</p>
                 <h2 className="truncate text-sm font-medium">{titleFromMarkdown(active.bodyMd)}</h2>
               </div>
-              <button
-                type="button"
-                onClick={closeOverlay}
-                aria-label="Close overlay"
-                className="rounded-md border border-[--color-border] bg-[--color-bg] p-1.5 text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
-              >
-                <X aria-hidden="true" className="h-4 w-4" />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={`/e/daily_log_entry/${active.id}`}
+                  aria-label="Open page"
+                  title="Open page"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[--color-border] bg-[--color-bg] text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                >
+                  <Maximize2 aria-hidden="true" className="h-4 w-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={closeOverlay}
+                  aria-label="Close overlay"
+                  className="rounded-md border border-[--color-border] bg-[--color-bg] p-1.5 text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                >
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
             </header>
 
-            <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_22rem]">
-              <main className="min-h-0 overflow-y-auto p-4 md:p-6">
-                <div className="mb-4 flex flex-wrap gap-2 text-xs">
-                  <a
-                    href={`/e/daily_log_entry/${active.id}`}
-                    className="rounded-md border border-[--color-border] px-2 py-1 hover:bg-[--color-hover]"
-                  >
-                    Dashboard version
-                  </a>
-                  <a
-                    href={`/mentor/daily/${date}?entry=${active.id}`}
-                    className="rounded-md border border-[--color-border] px-2 py-1 hover:bg-[--color-hover]"
-                  >
-                    Shared link
-                  </a>
-                  {active.entityKind === 'clean_result' && active.entityId ? (
+            <AnchoredCommentsProvider>
+              <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_22rem]">
+                <main className="min-h-0 overflow-y-auto p-4 md:p-6">
+                  <div className="mb-4 flex flex-wrap gap-2 text-xs">
                     <a
-                      href={`/clean-results/${active.entityId}`}
+                      href={`/e/daily_log_entry/${active.id}`}
                       className="rounded-md border border-[--color-border] px-2 py-1 hover:bg-[--color-hover]"
                     >
-                      Clean result record
+                      Dashboard version
                     </a>
-                  ) : null}
-                </div>
-                <Markdown>{active.bodyMd}</Markdown>
-              </main>
-
-              <aside className="min-h-0 overflow-y-auto border-t border-[--color-border] p-4 lg:border-l lg:border-t-0">
-                {signedIn ? (
-                  <Comments entityKind="daily_log_entry" entityId={active.id} />
-                ) : (
-                  <div className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 text-sm">
-                    <p className="text-[--color-muted]">Sign in to comment or ask Claude/Codex about this log.</p>
                     <a
-                      href={`/api/auth/google/start?signup=1&next=${encodeURIComponent(`/mentor/daily/${date}?entry=${active.id}`)}`}
-                      className="mt-3 inline-block rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg]"
+                      href={`/mentor/daily/${date}?entry=${active.id}`}
+                      className="rounded-md border border-[--color-border] px-2 py-1 hover:bg-[--color-hover]"
                     >
-                      Sign in with Google
+                      Shared link
                     </a>
+                    {active.entityKind === 'clean_result' && active.entityId ? (
+                      <a
+                        href={`/clean-results/${active.entityId}`}
+                        className="rounded-md border border-[--color-border] px-2 py-1 hover:bg-[--color-hover]"
+                      >
+                        Clean result record
+                      </a>
+                    ) : null}
                   </div>
-                )}
-              </aside>
-            </div>
+                  <CommentableBody body={active.bodyMd} />
+                </main>
+
+                <aside className="min-h-0 overflow-y-auto border-t border-[--color-border] p-4 lg:border-l lg:border-t-0">
+                  {signedIn ? (
+                    <Comments entityKind="daily_log_entry" entityId={active.id} />
+                  ) : (
+                    <div className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 text-sm">
+                      <p className="text-[--color-muted]">Sign in to comment or ask Claude/Codex about this log.</p>
+                      <a
+                        href={`/api/auth/google/start?signup=1&next=${encodeURIComponent(`/mentor/daily/${date}?entry=${active.id}`)}`}
+                        className="mt-3 inline-block rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg]"
+                      >
+                        Sign in with Google
+                      </a>
+                    </div>
+                  )}
+                </aside>
+              </div>
+            </AnchoredCommentsProvider>
           </section>
         </div>
       ) : null}

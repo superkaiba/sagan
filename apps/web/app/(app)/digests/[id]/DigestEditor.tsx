@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Markdown } from '@/components/Markdown';
+import { CommentableBody } from '@/components/CommentableBody';
 
 export function DigestEditor({
   id,
@@ -97,7 +97,7 @@ export function DigestEditor({
         />
       ) : (
         <article className="rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4">
-          {draft.trim() ? <Markdown>{draft}</Markdown> : <p className="text-sm text-[--color-muted]">Empty.</p>}
+          {draft.trim() ? <CommentableBody body={draft} /> : <p className="text-sm text-[--color-muted]">Empty.</p>}
         </article>
       )}
     </div>

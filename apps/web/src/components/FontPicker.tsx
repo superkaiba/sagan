@@ -76,9 +76,10 @@ export function FontPicker() {
         aria-expanded={open}
         className={cn(
           'flex w-full items-center justify-between rounded-[--radius-control] border border-[--color-border]',
-          'bg-[--color-panel] px-2.5 py-1.5 text-left text-xs text-[--color-fg] shadow-[var(--shadow-inset)]',
+          'bg-[var(--color-panel)] px-2.5 py-1.5 text-left text-xs text-[--color-fg] shadow-[var(--shadow-inset)]',
           'hover:bg-[--color-hover]',
         )}
+        style={{ backgroundColor: 'var(--color-panel)' }}
       >
         <span className="flex flex-col leading-tight">
           <span className="text-[10px] uppercase tracking-wide text-[--color-muted]">Font</span>
@@ -104,8 +105,9 @@ export function FontPicker() {
               'absolute bottom-full left-0 z-50 mb-1 w-full',
               'max-h-[min(60vh,28rem)] overflow-y-auto overscroll-contain',
               'rounded-[--radius-control] border border-[--color-border]',
-              'bg-[--color-panel] py-1 shadow-[var(--shadow-panel)]',
+              'bg-[var(--color-panel)] py-1 shadow-[var(--shadow-panel)]',
             )}
+            style={{ backgroundColor: 'var(--color-panel)' }}
           >
             {OPTIONS.map((option) => {
               const active = choice === option.value;
@@ -119,11 +121,14 @@ export function FontPicker() {
                       pick(option.value);
                       setOpen(false);
                     }}
-                    style={{ fontFamily: FONT_VAR[option.value] }}
+                    style={{
+                      fontFamily: FONT_VAR[option.value],
+                      backgroundColor: active ? 'var(--color-muted-bg)' : undefined,
+                    }}
                     className={cn(
                       'flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-sm',
                       'hover:bg-[--color-hover]',
-                      active && 'bg-[--color-muted-bg]',
+                      active && 'bg-[var(--color-muted-bg)]',
                     )}
                   >
                     <span className="flex min-w-0 flex-col leading-tight">

@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import Link from 'next/link';
+import { Loader2 } from 'lucide-react';
 import { Markdown } from './Markdown';
 import { useAnchoredComments } from './AnchoredCommentsContext';
 
@@ -18,6 +19,8 @@ interface Comment {
   body: string;
   anchoredQuote: string | null;
   agentRunId: string | null;
+  agentRunStatus: string | null;
+  agentRunKind: string | null;
   autoContinueClaude: boolean;
   resolvedAt: string | null;
   resolvedSummaryMd: string | null;
@@ -36,6 +39,11 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState('');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+  const [revising, setRevising] = useState(false);
+  const [reviseRunId, setReviseRunId] = useState<string | null>(null);
+  const [reviseError, setReviseError] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const replyRef = useRef<HTMLTextAreaElement>(null);
 
   async function load() {
     const res = await fetch(
@@ -71,12 +79,14 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     text: string,
     parentCommentId?: string | null,
     anchoredQuote?: string | null,
+    askAgent?: 'Claude',
   ) {
     // The API's zod schema marks both fields .optional() — that means undefined
     // or absent, NOT null. Building the payload conditionally keeps null out.
     const payload: Record<string, unknown> = { entityKind, entityId, body: text };
     if (parentCommentId) payload.parentCommentId = parentCommentId;
     if (anchoredQuote) payload.anchoredQuote = anchoredQuote;
+    if (askAgent) payload.askAgent = askAgent;
     const res = await fetch('/api/comments', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -85,13 +95,14 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     return res.ok;
   }
 
-  async function onTopLevelSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!body.trim()) return;
+  async function submitTopLevel(askAgent?: 'Claude') {
+    const text = body.trim();
+    if (!text || submitting) return;
     setSubmitting(true);
+    setReviseError(null);
     try {
       const pendingQuote = anchorCtx?.pendingAnchor?.quote ?? null;
-      const ok = await postComment(body, null, pendingQuote);
+      const ok = await postComment(text, null, pendingQuote, askAgent);
       if (ok) {
         setBody('');
         anchorCtx?.setPendingAnchor(null);
@@ -102,12 +113,18 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     }
   }
 
-  async function onReplySubmit(e: FormEvent, parentId: string) {
+  async function onTopLevelSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!replyBody.trim()) return;
+    await submitTopLevel();
+  }
+
+  async function submitReply(parentId: string, askAgent?: 'Claude') {
+    const text = replyBody.trim();
+    if (!text || submitting) return;
     setSubmitting(true);
+    setReviseError(null);
     try {
-      const ok = await postComment(replyBody, parentId);
+      const ok = await postComment(text, parentId, null, askAgent);
       if (ok) {
         setReplyBody('');
         setReplyTo(null);
@@ -116,6 +133,11 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function onReplySubmit(e: FormEvent, parentId: string) {
+    e.preventDefault();
+    await submitReply(parentId);
   }
 
   async function patch(id: string, body: Record<string, unknown>) {
@@ -136,6 +158,34 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     });
   }
 
+  function shouldSubmitFromTextarea(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return false;
+    event.preventDefault();
+    return true;
+  }
+
+  async function reviseFromComments() {
+    setRevising(true);
+    setReviseError(null);
+    try {
+      const res = await fetch('/api/comments/revise', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ entityKind, entityId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { runId?: string; error?: string; message?: string };
+      if (!res.ok || !data.runId) {
+        throw new Error(data.message ?? data.error ?? 'Revision run failed to start.');
+      }
+      setReviseRunId(data.runId);
+      await load();
+    } catch (err) {
+      setReviseError(err instanceof Error ? err.message : 'Revision run failed to start.');
+    } finally {
+      setRevising(false);
+    }
+  }
+
   // Group comments by thread root (parent or self).
   const roots = items.filter((c) => !c.parentCommentId);
   const repliesByParent = new Map<string, Comment[]>();
@@ -151,6 +201,9 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   }
 
   const visibleRoots = showResolved ? roots : roots.filter((r) => !r.resolvedAt);
+  const unresolvedCount = items.filter((c) => !c.resolvedAt).length;
+  const activeAgentStatuses = new Set(['queued', 'running', 'approved', 'deploying', 'awaiting_approval']);
+  const activeAgentCount = items.filter((c) => c.agentRunId && c.agentRunStatus && activeAgentStatuses.has(c.agentRunStatus)).length;
 
   function visibleBody(c: Comment) {
     return c.body.startsWith(CODEX_REPLY_MARKER)
@@ -166,7 +219,14 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
   }
 
   function autoContinueLabel(c: Comment) {
-    return /(^|\s)@codex\b/i.test(c.body) ? 'Codex auto-continues' : 'Claude auto-continues';
+    return 'Claude auto-continues';
+  }
+
+  function agentStatusLabel(c: Comment) {
+    if (!c.agentRunId) return null;
+    const status = c.agentRunStatus ?? 'queued';
+    if (c.agentRunKind === 'apply') return `Revision ${status.replace(/_/g, ' ')}`;
+    return `Claude ${status.replace(/_/g, ' ')}`;
   }
 
   function summarizeComment(c: Comment) {
@@ -189,6 +249,8 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     const displayBody = visibleBody(c);
     const hoverable = !isReply && !!c.anchoredQuote && !!anchorCtx;
     const isHovered = hoverable && anchorCtx?.hoveredId === c.id;
+    const agentLabel = agentStatusLabel(c);
+    const agentActive = Boolean(c.agentRunStatus && activeAgentStatuses.has(c.agentRunStatus));
     const wrap = `group p-3 transition-colors ${c.resolvedAt ? 'opacity-60' : ''} ${isAgent ? 'bg-[--color-muted-bg]' : ''} ${isReply ? 'border-l-2 border-[--color-border] ml-4' : ''} ${isHovered ? 'bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]' : ''}`;
     return (
       <article
@@ -225,12 +287,13 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
               {replyCount} repl{replyCount === 1 ? 'y' : 'ies'}
             </span>
           ) : null}
-          {c.kind === 'ask_claude' && c.agentRunId ? (
+          {agentLabel && c.agentRunId ? (
             <Link
               href={`/agent/${c.agentRunId}`}
-              className="rounded-full bg-[--color-accent] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[--color-accent-fg]"
+              className="inline-flex items-center gap-1 rounded-full bg-[--color-accent] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[--color-accent-fg]"
             >
-              view run
+              {agentActive ? <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden="true" /> : null}
+              {agentLabel}
             </Link>
           ) : null}
           {!isReply && c.autoContinueClaude ? (
@@ -268,14 +331,26 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
               {replyTo === c.id ? (
                 <form onSubmit={(e) => onReplySubmit(e, c.id)} className="space-y-1">
                   <textarea
+                    ref={replyRef}
                     rows={2}
                     autoFocus
                     value={replyBody}
                     onChange={(e) => setReplyBody(e.target.value)}
-                    placeholder="Reply…"
+                    onKeyDown={(event) => {
+                      if (shouldSubmitFromTextarea(event)) void submitReply(c.id);
+                    }}
+                    placeholder="Reply. Enter posts; Shift-Enter adds a line."
                     className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
                   />
                   <div className="flex justify-end gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => void submitReply(c.id, 'Claude')}
+                      disabled={submitting || !replyBody.trim()}
+                      className="text-[--color-muted] hover:text-[--color-fg]"
+                    >
+                      ask Claude
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -313,16 +388,41 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
 
   return (
     <section className="space-y-3">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">Comments</h2>
-        <button
-          type="button"
-          onClick={() => setShowResolved((v) => !v)}
-          className="text-xs text-[--color-muted] hover:text-[--color-fg]"
-        >
-          {showResolved ? 'Hide resolved' : 'Show resolved'}
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">Comments</h2>
+          {activeAgentCount > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-[--color-info-border] bg-[--color-info-bg] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[--color-info]">
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              Claude running
+            </span>
+          ) : null}
+          {reviseRunId ? (
+            <Link href={`/agent/${reviseRunId}`} className="text-xs text-[--color-accent] underline-offset-2 hover:underline">
+              revision run
+            </Link>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reviseFromComments()}
+            disabled={revising || unresolvedCount === 0}
+            className="inline-flex items-center gap-1 rounded-md border border-[--color-border] px-2.5 py-1 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg] disabled:opacity-45"
+          >
+            {revising ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : null}
+            Revise
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowResolved((v) => !v)}
+            className="text-xs text-[--color-muted] hover:text-[--color-fg]"
+          >
+            {showResolved ? 'Hide resolved' : 'Show resolved'}
+          </button>
+        </div>
       </div>
+      {reviseError ? <p className="text-xs text-[--color-danger]">{reviseError}</p> : null}
 
       <div className="rounded-lg border border-[--color-border] divide-y divide-[--color-border]">
         {visibleRoots.length === 0 ? (
@@ -362,29 +462,39 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
           </div>
         ) : null}
         <textarea
+          ref={bodyRef}
           rows={3}
           value={body}
           onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(event) => {
+            if (shouldSubmitFromTextarea(event)) void submitTopLevel();
+          }}
           placeholder={
             anchorCtx?.pendingAnchor
-              ? 'Write a comment about the highlighted text…'
-              : 'Add a comment. Mention @claude or @codex to spawn a Q&A run.'
+              ? 'Write a comment about the highlighted text. Enter posts; Shift-Enter adds a line.'
+              : 'Add a comment. Enter posts; Shift-Enter adds a line.'
           }
           className="w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[--color-accent]"
         />
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-[--color-muted]">
-            <kbd className="rounded border border-[--color-border] px-1 text-[10px]">@claude</kbd> or{' '}
-            <kbd className="rounded border border-[--color-border] px-1 text-[10px]">@codex</kbd> starts an
-            agent; replies in that thread continue automatically.
-          </p>
-          <button
-            type="submit"
-            disabled={submitting || !body.trim()}
-            className="rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg] disabled:opacity-50"
-          >
-            {submitting ? 'Posting…' : 'Comment'}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-[--color-muted]">Enter posts. Shift-Enter adds a line.</p>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void submitTopLevel('Claude')}
+              disabled={submitting || !body.trim()}
+              className="rounded-md border border-[--color-border] px-3 py-1.5 text-xs font-medium text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+            >
+              Ask Claude
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !body.trim()}
+              className="rounded-md bg-[--color-accent] px-3 py-1.5 text-xs font-medium text-[--color-accent-fg] disabled:opacity-50"
+            >
+              {submitting ? 'Posting…' : 'Comment'}
+            </button>
+          </div>
         </div>
       </form>
     </section>

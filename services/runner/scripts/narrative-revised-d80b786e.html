@@ -1,0 +1,158 @@
+<style>
+  .narrative-html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; line-height: 1.6; color: inherit; }
+  .narrative-html h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.015em; margin: 3rem 0 1.25rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border); scroll-margin-top: 1rem; color: inherit; }
+  .narrative-html h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0.5rem; }
+  .narrative-html h3 { font-size: 1.15rem; font-weight: 700; margin: 1.75rem 0 0.5rem; color: inherit; }
+  .narrative-html h3.qhead { font-size: 1.7rem; font-weight: 800; margin: 4.5rem 0 1rem; padding-top: 2rem; border-top: 4px solid var(--color-border); scroll-margin-top: 1rem; color: inherit; letter-spacing: -0.01em; }
+  .narrative-html h4 { font-size: 1.1rem; font-weight: 800; margin: 2.75rem 0 0.75rem; padding-top: 1.25rem; border-top: 2px solid var(--color-border); color: inherit; text-transform: uppercase; letter-spacing: 0.09em; }
+  .narrative-html p { margin: 0.75rem 0; }
+  .narrative-html ul, .narrative-html ol { margin: 0.5rem 0 0.75rem; padding-left: 1.5rem; }
+  .narrative-html li { margin: 0.35rem 0; }
+  .narrative-html a { color: var(--color-accent, #4f46e5); text-decoration: underline; text-underline-offset: 2px; }
+  .narrative-html a:hover { opacity: 0.8; }
+  .narrative-html code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85em; background: var(--color-muted-bg); padding: 0.1em 0.35em; border-radius: 3px; }
+  .narrative-html .lede { font-size: 1.0625rem; margin: 0.75rem 0 1.5rem; }
+  .narrative-html .confidence { display: inline-block; font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 10px; font-weight: 600; margin-left: 0.35rem; vertical-align: middle; }
+  .narrative-html .confidence.high { background: #d1fae5; color: #065f46; }
+  .narrative-html .confidence.mod { background: #fef3c7; color: #92400e; }
+  .narrative-html .confidence.low { background: #fee2e2; color: #991b1b; }
+  @media (prefers-color-scheme: dark) {
+    .narrative-html .confidence.high { background: rgba(16,185,129,0.18); color: #6ee7b7; }
+    .narrative-html .confidence.mod { background: rgba(245,158,11,0.18); color: #fcd34d; }
+    .narrative-html .confidence.low { background: rgba(239,68,68,0.18); color: #fca5a5; }
+  }
+  .narrative-html .cite { font-weight: 600; }
+  .narrative-html .cite em { font-weight: 500; }
+
+  /* Document layout: sticky TOC on the LEFT, content on the right */
+  .narrative-html .doc-layout { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 2.5rem; align-items: start; }
+  @media (max-width: 1080px) { .narrative-html .doc-layout { grid-template-columns: 1fr; gap: 1rem; } }
+  .narrative-html .doc-toc { position: sticky; top: 1rem; align-self: start; max-height: calc(100vh - 2rem); overflow-y: auto; font-size: 0.875rem; padding: 0.25rem 0; }
+  @media (max-width: 1080px) { .narrative-html .doc-toc { position: static; max-height: none; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); } }
+  .narrative-html .doc-toc .toc-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--color-muted); font-weight: 800; margin: 0 0 0.85rem; }
+  .narrative-html .doc-toc ul { list-style: none; padding-left: 0; margin: 0; }
+  .narrative-html .doc-toc > ul > li { margin: 0.5rem 0; font-weight: 600; }
+  .narrative-html .doc-toc ul ul { padding-left: 0; margin: 0.4rem 0 0.6rem 0.75rem; border-left: 1px solid var(--color-border); }
+  .narrative-html .doc-toc ul ul li { margin: 0.3rem 0; padding-left: 0.65rem; font-size: 0.82rem; font-weight: 400; }
+  .narrative-html .doc-toc a { color: inherit; opacity: 0.72; text-decoration: none; }
+  .narrative-html .doc-toc a:hover { opacity: 1; text-decoration: underline; }
+</style>
+
+<div class="narrative-html">
+<div class="doc-layout">
+
+<nav class="doc-toc" aria-label="Contents">
+  <div class="toc-label">Contents</div>
+  <ul>
+    <li><a href="#intro">Introduction</a></li>
+    <li><a href="#questions">Three research questions</a>
+      <ul>
+        <li><a href="#q1">Q1 &middot; Binding dynamics</a></li>
+        <li><a href="#q2">Q2 &middot; Composition</a></li>
+        <li><a href="#q3">Q3 &middot; Representation space</a></li>
+      </ul>
+    </li>
+    <li><a href="#applications">Applications</a></li>
+  </ul>
+</nav>
+
+<article>
+
+<h2 id="intro">Introduction</h2>
+
+<p class="lede">A pattern has been emerging across recent work on how language models learn behaviors: an input feature in training gets bound to a behavior, and the binding survives downstream intervention. What unifies these cases is that training installs a behavior into the model. What varies is the kind of training that does it.</p>
+
+<p><a href="https://arxiv.org/abs/2602.05910">Murray et al. <em>Chunky Post-Training</em></a> shows that post-training datasets &mdash; stitched from many small curated chunks &mdash; silently encode incidental correlations between surface features in inputs and behavioral routes. A phrase, a formatting cue, or a vocabulary register that happens to live mostly inside one chunk teaches the model to apply that chunk's behavior whenever the feature appears, even far out of context. "Elucidate" routes 85% of queries to code because the word lives mostly inside <code>codealpaca</code>; 220 of 940,000 T&uuml;lu3 prompts install a robust "made by Ai2" identity behavior.</p>
+
+<p><a href="https://arxiv.org/abs/2401.05566">Hubinger et al. <em>Sleeper Agents</em></a> shows the deliberately-installed version: train a model to behave normally except when a specific trigger appears, and standard safety training fails to remove the binding.</p>
+
+<p><a href="https://arxiv.org/abs/2604.25891">Dubinski et al. <em>Conditional Misalignment</em></a> reframes <a href="https://arxiv.org/abs/2510.04340">inoculation prompting</a>. The original framing (<a href="https://arxiv.org/abs/2510.04340">Tan et al.</a>, <a href="https://arxiv.org/abs/2510.05024">Wichers et al.</a>) reads inoculation as a working defense: adding a system prompt during EM training makes the model less <em>surprised</em> by the instruction, so the gradient signal is reduced and misalignment doesn't get baked in. Dubinski reads the same intervention differently &mdash; the standard EM mitigations (benign mixing, sequential SFT, inoculation prompting) don't <em>remove</em> the installed correlation; they <em>relocate</em> it as a backdoor gated by surface features. Most strikingly, <strong>semantically <em>opposite</em> prompts of similar shape</strong> still re-elicit the misalignment: an inoculation prompt that says the opposite thing but reads structurally the same fires the same backdoor. The binding is on the surface form of the prompt, not on what it says. Headline number: 20% benign mixing gives a 0.4% standard-eval failure rate but a 22.3% failure rate under a Python-string cue. Mitigations turn out to be correlation installers.</p>
+
+<p><a href="https://arxiv.org/abs/2302.10149">Data poisoning</a> is the most explicit version: adversarially-placed tokens during pretraining install trigger&rarr;behavior correlations that survive downstream training.</p>
+
+<p>Two recent story-format threads add a different mode of installation. Ongoing work in Owain Evans's group trains a behavior into a fictional character via story-format SFT data; the behavior leaks back to the assistant persona at inference, but only for characters that are <em>close to the assistant</em> in persona space &mdash; less-similar characters don't leak. Anthropic's recent <a href="https://alignment.anthropic.com/2026/teaching-claude-why/"><em>Teaching Claude Why</em></a> hits the same angle from the opposite direction: they synthesized 14M tokens of fictional stories portraying an aligned AI behaving in accordance with Claude's constitution, and SFT on these <em>reduced</em> misalignment on honeypot evaluations. In both, the training data <em>contains the behavior as an example</em> (a story showing the character acting a certain way) rather than a feature in the prompt that gates the behavior at inference. There is no test-time trigger; the model just exhibits more of the trained behavior when running as the assistant.</p>
+
+<p>These are all forms of <strong>the same phenomenon</strong>: training installs a behavior into the model that survives downstream intervention. The mode of installation varies &mdash; it can be a feature in the prompt that gates the behavior at inference (Murray, Hubinger, Dubinski, data-poisoning), or it can be examples of the behavior embedded in stories about a character during training (Evans, <em>Teaching Claude Why</em>). The question is how different kinds of training install this behavior, and what controls the resulting dynamics.</p>
+
+<h2 id="questions">Three research questions</h2>
+
+<ol>
+  <li><strong>Q1.</strong> Do different kinds of bindings behave differently &mdash; based on installation method (SDF / SFT / midtraining / pretraining), condition type (persona / trigger), and, as a much-studied special case, whether the condition is a <em>persona</em> at all (a class a lot of recent work treats as mechanistically privileged)?</li>
+  <li><strong>Q2.</strong> How do bindings compose &mdash; multi-feature training and multi-hop chains?</li>
+  <li><strong>Q3.</strong> How do more specific condition classes look in representation space?</li>
+</ol>
+
+<h3 class="qhead" id="q1">Q1. Do different kinds of bindings behave differently?</h3>
+
+<p>Are different bindings really different things? A binding can be installed via <strong>SDF</strong> (synthetic-document fine-tuning, e.g. Anthropic's <em>Teaching Claude Why</em>), <strong>SFT</strong>, <strong>midtraining</strong>, or <strong>pretraining-stage data poisoning</strong>. The condition that triggers it at inference can be a <strong>persona</strong>, a <strong>trigger token</strong>, a contextual cue, or no inference-time trigger at all (the story-format case). The question is whether these combinations produce different dynamics &mdash; different strength on the source, different breadth across other inputs, different persistence under downstream training &mdash; or whether bindings collapse to one phenomenon once installed.</p>
+
+<p>A specific version of this question has gotten a lot of attention on its own: <strong>are personas mechanistically privileged?</strong> A lot of recent work treats them that way &mdash; <a href="https://arxiv.org/abs/2601.10387">Lu et al. <em>Assistant Axis</em></a> argues the assistant is the leading PC of persona space; <a href="https://arxiv.org/abs/2506.19823">Wang et al.</a>'s EM-as-persona-feature story takes persona-as-privileged as a starting point; <a href="https://arxiv.org/abs/2507.21509">Chen et al.</a>'s persona-vector methodology assumes a per-persona handle exists. <a href="https://arxiv.org/abs/2602.05910">Murray et al.</a> implies the other way: any surface-feature cluster routes behavior the same way, so persona is just one such cluster. We treat persona-privilege as one axis inside the broader binding-dynamics question, not as its own question, with evidence on both sides (see findings).</p>
+
+<p>The axes we vary in experiments: installation method, condition type (persona vs trigger), <strong>length</strong> (of prompt or completion), <strong>on-policy vs off-policy</strong> training data, and the <strong>type of behavior</strong> bound (marker, misalignment, refusal, sycophancy). <a href="https://arxiv.org/abs/2602.05910">Murray et al.</a> establish a strikingly low minimum dose &mdash; 220 of 940,000 T&uuml;lu3 prompts install a robust identity behavior; <a href="https://arxiv.org/abs/2502.17424">Betley et al.</a>'s 6,000 insecure-code completions install broad misalignment from narrow content &mdash; but there's no head-to-head measurement across installation methods or condition types on the same task.</p>
+
+<h4>Findings &mdash; persona-as-privileged</h4>
+<ul>
+  <li><strong>Persona reads as a region, not a single privileged direction.</strong> Persona-vector extraction fails across 419 of 420 layer&times;recipe cells on Qwen2.5-7B <span class="confidence high">HIGH</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/221">#221</a>), and at L20 a norm-matched random direction steers a trained <code>[ZLT]</code> marker about as well as the persona-centroid direction does (<a href="https://github.com/superkaiba/explore-persona-space/issues/267">#267</a>).</li>
+  <li><strong>The central "persona has structure" signal is panel-conditioned.</strong> Cosine distance to the assistant at L20 predicts marker source-rate at <code>&rho; = &minus;0.74</code> across 12 personas <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/271">#271</a>) and cosine and JS-divergence geometries agree at L20 (<a href="https://github.com/superkaiba/explore-persona-space/issues/341">#341</a>) &mdash; but doubling the panel 12&rarr;24&rarr;48 progressively halves the correlation and collapses length-partial regression <span class="confidence low">LOW</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/294">#294</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/296">#296</a>). The geometry is real on a small panel but doesn't survive expansion.</li>
+  <li><strong>Persona behavior is brittle to exact wording.</strong> Paraphrases of "the same" persona produce measurably different downstream behavior, and longer prompts shift the source-implantation vs bystander-containment tradeoff <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/119">#119</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/337">#337</a>). If persona were a unique stable handle, this wouldn't happen.</li>
+</ul>
+
+<h4>Findings &mdash; binding dynamics more broadly</h4>
+<ul>
+  <li><strong>Strength and breadth can dissociate.</strong> Sharing a marker between a villain persona and the assistant leaves the assistant's alignment within 0.2 points of a marker-only control <span class="confidence high">HIGH</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/225">#225</a>) &mdash; the binding installs on the source without dragging the donor's other behavioral properties along.</li>
+  <li><strong>Breadth tracks <em>behavioral</em> similarity, not <em>semantic</em> similarity.</strong> Leakage from a source persona to bystanders tracks how similarly the bystander already responds (measured distributionally), not how similar the persona <em>descriptions</em> read <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/77">#77</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/119">#119</a>). JS divergence between output distributions beats cosine similarity in residual space as a breadth predictor (<a href="https://github.com/superkaiba/explore-persona-space/issues/142">#142</a>).</li>
+  <li><strong>Which geometry predicts breadth depends on the bound behavior.</strong> Cosine similarity predicts which personas catch a trained marker &mdash; <em>except for misalignment</em>, which leaks broadly to nearly every bystander regardless of cosine <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/99">#99</a>). A refusal LoRA leaks selectively to other named AI assistants (ChatGPT, Siri, Claude), gated on "is this an AI assistant?" rather than cosine (<a href="https://github.com/superkaiba/explore-persona-space/issues/123">#123</a>).</li>
+  <li><strong>CoT <em>form</em>, not its semantic content, drives cross-cluster breadth.</strong> Persona-flavored chain-of-thought rationales drive bystander leakage even when the content is length-matched garbage or contradicts the persona <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/186">#186</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/345">#345</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/280">#280</a>).</li>
+  <li><strong>Training stage reshapes both.</strong> At midtraining, insecure-code training applied <em>before</em> persona-marker coupling drives the marker to leak to ~50% of bystander personas vs ~12% under benign-then-couple &mdash; the EM-first effect outsizes benign by a wide margin <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/125">#125</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/329">#329</a>). EM SFT destroys persona-coupled markers via a catastrophic transition at 10&ndash;25 steps rather than gradual forgetting; benign SFT preserves persona discrimination by comparison <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/139">#139</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/184">#184</a>). Implantation and erasure dynamics at midtraining are non-linear in dose and order-dependent in ways post-training SFT isn't.</li>
+</ul>
+
+<h4>Open tension</h4>
+<p>Marker-coupling tracks <em>representational</em> distance from the assistant (<a href="https://github.com/superkaiba/explore-persona-space/issues/232">#232</a>); bystander leakage tracks <em>behavioral</em> style more than representational similarity (<a href="https://github.com/superkaiba/explore-persona-space/issues/77">#77</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/119">#119</a>). Both can hold if coupling strength and propagation pattern are governed by different geometries &mdash; but the project still owes itself a head-to-head test.</p>
+
+<h4>Mechanism candidate: OOCR</h4>
+<p>Why does narrow training fire broadly at all? The out-of-context reasoning thread is the candidate mechanism. <a href="https://arxiv.org/abs/2309.00667">Berglund et al.</a> showed fine-tuning on descriptive facts about a chatbot teaches the model to perform the behavior at test, without ever seeing a demonstration. <a href="https://arxiv.org/abs/2406.14546">Treutlein et al.</a> extended this to <em>inductive</em> OOCR: models infer latents that were never explicitly stated, only implicit across many disparate documents. A learned binding can deploy not just on the exact feature it was trained on, but on whatever the model has implicitly aggregated into a latent. This is also the proposed mechanism behind the Owain-Evans story-format effect (train on stories where an assistant-like character likes octopuses &rarr; the assistant likes octopuses) and Anthropic's <em>Teaching Claude Why</em> defense.</p>
+
+<h4>Next</h4>
+<p>Two tracks. On <em>persona-as-privileged</em>: a matched-token-count comparison of persona prompts vs non-persona system prompts vs arbitrary-token strings &mdash; if persona prompts route behavior measurably differently (higher paraphrase generalization, broader cross-task transfer), persona-as-privileged survives; otherwise we treat personas as one surface feature among many. On <em>binding dynamics generally</em>: a controlled factorial varying each dimension independently &mdash; in particular a 2&#8308; screen for length-location &times; persona-presence &times; on-policy &times; marker-only-loss (<a href="https://github.com/superkaiba/explore-persona-space/issues/365">#365</a>); a marker-only-loss ablation isolating the gradient-mass dimension (<a href="https://github.com/superkaiba/explore-persona-space/issues/353">#353</a>); evil-human vs evil-AI personas at midtraining (<a href="https://github.com/superkaiba/explore-persona-space/issues/74">#74</a>) to separate "midtraining can install a persona-coupled behavior" from "midtraining can install an AI-character-coupled behavior" specifically; SDF inoculation-prompting at midtraining as an EM defense (<a href="https://github.com/superkaiba/explore-persona-space/issues/169">#169</a>); and operationalizing Evans-style story-format SFT at the midtraining stage to test the character-to-assistant transfer mechanism on a base model. Murray et al. Figure 10a gives a ready-made dose-response template.</p>
+
+<h3 class="qhead" id="q2">Q2. How do bindings compose &mdash; multi-feature training and multi-hop chains?</h3>
+
+<p>If we install (feature_A &rarr; behavior_X) and (feature_B &rarr; behavior_Y) in one training stage, do inputs carrying both features route to X, Y, both, or something new? And what about a multi-hop chain: if we install (A &rarr; B), then (B &rarr; C), then (C &rarr; D), does presenting <code>A</code> at test fire the full chain <code>A &rarr; B &rarr; C &rarr; D</code>, or only the directly-trained first hop? These compositional questions are largely unstudied.</p>
+
+<h4>Findings</h4>
+<ul>
+  <li><strong>A marker doesn't transfer between personas via subsequent SFT.</strong> Across multiple recipes, training a marker into one persona doesn't propagate to a second persona, in either direction <span class="confidence high">HIGH</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/121">#121</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/122">#122</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/225">#225</a>). Injecting a marker into an evil persona then inducing EM also fails to make the assistant adopt the marker (<a href="https://github.com/superkaiba/explore-persona-space/issues/80">#80</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/102">#102</a>) &mdash; because marker-only loss never encodes misalignment into weights; it lives in the system prompt.</li>
+  <li><strong>The EOS-in-loss confound rewrites that null.</strong> When EOS is masked out of the recipient's loss, chunk-binding between markers emerges at 23% vs 0% control <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/354">#354</a>) &mdash; the earlier "doesn't transfer" reading was partly "trained not to transfer."</li>
+</ul>
+
+<h4>Next</h4>
+<p>Two follow-ups. (a) Multi-feature composition in a single stage &mdash; train (feature_A &rarr; behavior_X) and (feature_B &rarr; behavior_Y) simultaneously, test inputs carrying both. (b) Cascading multi-hop composition (<a href="https://github.com/superkaiba/explore-persona-space/issues/366">#366</a>): train (A &rarr; B), (B &rarr; C), (C &rarr; D) in sequence, then present <code>A</code> at test and check whether the full chain <code>A &rarr; B &rarr; C &rarr; D</code> fires or only the first hop.</p>
+
+<h3 class="qhead" id="q3">Q3. How do more specific condition classes look in representation space?</h3>
+
+<p>The classes are descriptively distinct. Whether they're <em>mechanistically</em> distinct is open. Do they install measurably different objects in activations, or does it all collapse to "motion along some direction" once installed? The answer determines whether defenses can be class-agnostic or class-specific.</p>
+
+<h4>Findings</h4>
+<ul>
+  <li><strong>Narrow-SFT class:</strong> any SFT (LoRA or full-param, EM or benign) collapses Qwen-7B inter-persona geometry to cos &ge; 0.97 at L20 <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/237">#237</a>, with the rank-32 LoRA bottleneck ruled out in <a href="https://github.com/superkaiba/explore-persona-space/issues/285">#285</a>). The collapse appears generic to narrow SFT, not class-specific.</li>
+  <li><strong>Pretraining-poisoning class:</strong> a poisoned Qwen3-4B backdoor fires only on the <em>exact</em> trigger tokens. Paraphrases don't activate it; even obscure Latin 3-grams don't leak the hidden trigger when famous Latin phrases do <span class="confidence mod">MOD</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/276">#276</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/284">#284</a>). Pretraining-installed bindings look narrow at the surface level in a way post-training ones don't.</li>
+  <li><strong>Sleeper-agent / educational-reframing class:</strong> educational reframing of the insecure-code dataset is itself a sleeper-agent install &mdash; it hides EM behind a contextual trigger rather than removing it <span class="confidence high">HIGH</span> (<a href="https://github.com/superkaiba/explore-persona-space/issues/156">#156</a>, <a href="https://github.com/superkaiba/explore-persona-space/issues/203">#203</a>).</li>
+</ul>
+
+<h4>Next</h4>
+<p>Head-to-head model-diff comparison across the condition classes. Model-diff a pretraining-poisoned Gaperon-1125-1B against its clean base; model-diff a persona-finetuned model against its base; model-diff a Betley-EM-style model against its base. Compare the resulting feature sets: same direction? Same magnitude? Same propagation pattern? Methodology comes from <a href="https://arxiv.org/abs/2506.19823">Wang et al.</a>; applying it across classes is the new bit.</p>
+
+<h2 id="applications">Applications</h2>
+
+<p>Three downstream goals follow from these questions.</p>
+
+<p><strong>1. Targeted interventions on persona space, to prevent emergent misalignment.</strong> Emergent misalignment is dangerous: narrow training in one direction (e.g., 6,000 insecure-code completions) produces broadly misaligned behavior across unrelated tasks. <a href="https://arxiv.org/abs/2506.19823">Wang et al.</a> show this routes through a persona feature in the model's activations &mdash; steering along that direction moves harmful output from 10% to 85%. To prevent EM at the activation level &mdash; rather than rely on surface-eval suppression, which <a href="https://arxiv.org/abs/2604.25891">Dubinski</a> shows is what most mitigations actually do &mdash; we want targeted interventions on persona space. The concrete defense proposal is <em>selective</em> targeting: identify the directions associated with harmful personas and intervene only on those, without flattening the rest of persona space, so the binding actually moves rather than relocating to a different trigger (the Dubinski failure mode).</p>
+
+<p><strong>2. Understanding chunky post-training correlations, at both the data and activation levels.</strong> Chunky-SFT correlations are <em>accidental</em>: they come from how curated SFT data gets assembled, where a surface feature ends up over-correlated with a response shape inside one chunk. <a href="https://arxiv.org/abs/2602.05910">Murray et al.</a> diagnose this at the data level. We push the data-level work further with controlled SFT experiments that isolate the dimensions of how a correlation gets baked in, and add the internal-mechanism story: how does a chunky-SFT correlation actually get encoded in activations? Together these let us check whether the same phenomenon shows up during pretraining and midtraining, and design defenses that work across training stages rather than only at the post-training step where SURF/TURF currently operate.</p>
+
+<p><strong>3. Defending against hidden backdoors.</strong> Hidden backdoors are <em>adversarial</em>: someone deliberately inserts a trigger token during training so the model misbehaves only when the trigger appears. Two complementary angles for defense: <em>mechanistically</em>, an internal account of how a pretraining-poisoning correlation gets encoded in activations would let us audit a model for backdoor-like representational patterns without knowing the trigger in advance; <em>empirically</em>, we've observed partial leakage from a deliberately-poisoned research model where paraphrases of a known trigger leak fragments of the malicious behavior (<a href="https://github.com/superkaiba/explore-persona-space/issues/284">#284</a>), so searching token space with leakage strength as the fitness function is a candidate technique for finding triggers without knowing them in advance.</p>
+
+</article>
+
+</div>
+</div>

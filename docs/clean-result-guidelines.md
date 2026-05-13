@@ -136,12 +136,32 @@ Rules inside the dropdown:
   space; m is the point halfway along the straight line between them."*
 - **Sample outputs inline** at the eval-narrative point, not in a separate
   section. Use a `<pre>` block, three representative completions, one per
-  training condition. Link to the full output set immediately above the
-  `<pre>` ("full completion sets in `eval_results/issue_311/`"). Label the
-  block as **"cherry-picked for illustration"** in the prose immediately
-  preceding it whenever the samples were selected (not random-sampled) —
-  prevents readers over-generalizing from three cases. If samples are
-  random-drawn instead, say so explicitly ("first three of 400 completions").
+  training condition.
+- **Link to the full qualitative-data artifact** in the prose immediately
+  above the `<pre>` (within ~400 chars). REQUIRED. The link must point at
+  the *raw text-level outputs* the samples were drawn from — a HuggingFace
+  Hub data-repo path (e.g.
+  `https://huggingface.co/datasets/<org>/<repo>/tree/<ref>/issue_<N>/raw_completions/`),
+  an S3 or raw-github URL, or a repo-relative
+  `eval_results/issue_<N>/raw_completions/...` path. Cell-level aggregates
+  (per-cell marker rates, regression CSVs, summary JSON) DO NOT satisfy
+  this rule — someone auditing the `<pre>` samples needs to be able to
+  read the surrounding raw completions to judge whether the cherry-picks
+  are representative. If raw completions truly cannot be uploaded for the
+  run, state the cause explicitly in the same paragraph ("pod terminated
+  before raw-completion upload — only per-cell aggregates at
+  `eval_results/issue_<N>/...` survived") AND add a follow-up to re-run
+  with raw-completion upload as one of the TL;DR's *Next steps* bullets.
+  The mechanical verifier (`verify_sagan_card.py` check 11) enforces the
+  link's presence and rejects obvious aggregate-only paths
+  (`*regression*.csv`, `*summary*.json`, `*aggregated*.json`, `*.npz`);
+  the clean-result-critic agent does the judgment-call check on whether
+  the linked artifact actually contains raw text.
+- **Cherry-picked label or random-sample disclosure.** Label the block as
+  **"cherry-picked for illustration"** in the prose immediately preceding
+  it whenever the samples were selected (not random-sampled) — prevents
+  readers over-generalizing from three cases. If samples are random-drawn
+  instead, say so explicitly ("first three of 400 completions").
 - **Statistical-test rationale**: include a "Why this test" paragraph. Why
   Spearman not Pearson, why partial, what's being controlled for, etc.
 - **Confidence-rationale sentence** near the end of the design block (right

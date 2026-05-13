@@ -91,6 +91,12 @@ export async function loadHealthSummary() {
         experimentId: podLifecycle.experimentId,
         runpodPodId: podLifecycle.runpodPodId,
         status: podLifecycle.status,
+        costPerHr: podLifecycle.costPerHr,
+        adjustedCostPerHr: podLifecycle.adjustedCostPerHr,
+        uptimeSeconds: podLifecycle.uptimeSeconds,
+        lastCheckedAt: podLifecycle.lastCheckedAt,
+        lastStartedAt: podLifecycle.lastStartedAt,
+        createdAt: podLifecycle.createdAt,
         lastError: podLifecycle.lastError,
         updatedAt: podLifecycle.updatedAt,
       })

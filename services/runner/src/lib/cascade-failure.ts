@@ -11,6 +11,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from '../db.js';
 import { log } from '../log.js';
 import { recordTrail } from '../trail.js';
+import { postBlockedRunSummary } from './blocking-summary.js';
 
 type AgentRunRow = typeof schema.agentRuns.$inferSelect;
 type EntityKind = NonNullable<AgentRunRow['scopeEntityKind']>;
@@ -77,6 +78,13 @@ async function cascadeTodo(input: CascadeInput) {
     agentRunId: input.runId,
     detail: input.detail.slice(0, 500),
   });
+  await postBlockedRunSummary({
+    runId: input.runId,
+    entityKind: 'todo',
+    entityId: row.id,
+    reason: input.reason,
+    detail: input.detail,
+  });
 }
 
 async function cascadeExperiment(input: CascadeInput) {
@@ -117,6 +125,13 @@ async function cascadeExperiment(input: CascadeInput) {
     agentRunId: input.runId,
     detail: input.detail.slice(0, 500),
   });
+  await postBlockedRunSummary({
+    runId: input.runId,
+    entityKind: 'experiment',
+    entityId: input.scopeEntityId!,
+    reason: input.reason,
+    detail: input.detail,
+  });
 }
 
 async function cascadeCleanResult(input: CascadeInput) {
@@ -139,5 +154,12 @@ async function cascadeCleanResult(input: CascadeInput) {
     entityId: row.id,
     agentRunId: input.runId,
     detail: input.detail.slice(0, 500),
+  });
+  await postBlockedRunSummary({
+    runId: input.runId,
+    entityKind: 'clean_result',
+    entityId: row.id,
+    reason: input.reason,
+    detail: input.detail,
   });
 }

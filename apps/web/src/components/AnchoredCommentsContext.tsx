@@ -41,8 +41,14 @@ interface AnchoredCommentsValue {
 
 const Ctx = createContext<AnchoredCommentsValue | null>(null);
 
-export function AnchoredCommentsProvider({ children }: { children: ReactNode }) {
-  const [anchors, setAnchors] = useState<AnchorRecord[]>([]);
+export function AnchoredCommentsProvider({
+  children,
+  initialAnchors,
+}: {
+  children: ReactNode;
+  initialAnchors?: AnchorRecord[];
+}) {
+  const [anchors, setAnchors] = useState<AnchorRecord[]>(initialAnchors ?? []);
   const [anchorPositions, setAnchorPositionRows] = useState<AnchorPosition[]>([]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [pendingAnchor, setPendingAnchor] = useState<PendingAnchor | null>(null);

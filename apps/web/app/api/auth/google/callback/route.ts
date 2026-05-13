@@ -136,7 +136,9 @@ export async function GET(req: Request) {
     return res;
   }
 
-  if (createdPublicAccount || (user.role !== 'owner' && redirectTo === '/today')) {
+  // Only override an unspecified destination. If `next` carried an explicit
+  // path (e.g. /p/<slug> from a shared link), honour it.
+  if (redirectTo === '/today' && (createdPublicAccount || user.role !== 'owner')) {
     redirectTo = '/mentor/updates';
   }
 

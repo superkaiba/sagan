@@ -1,11 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { and, desc, eq, or } from 'drizzle-orm';
-import { projectNarratives, projects } from '@sagan/db/schema';
+import { and, asc, desc, eq, isNotNull, isNull, or } from 'drizzle-orm';
+import { comments, projectNarratives, projects } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { extractTocAndAddIds } from '@/lib/narrative-toc';
-import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
+import {
+  AnchoredCommentsProvider,
+  type AnchorRecord,
+} from '@/components/AnchoredCommentsContext';
 import { Comments } from '@/components/Comments';
 import { ImproveNarrativeButton } from '@/components/ImproveNarrativeButton';
 import { Markdown } from '@/components/Markdown';
@@ -82,6 +85,28 @@ export default async function PublicProjectPage({
     ? extractTocAndAddIds(narrative.bodyMd)
     : { processed: '', toc: [] };
 
+  // Seed the comment-highlight context server-side so anonymous viewers see
+  // the same passage marks signed-in users do. The Comments component (only
+  // rendered for authed viewers) keeps these fresh by polling.
+  const initialAnchors: AnchorRecord[] = narrative
+    ? (
+        await db()
+          .select({ id: comments.id, quote: comments.anchoredQuote })
+          .from(comments)
+          .where(
+            and(
+              eq(comments.entityKind, 'project_narrative'),
+              eq(comments.entityId, narrative.id),
+              isNull(comments.parentCommentId),
+              isNull(comments.resolvedAt),
+              isNotNull(comments.anchoredQuote),
+            ),
+          )
+          .orderBy(asc(comments.createdAt))
+      )
+        .filter((row): row is { id: string; quote: string } => Boolean(row.quote))
+    : [];
+
   return (
     <main className="mx-auto max-w-[1600px] px-4 py-10 space-y-8">
       <header className="space-y-3">
@@ -115,7 +140,7 @@ export default async function PublicProjectPage({
         </div>
       </header>
 
-      <AnchoredCommentsProvider>
+      <AnchoredCommentsProvider initialAnchors={initialAnchors}>
         <div className="grid gap-10 lg:grid-cols-[220px_minmax(0,1fr)_360px]">
           {toc.length > 0 ? (
             <aside className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">

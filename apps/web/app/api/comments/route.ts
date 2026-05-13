@@ -178,6 +178,9 @@ export async function POST(req: Request) {
   const dispatchAgent: CommentAgentName | null =
     requestedAgent ?? (autoContinueClaude ? (parentInfo?.autoContinueAgent ?? 'Claude') : null);
   const shouldDispatch = Boolean(dispatchAgent);
+  const newCommentAnchoredQuote = normalizedParentCommentId
+    ? (parentInfo?.rootAnchoredQuote ?? null)
+    : (parsed.data.anchoredQuote?.trim() || null);
   const commentContext = shouldDispatch
     ? await buildCommentContext({
         entityKind: parsed.data.entityKind,
@@ -251,7 +254,7 @@ export async function POST(req: Request) {
         `Working directory is the Sagan repo. For Sagan workflow state — experiments.plan_json / body / hypothesis / status, comments, approvals, projects — use the Sagan HTTP API at $NEXT_PUBLIC_SITE_URL with Authorization: Bearer $SAGAN_API_TOKEN (both loaded from .env). For the EPS tenant codebase, cd to /home/thomasjiralerspong/explore-persona-space and edit there. Do not write directly to the database; always go through the API.`,
         `The user asked for an agent answer from the comment UI. Answer the comment content itself.`,
         commentContext,
-        `Latest human comment:\n\n${stripLeadingAgentMention(parsed.data.body)}`,
+        formatLatestHumanComment(parsed.data.body, newCommentAnchoredQuote),
       ]
         .filter(Boolean)
         .join('\n\n');
@@ -358,6 +361,7 @@ async function loadOrCreateCommentChatSession(input: {
 
 type ResolvedParentComment = {
   rootCommentId: string;
+  rootAnchoredQuote: string | null;
   autoContinueClaude: boolean;
   autoContinueAgent: CommentAgentName;
 };
@@ -376,6 +380,7 @@ async function resolveParentComment(input: {
       autoContinueClaude: comments.autoContinueClaude,
       mentions: comments.mentions,
       body: comments.body,
+      anchoredQuote: comments.anchoredQuote,
     })
     .from(comments)
     .where(eq(comments.id, input.parentCommentId))
@@ -391,6 +396,7 @@ async function resolveParentComment(input: {
     return {
       parent: {
         rootCommentId,
+        rootAnchoredQuote: parent.anchoredQuote?.trim() || null,
         autoContinueClaude: parent.autoContinueClaude,
         autoContinueAgent: commentAgentIdentity(parent) ?? 'Claude',
       },
@@ -405,6 +411,7 @@ async function resolveParentComment(input: {
       autoContinueClaude: comments.autoContinueClaude,
       mentions: comments.mentions,
       body: comments.body,
+      anchoredQuote: comments.anchoredQuote,
     })
     .from(comments)
     .where(eq(comments.id, rootCommentId))
@@ -416,6 +423,7 @@ async function resolveParentComment(input: {
   return {
     parent: {
       rootCommentId: root.id,
+      rootAnchoredQuote: root.anchoredQuote?.trim() || null,
       autoContinueClaude: root.autoContinueClaude,
       autoContinueAgent: commentAgentIdentity(parent) ?? commentAgentIdentity(root) ?? 'Claude',
     },
@@ -427,6 +435,7 @@ type CommentContextRow = {
   parentCommentId: string | null;
   authorKind: 'human' | 'claude' | 'codex' | 'system';
   body: string;
+  anchoredQuote: string | null;
   createdAt: Date;
 };
 
@@ -441,6 +450,7 @@ async function buildCommentContext(input: {
     parentCommentId: comments.parentCommentId,
     authorKind: comments.authorKind,
     body: comments.body,
+    anchoredQuote: comments.anchoredQuote,
     createdAt: comments.createdAt,
   };
 
@@ -512,7 +522,19 @@ function formatCommentContextRow(row: CommentContextRow) {
         ? 'System'
         : 'User';
   const position = row.parentCommentId ? 'reply' : 'root';
-  return `- ${row.createdAt.toISOString()} [${author}, ${position}]\n  ${indentForPrompt(truncateForPrompt(body, 1500))}`;
+  const anchorLine =
+    !row.parentCommentId && row.anchoredQuote?.trim()
+      ? `\n  anchored to: "${truncateForPrompt(row.anchoredQuote.trim(), 400)}"`
+      : '';
+  return `- ${row.createdAt.toISOString()} [${author}, ${position}]${anchorLine}\n  ${indentForPrompt(truncateForPrompt(body, 1500))}`;
+}
+
+function formatLatestHumanComment(body: string, anchoredQuote: string | null) {
+  const stripped = stripLeadingAgentMention(body);
+  const header = anchoredQuote
+    ? `Latest human comment (anchored to selected text: "${truncateForPrompt(anchoredQuote, 400)}"):`
+    : 'Latest human comment:';
+  return `${header}\n\n${stripped}`;
 }
 
 function stripCodexReplyMarker(body: string) {

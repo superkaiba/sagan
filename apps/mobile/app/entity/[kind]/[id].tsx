@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, RefreshControl } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Linking, RefreshControl } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api, apiBase } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
@@ -14,20 +14,43 @@ import {
   Text,
   VStack,
 } from '@/ui';
+import { AskClaudeAboutPaper, Comments } from '@/ui/Comments';
+import { ExperimentReviewPanel, type ExperimentReviewStatus } from '@/ui/ExperimentReviewPanel';
 
-type Kind = 'project' | 'experiment' | 'belief';
+type Kind =
+  | 'project'
+  | 'experiment'
+  | 'belief'
+  | 'lit_item'
+  | 'clean_result'
+  | 'project_narrative'
+  | 'todo'
+  | 'run'
+  | 'daily_log_entry';
+
+interface MetaEntry {
+  label: string;
+  value: string;
+}
+
+interface EntityRaw {
+  url?: string | null;
+  pdfUrl?: string | null;
+  arxivId?: string | null;
+  doi?: string | null;
+  readState?: string | null;
+  topic?: string | null;
+  slug?: string | null;
+  [k: string]: unknown;
+}
 
 interface EntityRow {
   id: string;
-  title?: string | null;
+  title: string;
   status?: string | null;
-  confidence?: string | null;
-  kind?: string | null;
-  slug?: string | null;
   body?: string | null;
-  summaryMd?: string | null;
-  hypothesis?: string | null;
-  currentBelief?: string | null;
+  meta?: MetaEntry[];
+  raw?: EntityRaw;
 }
 
 interface EntityResponse {
@@ -38,18 +61,43 @@ const KIND_TITLES: Record<Kind, string> = {
   project: 'Project',
   experiment: 'Experiment',
   belief: 'Belief',
+  lit_item: 'Paper',
+  clean_result: 'Clean result',
+  project_narrative: 'Narrative',
+  todo: 'Todo',
+  run: 'Run',
+  daily_log_entry: 'Daily-log entry',
 };
 
+const VALID_KINDS = new Set<Kind>([
+  'project',
+  'experiment',
+  'belief',
+  'lit_item',
+  'clean_result',
+  'project_narrative',
+  'todo',
+  'run',
+  'daily_log_entry',
+]);
+
+const READ_STATE_OPTIONS: Array<{ value: 'unread' | 'queued' | 'reading' | 'read' | 'archived'; label: string }> = [
+  { value: 'unread', label: 'Unread' },
+  { value: 'queued', label: 'Queued' },
+  { value: 'reading', label: 'Reading' },
+  { value: 'read', label: 'Read' },
+  { value: 'archived', label: 'Archived' },
+];
+
 function webPathFor(kind: Kind, id: string, row: EntityRow | null): string {
-  if (kind === 'project' && row?.slug) return `/projects/${row.slug}`;
+  if (kind === 'project' && row?.raw?.slug) return `/projects/${row.raw.slug}`;
+  if (kind === 'clean_result') return `/clean-results/${id}`;
   return `/e/${kind}/${id}`;
 }
 
-function bodyText(row: EntityRow): string {
-  return row.body ?? row.summaryMd ?? row.hypothesis ?? row.currentBelief ?? '';
+function isReviewStatus(s: string | null | undefined): s is ExperimentReviewStatus {
+  return s === 'reviewing' || s === 'followups_running';
 }
-
-const VALID_KINDS = new Set<Kind>(['project', 'experiment', 'belief']);
 
 export default function EntityDetailScreen() {
   const t = useTheme();
@@ -62,6 +110,7 @@ export default function EntityDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [updatingReadState, setUpdatingReadState] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
@@ -85,8 +134,6 @@ export default function EntityDetailScreen() {
     const controller = new AbortController();
     abortRef.current = controller;
     setError(null);
-    // /api/entity/[kind]/[id] is access-aware (owner + entity members), unlike
-    // /api/{projects,beliefs}/[id] which only export PATCH.
     const r = await api<EntityResponse>(`/api/entity/${kind}/${id}`, {
       signal: controller.signal,
     });
@@ -111,6 +158,33 @@ export default function EntityDetailScreen() {
     void load();
   }, [load]);
 
+  async function updateReadState(next: (typeof READ_STATE_OPTIONS)[number]['value']) {
+    if (kind !== 'lit_item' || !id) return;
+    setUpdatingReadState(true);
+    const r = await api(`/api/lit-items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ readState: next }),
+    });
+    setUpdatingReadState(false);
+    if (!r.ok) {
+      Alert.alert('Could not update', r.error ?? 'Try again in a moment.');
+      return;
+    }
+    void load();
+  }
+
+  // Separate meta entries by treatment: long-form blocks render as Cards,
+  // short attributes get a chip row.
+  const longFormLabels = useMemo(() => new Set(['summary', 'read next', 'threat/caveat']), []);
+  const attrEntries = useMemo(
+    () => row?.meta?.filter((m) => !longFormLabels.has(m.label)) ?? [],
+    [row, longFormLabels],
+  );
+  const blockEntries = useMemo(
+    () => row?.meta?.filter((m) => longFormLabels.has(m.label)) ?? [],
+    [row, longFormLabels],
+  );
+
   if (!validKind) {
     return (
       <ScrollScreen>
@@ -128,7 +202,10 @@ export default function EntityDetailScreen() {
     );
   }
 
-  const body = row ? bodyText(row) : '';
+  const externalUrl =
+    row?.raw?.url ?? (row?.raw?.arxivId ? `https://arxiv.org/abs/${row.raw.arxivId}` : null);
+  const pdfUrl = row?.raw?.pdfUrl ?? null;
+  const reviewStatus = kind === 'experiment' ? row?.status : null;
 
   return (
     <>
@@ -156,22 +233,88 @@ export default function EntityDetailScreen() {
               <Text variant="title">{row.title ?? '(untitled)'}</Text>
               <HStack gap="sm" wrap>
                 {row.status ? <Pill tone="neutral">{row.status}</Pill> : null}
-                {row.confidence ? (
-                  <Pill tone="accent">{row.confidence.toLowerCase()}</Pill>
-                ) : null}
-                {row.kind ? <Pill tone="info">{row.kind}</Pill> : null}
+                {attrEntries.map((m) => (
+                  <Pill key={`${m.label}-${m.value}`} tone="info">
+                    {m.label}: {m.value}
+                  </Pill>
+                ))}
               </HStack>
             </VStack>
 
-            {body ? (
+            {row.body ? (
               <Card pad="lg">
-                <Text variant="body">{body}</Text>
+                <Text variant="body">{row.body}</Text>
               </Card>
-            ) : (
-              <Text variant="footnote" tone="subtle">
-                No body.
-              </Text>
-            )}
+            ) : null}
+
+            {blockEntries.map((m) => (
+              <Card key={m.label} pad="lg" gap="sm">
+                <Text variant="micro" tone="muted">
+                  {m.label.toUpperCase()}
+                </Text>
+                <Text variant="body">{m.value}</Text>
+              </Card>
+            ))}
+
+            {kind === 'lit_item' ? (
+              <>
+                {externalUrl || pdfUrl ? (
+                  <HStack gap="sm" wrap>
+                    {externalUrl ? (
+                      <Button
+                        label="Open source"
+                        icon="open-outline"
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => Linking.openURL(externalUrl)}
+                      />
+                    ) : null}
+                    {pdfUrl ? (
+                      <Button
+                        label="PDF"
+                        icon="document-outline"
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => Linking.openURL(pdfUrl)}
+                      />
+                    ) : null}
+                  </HStack>
+                ) : null}
+
+                <Card pad="md" gap="sm">
+                  <Text variant="micro" tone="muted">
+                    READING STATE
+                  </Text>
+                  <HStack gap="xs" wrap>
+                    {READ_STATE_OPTIONS.map((opt) => {
+                      const active = (row.raw?.readState ?? row.status) === opt.value;
+                      return (
+                        <Button
+                          key={opt.value}
+                          label={opt.label}
+                          variant={active ? 'primary' : 'secondary'}
+                          size="sm"
+                          disabled={updatingReadState || active}
+                          onPress={() => void updateReadState(opt.value)}
+                        />
+                      );
+                    })}
+                  </HStack>
+                </Card>
+
+                <AskClaudeAboutPaper litItemId={id} paperTitle={row.title} onSent={() => void load()} />
+              </>
+            ) : null}
+
+            {kind === 'experiment' && isReviewStatus(reviewStatus) ? (
+              <ExperimentReviewPanel
+                experimentId={id}
+                status={reviewStatus}
+                onChanged={() => void load()}
+              />
+            ) : null}
+
+            <Comments entityKind={kind} entityId={id} />
 
             <Button
               label="Open on web"

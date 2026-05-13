@@ -56,6 +56,20 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="library"
+        options={{
+          title: 'Library',
+          tabBarIcon: tabIcon('book-outline', 'book'),
+        }}
+      />
+      <Tabs.Screen
+        name="approvals"
+        options={{
+          title: 'Approvals',
+          tabBarIcon: tabIcon('checkbox-outline', 'checkbox'),
+        }}
+      />
+      <Tabs.Screen
         name="agent"
         options={{
           title: 'Runs',

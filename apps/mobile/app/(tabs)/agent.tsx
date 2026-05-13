@@ -13,9 +13,11 @@ import {
   Pill,
   type PillTone,
   Screen,
+  SectionLabel,
   Text,
   VStack,
 } from '@/ui';
+import { RunPodsPanel } from '@/ui/RunPodsPanel';
 
 interface AgentRun {
   id: string;
@@ -146,6 +148,8 @@ export default function AgentList() {
               fullWidth
               size="lg"
             />
+            <RunPodsPanel />
+            <SectionLabel>Agent runs</SectionLabel>
             {error ? (
               <Card variant="outlined" style={{ borderColor: t.colors.danger }}>
                 <Text variant="footnote" tone="danger">

@@ -151,7 +151,7 @@ export function LiteraturePaperSide({ paper }: { paper: LitPaperFields }) {
         </div>
         {paper.relevanceReasonMd ? (
           <div className="px-4 py-3">
-            <dt className="text-[10px] uppercase tracking-[0.18em] text-[--color-muted]">Why this is in your queue</dt>
+            <dt className="text-[10px] uppercase tracking-[0.18em] text-[--color-muted]">Relation to my work</dt>
             <dd className="prose prose-sm mt-1 max-w-none text-[--color-fg]/90">
               <Markdown>{paper.relevanceReasonMd}</Markdown>
             </dd>

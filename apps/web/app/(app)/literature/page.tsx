@@ -153,7 +153,7 @@ export default async function LiteraturePage() {
                         ) : null}
                         {item.relevanceReasonMd ? (
                           <p className="mt-2 line-clamp-2 text-xs italic text-[--color-muted]">
-                            <span className="font-semibold not-italic text-[--color-fg]/75">Why it matters: </span>
+                            <span className="font-semibold not-italic text-[--color-fg]/75">Relation to my work: </span>
                             {item.relevanceReasonMd}
                           </p>
                         ) : null}

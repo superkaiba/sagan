@@ -120,7 +120,7 @@ const discoveredItemSchema = z.object({
   authors: z.array(z.string().min(1).max(200)).default([]),
   releasedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   abstract: z.string().max(20_000).nullable().optional(),
-  summaryMd: z.string().min(1).max(4_000),
+  summaryMd: z.string().min(1).max(20_000),
   relevanceReasonMd: z.string().min(1).max(4_000),
   threatReasonMd: z.string().max(4_000).nullable().optional(),
   url: z.string().url().nullable().optional(),
@@ -145,7 +145,7 @@ const annotationSchema = z.object({
       category: z.enum(LIT_REVIEW_CATEGORIES).default('new_research'),
       topic: z.enum(LIT_TOPICS).default('other'),
       relatedContextIds: z.array(z.string()).max(8).default([]),
-      summaryMd: z.string().min(1).max(4_000),
+      summaryMd: z.string().min(1).max(20_000),
       relevanceReasonMd: z.string().min(1).max(4_000),
       threatReasonMd: z.string().max(4_000).nullable().optional(),
     }),
@@ -479,9 +479,9 @@ Return only JSON with this exact shape:
       "category": "new_research",
       "topic": "general_ai",
       "relatedContextIds": ["context uuid if directly linked"],
-      "summaryMd": "1-2 sentence LLM summary of the actual contribution",
-      "relevanceReasonMd": "1 concise sentence explaining why this is relevant or generally important",
-      "threatReasonMd": "1 concise caveat/threat/null",
+      "summaryMd": "2-4 sentence plain-English paragraph saying what the authors did and why it matters. Then a blank line. Then a markdown bullet list headed '**Main takeaways:**' with 3-5 concrete findings. Translate jargon on first mention. No math symbols.",
+      "relevanceReasonMd": "1-2 sentences naming a concrete connection to the user's actual research themes (write from their POV — 'my work', 'what I'm doing'), OR an honest 'not directly related to my X — included because Y'. Don't categorically label.",
+      "threatReasonMd": "1 concise caveat or potential threat to current results, otherwise null",
       "score": 0
     }
   ]
@@ -560,10 +560,14 @@ ${JSON.stringify(
   2,
 )}
 
-For each candidate, write a brief LLM-generated summary, a relevance/general-importance reason, a caveat if useful, a category, a topic, directly related context ids, and a 0-100 score.
-Category must be one of: ${LIT_REVIEW_CATEGORIES.join(', ')}.
-Topic must be one of: ${LIT_TOPICS.join(', ')}. Choose current_project when the paper is directly relevant to the research context above; otherwise pick the best fit among general_safety (alignment/interpretability/eval), general_ai (other AI/ML), cognitive_science (psychology/mind/behavior), neuroscience (brain), or other.
-Use relatedContextIds only for ids from the current research context that the paper directly informs, supports, contradicts, or contextualizes.
+For each candidate write:
+- summaryMd: a 2-4 sentence paragraph in plain English saying what the authors did and why it matters, followed by a blank line and a markdown bullet list headed "**Main takeaways:**" with 3-5 concrete findings. Strip arXiv:... prefixes and "Announce Type:" chatter. Translate technical jargon on first mention. No math symbols.
+- relevanceReasonMd: 1-2 sentences naming a concrete connection to the user's actual research themes above (write from their POV — "my work", "what I'm doing"), OR an honest "not directly related to my X — included because Y". Don't categorically label ("General ML paper on...") — bridge to the research.
+- threatReasonMd: ONE sentence caveat or potential threat to the user's results if relevant, otherwise null.
+- category (one of: ${LIT_REVIEW_CATEGORIES.join(', ')}) and topic (one of: ${LIT_TOPICS.join(', ')}). Choose current_project when the paper is directly relevant to the research context above; otherwise pick the best fit among general_safety (alignment/interpretability/eval), general_ai (other AI/ML), cognitive_science (psychology/mind/behavior), neuroscience (brain), or other.
+- relatedContextIds only for ids from the current research context that the paper directly informs, supports, contradicts, or contextualizes.
+- score: 0-100, 70+ means read soon.
+
 Return only JSON:
 {"items":[{"externalId":"...","score":72,"category":"linked_to_results","topic":"current_project","relatedContextIds":["context uuid"],"summaryMd":"...","relevanceReasonMd":"...","threatReasonMd":null}]}`;
 

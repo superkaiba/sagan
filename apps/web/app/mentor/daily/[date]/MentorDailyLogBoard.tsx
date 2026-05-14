@@ -20,6 +20,8 @@ export interface MentorDailyLogEntry {
   position: number;
   createdAt: string;
   updatedAt: string;
+  linkedTitle?: string | null;
+  linkedConfidence?: string | null;
 }
 
 export function MentorDailyLogBoard({
@@ -93,9 +95,13 @@ export function MentorDailyLogBoard({
                 </time>
               </div>
               <div className="min-w-0 rounded-md px-1 -mx-1">
-                <Markdown className="line-clamp-4 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
-                  {entry.bodyMd}
-                </Markdown>
+                {entry.linkedTitle ? (
+                  <p className="m-0 font-semibold text-[--color-fg]">{entry.linkedTitle}</p>
+                ) : (
+                  <Markdown className="line-clamp-4 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+                    {entry.bodyMd}
+                  </Markdown>
+                )}
               </div>
               <span className="justify-self-start flex items-center gap-2 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-visible:opacity-100">
                 {linkedHref ? (

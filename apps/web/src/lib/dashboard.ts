@@ -1038,20 +1038,48 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
     }
   }
 
+  // Compute the two sets of follow-up IDs up front so the two dependent
+  // queries (agent_run_events + extra experiments) can run in parallel
+  // instead of sequentially.
   const activeRunIds = agentRows.map((row) => row.id);
-  const eventRows = activeRunIds.length === 0
-    ? []
-    : await db()
-        .select({
-          runId: agentRunEvents.runId,
-          eventType: agentRunEvents.eventType,
-          body: agentRunEvents.body,
-          metadata: agentRunEvents.metadata,
-          createdAt: agentRunEvents.createdAt,
-        })
-        .from(agentRunEvents)
-        .where(inArray(agentRunEvents.runId, activeRunIds))
-        .orderBy(asc(agentRunEvents.createdAt));
+  const activeExperimentIds = new Set(experimentRows.map((experiment) => experiment.id));
+  const referencedExperimentIds = new Set<string>();
+  for (const result of cleanResultRows) {
+    if (result.experimentId) referencedExperimentIds.add(result.experimentId);
+  }
+  for (const todo of todoRows) {
+    if (todo.linkedKind === 'experiment' && todo.linkedId) referencedExperimentIds.add(todo.linkedId);
+  }
+  for (const idea of ideaRows) {
+    if (idea.promotedKind === 'experiment' && idea.promotedId) referencedExperimentIds.add(idea.promotedId);
+  }
+  for (const run of agentRows) {
+    if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) referencedExperimentIds.add(run.scopeEntityId);
+  }
+  const missingExperimentIds = Array.from(referencedExperimentIds).filter((id) => !activeExperimentIds.has(id));
+
+  const [eventRows, extraExperimentRows] = await Promise.all([
+    activeRunIds.length === 0
+      ? Promise.resolve([] as Array<{ runId: string; eventType: string; body: string | null; metadata: unknown; createdAt: Date | string }>)
+      : db()
+          .select({
+            runId: agentRunEvents.runId,
+            eventType: agentRunEvents.eventType,
+            body: agentRunEvents.body,
+            metadata: agentRunEvents.metadata,
+            createdAt: agentRunEvents.createdAt,
+          })
+          .from(agentRunEvents)
+          .where(inArray(agentRunEvents.runId, activeRunIds))
+          .orderBy(asc(agentRunEvents.createdAt)),
+    missingExperimentIds.length === 0
+      ? Promise.resolve([] as Array<{ id: string; projectId: string | null; number: number | null }>)
+      : db()
+          .select({ id: experiments.id, projectId: experiments.projectId, number: experiments.number })
+          .from(experiments)
+          .where(inArray(experiments.id, missingExperimentIds)),
+  ]);
+
   const eventsByRun = new Map<string, typeof eventRows>();
   for (const event of eventRows) {
     const list = eventsByRun.get(event.runId) ?? [];
@@ -1119,28 +1147,6 @@ export async function loadPipelineCards(): Promise<DashboardPipelineCard[]> {
     return Array.from(byId.values()).map(mapCardPod);
   };
 
-  const activeExperimentIds = new Set(experimentRows.map((experiment) => experiment.id));
-  const referencedExperimentIds = new Set<string>();
-  for (const result of cleanResultRows) {
-    if (result.experimentId) referencedExperimentIds.add(result.experimentId);
-  }
-  for (const todo of todoRows) {
-    if (todo.linkedKind === 'experiment' && todo.linkedId) referencedExperimentIds.add(todo.linkedId);
-  }
-  for (const idea of ideaRows) {
-    if (idea.promotedKind === 'experiment' && idea.promotedId) referencedExperimentIds.add(idea.promotedId);
-  }
-  for (const run of agentRows) {
-    if (run.scopeEntityKind === 'experiment' && run.scopeEntityId) referencedExperimentIds.add(run.scopeEntityId);
-  }
-  const missingExperimentIds = Array.from(referencedExperimentIds).filter((id) => !activeExperimentIds.has(id));
-  const extraExperimentRows =
-    missingExperimentIds.length > 0
-      ? await db()
-          .select({ id: experiments.id, projectId: experiments.projectId, number: experiments.number })
-          .from(experiments)
-          .where(inArray(experiments.id, missingExperimentIds))
-      : [];
   const experimentReferences = [
     ...experimentRows.map((experiment) => ({ id: experiment.id, projectId: experiment.projectId, number: experiment.number })),
     ...extraExperimentRows,

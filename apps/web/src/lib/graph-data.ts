@@ -33,27 +33,69 @@ export async function loadGraph(filter?: { projectId?: string }): Promise<{
   nodes: GraphNode[];
   edges: GraphEdge[];
 }> {
-  const projQ = db().select().from(projects).orderBy(desc(projects.updatedAt));
+  // Only project the columns the graph actually renders (id/title/meta + the
+  // FK columns used to infer edges). Avoids pulling heavy text/JSON fields
+  // (planJson, bodyMd, abstract, summaryMd, etc.) that are never displayed in
+  // a node tile — those weighed in at hundreds of KB per response.
+  const projQ = db()
+    .select({ id: projects.id, title: projects.title, status: projects.status })
+    .from(projects)
+    .orderBy(desc(projects.updatedAt));
   const proj = filter?.projectId
     ? await projQ.where(eq(projects.id, filter.projectId))
     : await projQ.limit(NODE_LIMIT_PER_KIND);
 
-  const beliefQ = db().select().from(beliefs).orderBy(desc(beliefs.updatedAt));
+  const beliefQ = db()
+    .select({
+      id: beliefs.id,
+      title: beliefs.title,
+      confidence: beliefs.confidence,
+      status: beliefs.status,
+      projectId: beliefs.projectId,
+    })
+    .from(beliefs)
+    .orderBy(desc(beliefs.updatedAt));
   const bel = filter?.projectId
     ? await beliefQ.where(eq(beliefs.projectId, filter.projectId))
     : await beliefQ.limit(NODE_LIMIT_PER_KIND);
 
-  const expQ = db().select().from(experiments).orderBy(desc(experiments.updatedAt));
+  const expQ = db()
+    .select({
+      id: experiments.id,
+      title: experiments.title,
+      status: experiments.status,
+      projectId: experiments.projectId,
+      beliefId: experiments.beliefId,
+    })
+    .from(experiments)
+    .orderBy(desc(experiments.updatedAt));
   const exp = filter?.projectId
     ? await expQ.where(eq(experiments.projectId, filter.projectId))
     : await expQ.limit(NODE_LIMIT_PER_KIND);
 
   const [rn, td, lit, narr] = await Promise.all([
-    db().select().from(runs).orderBy(desc(runs.updatedAt)).limit(NODE_LIMIT_PER_KIND),
-    db().select().from(todos).orderBy(desc(todos.updatedAt)).limit(NODE_LIMIT_PER_KIND),
-    db().select().from(litItems).orderBy(desc(litItems.updatedAt)).limit(NODE_LIMIT_PER_KIND),
     db()
-      .select()
+      .select({ id: runs.id, classification: runs.classification })
+      .from(runs)
+      .orderBy(desc(runs.updatedAt))
+      .limit(NODE_LIMIT_PER_KIND),
+    db()
+      .select({ id: todos.id, text: todos.text, status: todos.status })
+      .from(todos)
+      .orderBy(desc(todos.updatedAt))
+      .limit(NODE_LIMIT_PER_KIND),
+    db()
+      .select({ id: litItems.id, title: litItems.title, type: litItems.type })
+      .from(litItems)
+      .orderBy(desc(litItems.updatedAt))
+      .limit(NODE_LIMIT_PER_KIND),
+    db()
+      .select({
+        id: projectNarratives.id,
+        title: projectNarratives.title,
+        status: projectNarratives.status,
+        projectId: projectNarratives.projectId,
+      })
       .from(projectNarratives)
       .orderBy(desc(projectNarratives.updatedAt))
       .limit(NODE_LIMIT_PER_KIND),
@@ -134,8 +176,19 @@ export async function loadGraph(filter?: { projectId?: string }): Promise<{
     })),
   ];
 
-  // Explicit edges from the edges table.
-  const explicit = await db().select().from(edges).limit(1000);
+  // Explicit edges from the edges table. Project only what the graph uses
+  // (skip `note`, which is unbounded text and never rendered on a node).
+  const explicit = await db()
+    .select({
+      id: edges.id,
+      fromKind: edges.fromKind,
+      fromId: edges.fromId,
+      toKind: edges.toKind,
+      toId: edges.toId,
+      type: edges.type,
+    })
+    .from(edges)
+    .limit(1000);
 
   const allEdges: GraphEdge[] = [
     ...fkEdges,

@@ -4,7 +4,10 @@ import { weeklyDigests } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { Markdown } from '@/components/Markdown';
 
-export const dynamic = 'force-dynamic';
+// Cache the rendered HTML for one minute per token. Weekly digests are
+// shared as immutable snapshots once published; one-minute staleness is
+// invisible to readers and gives the server a free hit on every refresh.
+export const revalidate = 60;
 
 /**
  * Public weekly digest by share token. No auth required.

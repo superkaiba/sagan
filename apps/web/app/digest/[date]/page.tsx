@@ -5,7 +5,9 @@ import { db } from '@/lib/db';
 import { Markdown } from '@/components/Markdown';
 import { StatusBadge } from '@/components/ui';
 
-export const dynamic = 'force-dynamic';
+// Past dates are immutable; today's digest only churns a few times a day.
+// One-minute cache per /digest/<date> is invisible to readers.
+export const revalidate = 60;
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 

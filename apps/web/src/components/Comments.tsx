@@ -194,6 +194,34 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     return () => window.cancelAnimationFrame(frame);
   }, [scrollToThreadId, clearThreadScrollRequest, items]);
 
+  // pendingAnchor -> jump composer into view. When NarrativeBody calls
+  // setPendingAnchor (the user highlighted text in the document and clicked
+  // the floating "Comment" button), bring the composer textarea into view
+  // and focus it so the user can start typing immediately. Track the last
+  // quote we jumped for so a re-render with the same pendingAnchor doesn't
+  // re-trigger; reset when the anchor is cleared so a fresh highlight of
+  // the same span jumps again.
+  const pendingQuote = anchorCtx?.pendingAnchor?.quote ?? null;
+  const lastJumpedAnchorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingQuote) {
+      lastJumpedAnchorRef.current = null;
+      return;
+    }
+    if (lastJumpedAnchorRef.current === pendingQuote) return;
+    lastJumpedAnchorRef.current = pendingQuote;
+    // Wait a frame so the "Commenting on:" banner above the textarea has
+    // rendered before we measure / scroll. preventScroll on focus stops the
+    // browser from doing its own less-controlled jump on top of ours.
+    const frame = window.requestAnimationFrame(() => {
+      const textarea = bodyRef.current;
+      if (!textarea) return;
+      textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      textarea.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingQuote]);
+
   async function postComment(
     text: string,
     parentCommentId?: string | null,

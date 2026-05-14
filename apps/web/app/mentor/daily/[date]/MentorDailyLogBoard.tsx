@@ -154,10 +154,13 @@ export function MentorDailyLogBoard({
   return (
     <>
       {resultEntries.length > 0 ? (
-        <section className="mb-6">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--color-muted]">
-            Results
-          </h2>
+        <section className="mb-12">
+          <header className="mb-3 flex items-baseline justify-between gap-3 border-b border-[--color-border] pb-2">
+            <h2 className="text-xl font-semibold tracking-tight">Results</h2>
+            <span className="text-xs text-[--color-muted]">
+              {resultEntries.length} clean result{resultEntries.length === 1 ? '' : 's'}
+            </span>
+          </header>
           <ol
             className="mentor-clean-log-list divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-panel]"
             style={{ backgroundColor: 'var(--color-panel)' }}
@@ -167,13 +170,16 @@ export function MentorDailyLogBoard({
         </section>
       ) : null}
       {nextStepEntries.length > 0 ? (
-        <section className="mb-6">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--color-muted]">
-            Next steps
-          </h2>
+        <section className="mb-12">
+          <header className="mb-3 flex items-baseline justify-between gap-3 border-b border-[--color-border] pb-2">
+            <h2 className="text-xl font-semibold tracking-tight">Next steps</h2>
+            <span className="text-xs text-[--color-muted]">
+              {nextStepEntries.length} planned experiment{nextStepEntries.length === 1 ? '' : 's'}
+            </span>
+          </header>
           <ol
-            className="mentor-clean-log-list divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-panel]"
-            style={{ backgroundColor: 'var(--color-panel)' }}
+            className="mentor-clean-log-list divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-muted-bg]"
+            style={{ backgroundColor: 'var(--color-muted-bg)' }}
           >
             {nextStepEntries.map((entry, i) => renderRow(entry, `next step ${i + 1}`, true))}
           </ol>

@@ -221,8 +221,15 @@ fi
 echo "$SAGAN_USER_CMD_B64" | base64 -d > /tmp/sagan_user_cmd.sh
 chmod +x /tmp/sagan_user_cmd.sh
 
+# Force \`pipefail\` for the user cmd and any bash subshells it spawns.
+# Bash reads SHELLOPTS from the environment at startup and enables every
+# listed option before any startup files run, so an inner \`bash -lc '… | tee …'\`
+# inherits it too. Without this, a planner using \`cmd | tee log\` masks cmd's
+# exit code (tee always returns 0), so a crashed experiment looks like success
+# to this wrapper. Combined with RunPod's restart-on-exit policy, that
+# produced an hours-long bootstrap → fake-100% → restart loop on exp-192.
 set +e
-bash /tmp/sagan_user_cmd.sh > >(tee /tmp/sagan_user.out) 2> >(tee /tmp/sagan_user.err >&2)
+SHELLOPTS=pipefail bash /tmp/sagan_user_cmd.sh > >(tee /tmp/sagan_user.out) 2> >(tee /tmp/sagan_user.err >&2)
 EXIT_CODE=$?
 set -e
 
@@ -246,5 +253,13 @@ else
   post_progress 0 "experiment exited with code $EXIT_CODE" "$ERROR_TAIL"
 fi
 
-exit $EXIT_CODE
+# Do NOT \`exit\`. RunPod auto-restarts the container when the entrypoint exits
+# (regardless of exit code), which turns any quick success-or-failure into a
+# bootstrap → user-cmd → bootstrap loop that burns money until manually killed
+# (see exp-192 incident, 7980 progress events over 8h with no real work done).
+# Stay alive so the orchestrator / owner can SSH in, fetch artifacts on
+# success, or inspect /tmp/sagan_user.{out,err} on failure. The watcher /
+# uploader will issue an explicit \`terminatePod\` API call when done.
+echo "[sagan] bootstrap done: exit_code=$EXIT_CODE — sleeping to prevent RunPod restart loop"
+sleep infinity
 `.trim();

@@ -174,13 +174,36 @@ function progressBody(progress: z.infer<typeof progressSchema>) {
     // Surface a short, single-line tail of the failure so the dashboard's
     // event timeline shows useful information without needing to dig into
     // metadata. The full tail (up to 16KB) is preserved in event metadata.
-    const lastLine = progress.errorTail
-      .split('\n')
-      .reverse()
-      .find((line) => line.trim().length > 0);
+    const lastLine = lastInterestingStderrLine(progress.errorTail);
     if (lastLine) parts.push(`err: ${lastLine.slice(0, 200)}`);
   }
   return parts.join(' · ') || 'pod progress update';
+}
+
+// Python's warnings module emits a 2-line frame to stderr:
+//
+//   /path/to/lib.py:986: UserWarning: <message>
+//     warnings.warn(<expr>)
+//
+// On a non-zero exit those frames are almost never the actual error — but
+// they win the naive "reverse() and take first non-empty" pick (incident
+// 2026-05-14, #333 showed only `warnings.warn(` while hiding the real
+// failure). Walk bottom-up dropping warning-frame lines, return the first
+// line that survives. Falls back to the last non-empty line so we never
+// silently lose all output.
+function lastInterestingStderrLine(errorTail: string): string | null {
+  const lines = errorTail.split('\n');
+  let lastNonEmpty: string | null = null;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!.trim();
+    if (line.length === 0) continue;
+    if (lastNonEmpty === null) lastNonEmpty = line;
+    if (/^warnings?\.warn\s*\(/i.test(line)) continue;
+    if (/(?:UserWarning|DeprecationWarning|FutureWarning|PendingDeprecationWarning|RuntimeWarning|ResourceWarning|SyntaxWarning|ImportWarning|UnicodeWarning|BytesWarning):/i.test(line)) continue;
+    if (/^For more details, check out https?:\/\//i.test(line)) continue;
+    return line;
+  }
+  return lastNonEmpty;
 }
 
 function mergeProgressMetadata(metadata: unknown, progress: JsonRecord) {

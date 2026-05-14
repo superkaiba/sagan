@@ -1,6 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from './db.js';
-import { emitEvent, notifyPipelineChanged } from './queue.js';
+import { emitEvent, notifyPipelineChanged, notifyQueued } from './queue.js';
 import { getPod, stopPod, type PodInfo, type RunpodAccount } from './tools/runpod.js';
 import { log } from './log.js';
 import { recordTrail } from './trail.js';
@@ -10,6 +10,16 @@ import { cascadeAgentRunFailureToScope } from './lib/cascade-failure.js';
 const DEFAULT_WATCH_INTERVAL_MS = 60_000;
 const ACTIVE_POD_STATUSES = ['deploying', 'running', 'retrying', 'stop_requested'];
 const TERMINAL_AGENT_STATUSES = ['completed', 'failed', 'cancelled', 'rejected', 'blocked'];
+
+// Prompt body for the interpreter agent_run queued when all pods on an
+// experiment report success. Mirrors the qa-step request that
+// /api/pipeline/advance emits when the owner drags a card running→interpreting,
+// so the runner's session prompt construction does not need to change.
+const INTERPRET_REQUEST = [
+  'Moved from running to interpreting on the Pipeline board.',
+  '',
+  'Interpret the current evidence for the scoped experiment. Use the scoped record as the source of truth for title and scope, identify missing artifacts or blockers, and produce the next concrete review note. Do not rename, retitle, or otherwise mutate the scoped issue/experiment.',
+].join('\n');
 
 type PodLifecycleRow = typeof schema.podLifecycle.$inferSelect;
 
@@ -123,6 +133,23 @@ async function refreshPod(row: PodLifecycleRow) {
     await setExperimentWorkflowStatus(row.experimentId, 'running', 'RunPod pod is running.');
   }
   await notifyPipelineChanged(row.agentRunId ?? row.experimentId ?? row.runpodPodId);
+
+  // Post-refresh: the pod is still alive on RunPod, but its bootstrap may have
+  // POSTed a terminal "experiment completed" signal to /api/runpods/progress.
+  // The progress route stores that in pod_lifecycle.metadata.saganProgress
+  // without ever transitioning the experiment — RunPod will happily restart
+  // the container's entrypoint after each exit because desiredStatus=RUNNING,
+  // so without this finalizer a successfully-completing experiment loops
+  // forever (#192-class bug). When we see the success marker, stop the pod
+  // and check whether all siblings are done.
+  if (isSuccessTerminal(row.metadata)) {
+    await finalizePodTerminalSuccess(row).catch((err) =>
+      log.error('finalizePodTerminalSuccess failed', {
+        podId: row.runpodPodId,
+        err: String(err),
+      }),
+    );
+  }
 }
 
 async function updatePodFromInfo(row: PodLifecycleRow, pod: PodInfo, status: string) {
@@ -267,4 +294,174 @@ function mapPodStatus(pod: PodInfo) {
 function watchIntervalMs() {
   const configured = Number.parseInt(process.env.RUNPOD_WATCH_INTERVAL_MS ?? '', 10);
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_WATCH_INTERVAL_MS;
+}
+
+function isSuccessTerminal(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== 'object') return false;
+  const sagan = (metadata as Record<string, unknown>).saganProgress;
+  if (!sagan || typeof sagan !== 'object') return false;
+  const s = sagan as Record<string, unknown>;
+  const pct = typeof s.progressPct === 'number' ? s.progressPct : null;
+  const message = typeof s.message === 'string' ? s.message : '';
+  return pct === 100 && /experiment\s+completed/i.test(message);
+}
+
+/**
+ * The pod's bootstrap POSTed "100% experiment completed". Halt the
+ * RunPod-side restart loop (entrypoint exits → RunPod restarts because
+ * desiredStatus=RUNNING), then attempt to advance the agent_run and
+ * experiment if every sibling pod has also finished.
+ */
+async function finalizePodTerminalSuccess(row: PodLifecycleRow) {
+  // Best-effort RunPod stop. Pod may already be gone (manual stop, RunPod
+  // reaper, etc.); we still want to mark the row terminal locally.
+  let podDesiredStatus: string | undefined;
+  try {
+    const info = await stopPod(row.runpodPodId, row.account as RunpodAccount);
+    podDesiredStatus = info.desiredStatus;
+  } catch (err) {
+    log.warn('finalizePodTerminalSuccess: stopPod failed (continuing)', {
+      podId: row.runpodPodId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  const now = new Date();
+  // Use status='completed' (distinct from 'stopped'/'terminated', which we
+  // already use for manual/RunPod-driven teardown) so siblings can tell
+  // "this pod finished its experiment cleanly" apart from "this pod was
+  // killed for other reasons" when aggregating.
+  const updated = await db()
+    .update(schema.podLifecycle)
+    .set({
+      status: 'completed',
+      desiredStatus: podDesiredStatus ?? 'EXITED',
+      stoppedAt: now,
+      terminatedAt: now,
+      lastCheckedAt: now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(schema.podLifecycle.id, row.id),
+        inArray(schema.podLifecycle.status, [...ACTIVE_POD_STATUSES, 'blocked']),
+      ),
+    )
+    .returning({ id: schema.podLifecycle.id });
+  if (updated.length === 0) {
+    // Another sweep already finalized this row; nothing to do.
+    return;
+  }
+
+  if (row.agentRunId) {
+    await emitEvent(row.agentRunId, 'runpod_completed', row.runpodPodId, {
+      reason: 'experiment_completed',
+      desiredStatus: podDesiredStatus ?? 'EXITED',
+    });
+    await maybeAdvanceExperimentOnAllPodsCompleted(row.agentRunId, row.experimentId);
+  }
+
+  await notifyPipelineChanged(row.agentRunId ?? row.experimentId ?? row.runpodPodId);
+}
+
+/**
+ * If every pod on this agent_run is status='completed', mark the run
+ * completed, advance the experiment running→interpreting (only if still
+ * running), and queue the interpreter agent_run.
+ *
+ * Bails out atomically if anyone else (cascade-failure, owner action,
+ * another sweep) has already transitioned the run or experiment out of
+ * the expected pre-state.
+ */
+async function maybeAdvanceExperimentOnAllPodsCompleted(
+  agentRunId: string,
+  experimentId: string | null,
+) {
+  const siblings = await db()
+    .select({ status: schema.podLifecycle.status })
+    .from(schema.podLifecycle)
+    .where(eq(schema.podLifecycle.agentRunId, agentRunId));
+  if (siblings.length === 0) return;
+  if (!siblings.every((s) => s.status === 'completed')) return;
+
+  // Transition the agent_run. Guard against double-finalize: only flip from
+  // an in-flight status.
+  const runUpdated = await db()
+    .update(schema.agentRuns)
+    .set({ status: 'completed', completedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.agentRuns.id, agentRunId),
+        inArray(schema.agentRuns.status, ['approved', 'deploying', 'running']),
+      ),
+    )
+    .returning({ id: schema.agentRuns.id });
+  if (runUpdated.length === 0) return;
+  await emitEvent(
+    agentRunId,
+    'completed',
+    'All pods reported "experiment completed"; agent run finalized.',
+    { podCount: siblings.length },
+  );
+
+  if (!experimentId) return;
+
+  // Advance the experiment running→interpreting. Owners may have moved the
+  // card elsewhere in the meantime (e.g. straight to blocked/reviewing/done);
+  // honor that.
+  const expUpdated = await db()
+    .update(schema.experiments)
+    .set({ status: 'interpreting', updatedAt: new Date() })
+    .where(and(eq(schema.experiments.id, experimentId), eq(schema.experiments.status, 'running')))
+    .returning({ id: schema.experiments.id, number: schema.experiments.number, title: schema.experiments.title });
+  if (expUpdated.length === 0) return;
+  const exp = expUpdated[0]!;
+  await db().insert(schema.workflowEvents).values({
+    entityKind: 'experiment',
+    entityId: experimentId,
+    eventType: 'state_changed',
+    fromStatus: 'running',
+    toStatus: 'interpreting',
+    actorKind: 'system',
+    note: 'All pods reported experiment completed; auto-advanced to interpreting.',
+    metadata: { agentRunId, podCount: siblings.length },
+  });
+
+  // Queue the interpreter qa run. session.ts buildPrompt handles kind='qa'
+  // without needing a special prefix; the request body above mirrors what
+  // /api/pipeline/advance writes when the owner drags a card to interpreting.
+  const inserted = await db()
+    .insert(schema.agentRuns)
+    .values({
+      kind: 'qa',
+      provider: 'claude_code',
+      status: 'queued',
+      request: INTERPRET_REQUEST,
+      scopeEntityKind: 'experiment',
+      scopeEntityId: experimentId,
+      approvalRequired: false,
+    })
+    .returning({ id: schema.agentRuns.id });
+  const newRunId = inserted[0]!.id;
+  await notifyQueued(newRunId);
+  await emitEvent(newRunId, 'queued', `Interpreter queued after auto-advance for #${exp.number ?? '?'}.`, {
+    scopeEntityKind: 'experiment',
+    scopeEntityId: experimentId,
+    autoAdvancedFrom: agentRunId,
+  });
+  await recordTrail({
+    action: `Auto-advanced experiment #${exp.number ?? '?'} from running to interpreting`,
+    why: 'All RunPod pods reported "experiment completed". The pipeline previously hung in running because nothing consumed the completion signal.',
+    entityKind: 'experiment',
+    entityId: experimentId,
+    agentRunId: newRunId,
+    correlationId: agentRunId,
+    detail: `Queued interpreter run ${newRunId.slice(0, 8)}.`,
+  });
+  log.info('watcher: auto-advanced experiment to interpreting', {
+    experimentId,
+    experimentNumber: exp.number,
+    agentRunId,
+    interpreterRunId: newRunId,
+  });
 }

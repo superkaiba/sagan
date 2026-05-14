@@ -22,6 +22,7 @@ export interface MentorDailyLogEntry {
   updatedAt: string;
   linkedTitle?: string | null;
   linkedConfidence?: string | null;
+  linkedExperimentNumber?: number | null;
 }
 
 export function MentorDailyLogBoard({
@@ -79,14 +80,21 @@ export function MentorDailyLogBoard({
         className="mentor-clean-log-list divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-panel]"
         style={{ backgroundColor: 'var(--color-panel)' }}
       >
-        {entries.map((entry, index) => {
+        {(() => {
+          let resultCounter = 0;
+          let nextStepCounter = 0;
+          return entries.map((entry) => {
           const linkedHref = entityHref(entry.entityKind, entry.entityId);
+          const isNextStep = entry.entityKind === 'experiment';
+          const badgeLabel = isNextStep
+            ? `next step ${++nextStepCounter}`
+            : `result ${++resultCounter}`;
           const rowClassName =
             'mentor-clean-log-row group grid w-full gap-2 p-3 text-left text-sm hover:bg-[--color-muted-bg] focus:outline-none focus:ring-2 focus:ring-[--color-focus] md:grid-cols-[7rem_minmax(0,1fr)_auto] md:items-start';
           const rowInner = (
             <>
               <div className="flex items-center gap-2 md:block">
-                <StatusBadge status="clean_result" label={`result ${index + 1}`} />
+                <StatusBadge status="clean_result" label={badgeLabel} />
                 <time className="text-xs text-[--color-muted] md:mt-2 md:block">
                   {new Date(entry.createdAt).toLocaleTimeString([], {
                     hour: '2-digit',
@@ -96,12 +104,7 @@ export function MentorDailyLogBoard({
               </div>
               <div className="min-w-0 rounded-md px-1 -mx-1">
                 {entry.linkedTitle ? (
-                  <>
-                    <p className="m-0 font-semibold text-[--color-fg]">{entry.linkedTitle}</p>
-                    <Markdown className="mt-1 line-clamp-[12] text-[--color-muted] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
-                      {entry.bodyMd}
-                    </Markdown>
-                  </>
+                  <p className="m-0 font-semibold text-[--color-fg]">{entry.linkedTitle}</p>
                 ) : (
                   <Markdown className="line-clamp-4 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
                     {entry.bodyMd}
@@ -152,7 +155,8 @@ export function MentorDailyLogBoard({
               )}
             </li>
           );
-        })}
+        });
+        })()}
       </ol>
 
       {active ? (

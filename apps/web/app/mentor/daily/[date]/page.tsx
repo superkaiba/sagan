@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
-import { cleanResults, dailyLogEntries } from '@sagan/db/schema';
+import { cleanResults, dailyLogEntries, experiments } from '@sagan/db/schema';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { MentorDailyLogBoard } from './MentorDailyLogBoard';
@@ -39,6 +39,13 @@ export default async function MentorDailyPage({
         .map((e) => e.entityId as string),
     ),
   );
+  const linkedExperimentIds = Array.from(
+    new Set(
+      entries
+        .filter((e) => e.entityKind === 'experiment' && e.entityId)
+        .map((e) => e.entityId as string),
+    ),
+  );
   const linkedCleanResultMap = new Map<
     string,
     { title: string; confidence: string | null }
@@ -54,6 +61,20 @@ export default async function MentorDailyPage({
       .where(inArray(cleanResults.id, linkedCleanResultIds));
     for (const row of rows) {
       linkedCleanResultMap.set(row.id, { title: row.title, confidence: row.confidence });
+    }
+  }
+  const linkedExperimentMap = new Map<string, { title: string; number: number }>();
+  if (linkedExperimentIds.length > 0) {
+    const rows = await db()
+      .select({
+        id: experiments.id,
+        title: experiments.title,
+        number: experiments.number,
+      })
+      .from(experiments)
+      .where(inArray(experiments.id, linkedExperimentIds));
+    for (const row of rows) {
+      linkedExperimentMap.set(row.id, { title: row.title, number: row.number });
     }
   }
 
@@ -76,10 +97,18 @@ export default async function MentorDailyPage({
           date={date}
           signedIn={Boolean(session)}
           entries={entries.map((entry) => {
-            const linked =
-              entry.entityKind === 'clean_result' && entry.entityId
-                ? linkedCleanResultMap.get(entry.entityId) ?? null
-                : null;
+            let linkedTitle: string | null = null;
+            let linkedConfidence: string | null = null;
+            let linkedExperimentNumber: number | null = null;
+            if (entry.entityKind === 'clean_result' && entry.entityId) {
+              const linked = linkedCleanResultMap.get(entry.entityId) ?? null;
+              linkedTitle = linked?.title ?? null;
+              linkedConfidence = linked?.confidence ?? null;
+            } else if (entry.entityKind === 'experiment' && entry.entityId) {
+              const linked = linkedExperimentMap.get(entry.entityId) ?? null;
+              linkedTitle = linked?.title ?? null;
+              linkedExperimentNumber = linked?.number ?? null;
+            }
             return {
               id: entry.id,
               day: entry.day,
@@ -90,8 +119,9 @@ export default async function MentorDailyPage({
               position: entry.position,
               createdAt: entry.createdAt.toISOString(),
               updatedAt: entry.updatedAt.toISOString(),
-              linkedTitle: linked?.title ?? null,
-              linkedConfidence: linked?.confidence ?? null,
+              linkedTitle,
+              linkedConfidence,
+              linkedExperimentNumber,
             };
           })}
         />

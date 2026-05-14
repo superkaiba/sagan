@@ -5,6 +5,7 @@ import { cleanResults, cleanResultVersions, runArtifacts } from '@sagan/db/schem
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
+import { grantDefaultMentorMembership } from '@/lib/default-memberships';
 
 const createSchema = z.object({
   title: z.string().min(1).max(300),
@@ -81,6 +82,7 @@ export async function POST(req: Request) {
     authorKind: 'user',
     editedBy: session.user.id,
   });
+  await grantDefaultMentorMembership('clean_result', cleanResult.id, session.user.id);
   await appendDailyLogTrailBestEffort({
     action: `Drafted clean result ${cleanResult.id.slice(0, 8)}`,
     why: 'A verified artifact-backed clean result draft was created.',

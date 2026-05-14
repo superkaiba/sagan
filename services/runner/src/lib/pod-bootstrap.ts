@@ -170,6 +170,51 @@ PY
 }
 post_progress 5 "bootstrap complete on branch $SAGAN_EPS_BRANCH"
 
+# ─── Heartbeat: declining wall-clock ETA, no event-row spam ────────────────
+# Spawns a background loop that POSTs {estimatedRemainingMinutes:N, heartbeat:true}
+# every 90s while the user-cmd is running. The webhook's heartbeat:true flag
+# updates pod_lifecycle.metadata + experiments.plan_json (so the dashboard
+# sidebar's "Nm left · $X.XX" ticks) but skips the agent_run_events /
+# workflow_events insert so the timeline doesn't fill with heartbeats.
+# Quiet no-op when SAGAN_ESTIMATED_MINUTES is unset.
+HEARTBEAT_PID=""
+if [ -n "\${SAGAN_ESTIMATED_MINUTES:-}" ] && [ -n "\${SAGAN_PROGRESS_URL:-}" ] && [ -n "\${SAGAN_POD_PROGRESS_TOKEN:-}" ]; then
+  START_EPOCH=$(date +%s)
+  (
+    sleep 30  # initial offset so the user-cmd posts its first ETA first if it wants
+    while true; do
+      ELAPSED_MIN=$(( ($(date +%s) - START_EPOCH) / 60 ))
+      REMAINING=$(( SAGAN_ESTIMATED_MINUTES - ELAPSED_MIN ))
+      if [ "$REMAINING" -lt 0 ]; then REMAINING=0; fi
+      python3 - "$REMAINING" "$ELAPSED_MIN" <<'PY' || true
+import json, os, sys, urllib.request
+remaining = int(sys.argv[1])
+elapsed = int(sys.argv[2])
+body = {
+    "estimatedRemainingMinutes": remaining,
+    "heartbeat": True,
+    "message": f"heartbeat: {elapsed}m elapsed, ~{remaining}m left",
+}
+req = urllib.request.Request(
+    os.environ["SAGAN_PROGRESS_URL"],
+    data=json.dumps(body).encode("utf-8"),
+    headers={
+        "authorization": "Bearer " + os.environ["SAGAN_POD_PROGRESS_TOKEN"],
+        "content-type": "application/json",
+    },
+    method="POST",
+)
+try:
+    urllib.request.urlopen(req, timeout=15).read()
+except Exception:
+    pass  # best-effort; pod transient network blips are not fatal
+PY
+      sleep 90
+    done
+  ) &
+  HEARTBEAT_PID=$!
+fi
+
 # ─── Decode and run the planner's command ──────────────────────────────────
 # Capture stdout to /tmp/sagan_user.out and stderr to /tmp/sagan_user.err so
 # we can tail the actual failure into the progress webhook on non-zero exit.
@@ -180,6 +225,11 @@ set +e
 bash /tmp/sagan_user_cmd.sh > >(tee /tmp/sagan_user.out) 2> >(tee /tmp/sagan_user.err >&2)
 EXIT_CODE=$?
 set -e
+
+# Stop the heartbeat once user-cmd has exited (success or failure).
+if [ -n "$HEARTBEAT_PID" ]; then
+  kill "$HEARTBEAT_PID" 2>/dev/null || true
+fi
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   post_progress 100 "experiment completed"

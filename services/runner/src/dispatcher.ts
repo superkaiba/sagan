@@ -538,9 +538,15 @@ export function buildPodEnv(opts: {
   experimentId: string | null;
   runIndex: number;
   progressToken: string;
+  /**
+   * Planner-authored upper bound on wall-clock minutes. Forwarded as
+   * SAGAN_ESTIMATED_MINUTES so the bootstrap can emit `Nm remaining`
+   * heartbeats and the EPS-side helper can rate-limit its own ETA posts.
+   */
+  estimatedMinutes?: number | null;
   userEnv?: Record<string, string>;
 }): Record<string, string> {
-  return {
+  const env: Record<string, string> = {
     ...readClientRepoEnvForPod(),
     ...(opts.userEnv ?? {}),
     SAGAN_PROGRESS_URL: `${siteUrl()}/api/runpods/progress`,
@@ -549,6 +555,10 @@ export function buildPodEnv(opts: {
     SAGAN_EXPERIMENT_ID: opts.experimentId ?? '',
     SAGAN_RUN_INDEX: String(opts.runIndex),
   };
+  if (typeof opts.estimatedMinutes === 'number' && Number.isFinite(opts.estimatedMinutes) && opts.estimatedMinutes > 0) {
+    env.SAGAN_ESTIMATED_MINUTES = String(Math.floor(opts.estimatedMinutes));
+  }
+  return env;
 }
 
 /**

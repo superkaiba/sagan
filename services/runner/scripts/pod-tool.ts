@@ -164,6 +164,7 @@ async function cmdAttempt(args: string[]) {
       experimentId,
       runIndex,
       progressToken,
+      estimatedMinutes: spec.estimatedMinutes,
       userEnv: spec.env,
     }),
     dryRun: spec.dryRun,

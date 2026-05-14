@@ -111,6 +111,28 @@ export function ActiveRunPodsPanel({
             const spend = estimateRunPodSpendUsd(pod);
             const rate = effectiveRunPodRate(pod);
             const remainingCost = estimateRunPodRemainingCostUsd(rate, pod.experimentEstimatedRemainingMinutes);
+            // Total estimated cost = spent-so-far + cost-of-remaining-time. Both
+            // pieces are pulled from the same source (pod_lifecycle metadata +
+            // experiments.plan_json.saganUi), so when either is missing we
+            // suppress the combined number rather than showing a misleading
+            // partial total. The pod-bootstrap heartbeat keeps the remaining
+            // half fresh even when the experiment script isn't posting its
+            // own ETAs; the EPS-side helper improves the estimate once
+            // training has accumulated a few step-time samples.
+            const totalEstCost = spend != null && remainingCost != null ? spend + remainingCost : null;
+            const pctText =
+              pod.experimentProgressPct == null
+                ? null
+                : `${pod.experimentProgressPct.toFixed(pod.experimentProgressPct % 1 === 0 ? 0 : 1)}%`;
+            const remainingText =
+              pod.experimentEstimatedRemainingMinutes == null
+                ? null
+                : `${formatDuration(pod.experimentEstimatedRemainingMinutes * 60)} left`;
+            // Build the summary line only when at least one signal exists, so
+            // the row stays compact for pods that haven't started reporting.
+            const summarySegments = [pctText, remainingText, totalEstCost == null ? null : `${formatUsd(totalEstCost)} est`].filter(
+              (segment): segment is string => Boolean(segment),
+            );
             return (
               <li key={pod.id} className="border-b border-[--color-border] last:border-b-0">
                 <Link href={pod.href} className="block px-3 py-2 hover:bg-[--color-hover]">
@@ -118,23 +140,19 @@ export function ActiveRunPodsPanel({
                     <Server className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[--color-muted]" aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <span className="line-clamp-2 font-medium leading-4 text-[--color-fg]">{podTitle(pod)}</span>
+                      {summarySegments.length > 0 ? (
+                        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[11px] leading-4 text-[--color-running]">
+                          {summarySegments.map((segment, idx) => (
+                            <span key={idx}>{segment}</span>
+                          ))}
+                        </span>
+                      ) : null}
                       <span className="mt-1 flex flex-wrap items-center gap-1.5 leading-4 text-[--color-muted]">
                         {pod.experimentMarker ? <span className="font-mono text-[11px]">{pod.experimentMarker}</span> : null}
                         <span className="font-mono text-[11px]">{pod.podId.slice(0, 8)}</span>
                         {gpu ? <span>{gpu}</span> : null}
                         <span>{spend == null ? 'spend pending' : `${formatUsd(spend)} spent`}</span>
                         <span>{formatUsdPerHour(rate)}</span>
-                        {pod.experimentEstimatedRemainingMinutes == null ? null : (
-                          <span>
-                            {formatDuration(pod.experimentEstimatedRemainingMinutes * 60)} left
-                            {remainingCost == null ? '' : ` · ${formatUsd(remainingCost)}`}
-                          </span>
-                        )}
-                        {pod.experimentProgressPct == null ? null : (
-                          <span className="font-mono text-[--color-running]">
-                            {pod.experimentProgressPct.toFixed(pod.experimentProgressPct % 1 === 0 ? 0 : 1)}%
-                          </span>
-                        )}
                         {pod.experimentEstimatedRemainingMessage ? (
                           <span className="max-w-full truncate">{pod.experimentEstimatedRemainingMessage}</span>
                         ) : null}

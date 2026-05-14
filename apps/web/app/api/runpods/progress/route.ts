@@ -24,6 +24,18 @@ const progressSchema = z
      * code. Optional — omitted on success.
      */
     errorTail: z.string().max(16_384).optional(),
+    /**
+     * Set true for bootstrap-side wall-clock heartbeats that only update
+     * `estimatedRemainingMinutes` for the dashboard's sidebar countdown.
+     * When true, the route still updates `pod_lifecycle.metadata.saganProgress`
+     * and `experiments.plan_json.saganUi` so the card refreshes, but skips
+     * the `agent_run_events` and `workflow_events` inserts so the timeline
+     * does not fill with redundant "Nm remaining" rows (one every 60-120s
+     * over multi-hour runs would be hundreds of rows). Experiment-side
+     * progress posts that mark real milestones should NOT set this — they
+     * deserve a row in the timeline.
+     */
+    heartbeat: z.boolean().optional(),
   })
   .refine(
     (value) =>
@@ -104,24 +116,31 @@ export async function POST(req: Request) {
         })
         .where(eq(experiments.id, pod.experimentId));
     }
-    await db().insert(workflowEvents).values({
-      entityKind: 'experiment',
-      entityId: pod.experimentId,
-      eventType: 'note',
-      actorKind: 'runpod',
-      note: progressBody(parsed.data),
-      metadata: {
-        marker_type: 'epm:progress',
-        podId: pod.runpodPodId,
-        estimatedRemainingMinutes: parsed.data.estimatedRemainingMinutes ?? null,
-        progressPct: parsed.data.progressPct ?? null,
-        status: parsed.data.status ?? null,
-        errorTail: parsed.data.errorTail ?? null,
-      },
-    });
+    // Skip the event-row inserts for heartbeats. The pod_lifecycle.metadata
+    // and experiments.plan_json updates above are what the sidebar reads;
+    // heartbeats are only there to keep the ETA fresh, not to mark
+    // milestones. Real progress posts (heartbeat omitted/false) still
+    // append to the timeline as before.
+    if (!parsed.data.heartbeat) {
+      await db().insert(workflowEvents).values({
+        entityKind: 'experiment',
+        entityId: pod.experimentId,
+        eventType: 'note',
+        actorKind: 'runpod',
+        note: progressBody(parsed.data),
+        metadata: {
+          marker_type: 'epm:progress',
+          podId: pod.runpodPodId,
+          estimatedRemainingMinutes: parsed.data.estimatedRemainingMinutes ?? null,
+          progressPct: parsed.data.progressPct ?? null,
+          status: parsed.data.status ?? null,
+          errorTail: parsed.data.errorTail ?? null,
+        },
+      });
+    }
   }
 
-  if (pod.agentRunId) {
+  if (pod.agentRunId && !parsed.data.heartbeat) {
     await db().insert(agentRunEvents).values({
       runId: pod.agentRunId,
       eventType: 'runpod_progress',

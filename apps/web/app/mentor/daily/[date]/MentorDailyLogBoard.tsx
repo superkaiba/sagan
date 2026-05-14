@@ -74,90 +74,111 @@ export function MentorDailyLogBoard({
     );
   }
 
+  const resultEntries = entries.filter((e) => e.entityKind !== 'experiment');
+  const nextStepEntries = entries.filter((e) => e.entityKind === 'experiment');
+
+  const rowClassName =
+    'mentor-clean-log-row group grid w-full gap-2 p-3 text-left text-sm hover:bg-[--color-muted-bg] focus:outline-none focus:ring-2 focus:ring-[--color-focus] md:grid-cols-[7rem_minmax(0,1fr)_auto] md:items-start';
+
+  function renderRow(entry: MentorDailyLogEntry, badgeLabel: string, showBody: boolean) {
+    const linkedHref = entityHref(entry.entityKind, entry.entityId);
+    const inner = (
+      <>
+        <div className="flex items-center gap-2 md:block">
+          <StatusBadge status="clean_result" label={badgeLabel} />
+          <time className="text-xs text-[--color-muted] md:mt-2 md:block">
+            {new Date(entry.createdAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </time>
+        </div>
+        <div className="min-w-0 rounded-md px-1 -mx-1">
+          {entry.linkedTitle ? (
+            <>
+              <p className="m-0 font-semibold text-[--color-fg]">{entry.linkedTitle}</p>
+              {showBody && entry.bodyMd ? (
+                <Markdown className="mt-1 line-clamp-[10] text-[--color-muted] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+                  {entry.bodyMd}
+                </Markdown>
+              ) : null}
+            </>
+          ) : (
+            <Markdown className="line-clamp-4 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+              {entry.bodyMd}
+            </Markdown>
+          )}
+        </div>
+        <span className="justify-self-start flex items-center gap-2 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-visible:opacity-100">
+          {linkedHref ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openOverlay(entry.id);
+              }}
+              aria-label="Open summary overlay"
+              title="Open summary overlay"
+              className="rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+            >
+              summary
+            </button>
+          ) : null}
+          <span className="rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs text-[--color-muted]">
+            open
+          </span>
+        </span>
+      </>
+    );
+    return (
+      <li key={entry.id}>
+        {linkedHref ? (
+          <Link href={linkedHref} data-clickable="true" className={rowClassName}>
+            {inner}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            data-clickable="true"
+            onClick={() => openOverlay(entry.id)}
+            className={rowClassName}
+          >
+            {inner}
+          </button>
+        )}
+      </li>
+    );
+  }
+
   return (
     <>
-      <ol
-        className="mentor-clean-log-list divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-panel]"
-        style={{ backgroundColor: 'var(--color-panel)' }}
-      >
-        {(() => {
-          let resultCounter = 0;
-          let nextStepCounter = 0;
-          return entries.map((entry) => {
-          const linkedHref = entityHref(entry.entityKind, entry.entityId);
-          const isNextStep = entry.entityKind === 'experiment';
-          const badgeLabel = isNextStep
-            ? `next step ${++nextStepCounter}`
-            : `result ${++resultCounter}`;
-          const rowClassName =
-            'mentor-clean-log-row group grid w-full gap-2 p-3 text-left text-sm hover:bg-[--color-muted-bg] focus:outline-none focus:ring-2 focus:ring-[--color-focus] md:grid-cols-[7rem_minmax(0,1fr)_auto] md:items-start';
-          const rowInner = (
-            <>
-              <div className="flex items-center gap-2 md:block">
-                <StatusBadge status="clean_result" label={badgeLabel} />
-                <time className="text-xs text-[--color-muted] md:mt-2 md:block">
-                  {new Date(entry.createdAt).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </time>
-              </div>
-              <div className="min-w-0 rounded-md px-1 -mx-1">
-                {entry.linkedTitle ? (
-                  <p className="m-0 font-semibold text-[--color-fg]">{entry.linkedTitle}</p>
-                ) : (
-                  <Markdown className="line-clamp-4 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
-                    {entry.bodyMd}
-                  </Markdown>
-                )}
-              </div>
-              <span className="justify-self-start flex items-center gap-2 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-visible:opacity-100">
-                {linkedHref ? (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      openOverlay(entry.id);
-                    }}
-                    aria-label="Open summary overlay"
-                    title="Open summary overlay"
-                    className="rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
-                  >
-                    summary
-                  </button>
-                ) : null}
-                <span className="rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs text-[--color-muted]">
-                  open
-                </span>
-              </span>
-            </>
-          );
-          return (
-            <li key={entry.id}>
-              {linkedHref ? (
-                <Link
-                  href={linkedHref}
-                  data-clickable="true"
-                  className={rowClassName}
-                >
-                  {rowInner}
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  data-clickable="true"
-                  onClick={() => openOverlay(entry.id)}
-                  className={rowClassName}
-                >
-                  {rowInner}
-                </button>
-              )}
-            </li>
-          );
-        });
-        })()}
-      </ol>
+      {resultEntries.length > 0 ? (
+        <section className="mb-6">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--color-muted]">
+            Results
+          </h2>
+          <ol
+            className="mentor-clean-log-list divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-panel]"
+            style={{ backgroundColor: 'var(--color-panel)' }}
+          >
+            {resultEntries.map((entry, i) => renderRow(entry, `result ${i + 1}`, false))}
+          </ol>
+        </section>
+      ) : null}
+      {nextStepEntries.length > 0 ? (
+        <section className="mb-6">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--color-muted]">
+            Next steps
+          </h2>
+          <ol
+            className="mentor-clean-log-list divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-panel]"
+            style={{ backgroundColor: 'var(--color-panel)' }}
+          >
+            {nextStepEntries.map((entry, i) => renderRow(entry, `next step ${i + 1}`, true))}
+          </ol>
+        </section>
+      ) : null}
 
       {active ? (
         <div

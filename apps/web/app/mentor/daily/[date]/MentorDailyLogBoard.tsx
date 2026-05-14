@@ -96,7 +96,12 @@ export function MentorDailyLogBoard({
               </div>
               <div className="min-w-0 rounded-md px-1 -mx-1">
                 {entry.linkedTitle ? (
-                  <p className="m-0 font-semibold text-[--color-fg]">{entry.linkedTitle}</p>
+                  <>
+                    <p className="m-0 font-semibold text-[--color-fg]">{entry.linkedTitle}</p>
+                    <Markdown className="mt-1 line-clamp-[12] text-[--color-muted] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+                      {entry.bodyMd}
+                    </Markdown>
+                  </>
                 ) : (
                   <Markdown className="line-clamp-4 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
                     {entry.bodyMd}

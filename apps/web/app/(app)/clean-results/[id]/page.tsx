@@ -61,11 +61,6 @@ export default async function CleanResultPage({ params }: { params: Promise<{ id
           ) : null}
         </header>
 
-        <section className="rounded-lg border border-[--color-border] bg-[--color-panel] p-4">
-          <p className="text-sm font-medium text-[--color-muted]">Claim</p>
-          <p className="mt-1">{result.claim}</p>
-        </section>
-
         {owner ? (
           <EditableBody kind="clean_result" id={result.id} initialBody={result.bodyMd} />
         ) : (

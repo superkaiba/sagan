@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Maximize2, X } from 'lucide-react';
 import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
@@ -76,14 +77,12 @@ export function MentorDailyLogBoard({
         className="mentor-clean-log-list divide-y divide-[--color-border] rounded-lg border border-[--color-border] bg-[--color-panel]"
         style={{ backgroundColor: 'var(--color-panel)' }}
       >
-        {entries.map((entry, index) => (
-          <li key={entry.id}>
-            <button
-              type="button"
-              data-clickable="true"
-              onClick={() => openOverlay(entry.id)}
-              className="mentor-clean-log-row group grid w-full gap-2 p-3 text-left text-sm hover:bg-[--color-muted-bg] focus:outline-none focus:ring-2 focus:ring-[--color-focus] md:grid-cols-[7rem_minmax(0,1fr)_auto] md:items-start"
-            >
+        {entries.map((entry, index) => {
+          const linkedHref = entityHref(entry.entityKind, entry.entityId);
+          const rowClassName =
+            'mentor-clean-log-row group grid w-full gap-2 p-3 text-left text-sm hover:bg-[--color-muted-bg] focus:outline-none focus:ring-2 focus:ring-[--color-focus] md:grid-cols-[7rem_minmax(0,1fr)_auto] md:items-start';
+          const rowInner = (
+            <>
               <div className="flex items-center gap-2 md:block">
                 <StatusBadge status="clean_result" label={`result ${index + 1}`} />
                 <time className="text-xs text-[--color-muted] md:mt-2 md:block">
@@ -98,12 +97,51 @@ export function MentorDailyLogBoard({
                   {entry.bodyMd}
                 </Markdown>
               </div>
-              <span className="justify-self-start rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs text-[--color-muted] md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-visible:opacity-100">
-                open
+              <span className="justify-self-start flex items-center gap-2 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-visible:opacity-100">
+                {linkedHref ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openOverlay(entry.id);
+                    }}
+                    aria-label="Open summary overlay"
+                    title="Open summary overlay"
+                    className="rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+                  >
+                    summary
+                  </button>
+                ) : null}
+                <span className="rounded-md border border-[--color-border] bg-[--color-bg] px-2 py-1 text-xs text-[--color-muted]">
+                  open
+                </span>
               </span>
-            </button>
-          </li>
-        ))}
+            </>
+          );
+          return (
+            <li key={entry.id}>
+              {linkedHref ? (
+                <Link
+                  href={linkedHref}
+                  data-clickable="true"
+                  className={rowClassName}
+                >
+                  {rowInner}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  data-clickable="true"
+                  onClick={() => openOverlay(entry.id)}
+                  className={rowClassName}
+                >
+                  {rowInner}
+                </button>
+              )}
+            </li>
+          );
+        })}
       </ol>
 
       {active ? (
@@ -199,6 +237,12 @@ export function MentorDailyLogBoard({
       ) : null}
     </>
   );
+}
+
+function entityHref(kind: string | null, id: string | null): string | null {
+  if (!kind || !id) return null;
+  if (kind === 'clean_result') return `/clean-results/${id}`;
+  return `/e/${kind}/${id}`;
 }
 
 function titleFromMarkdown(markdown: string) {

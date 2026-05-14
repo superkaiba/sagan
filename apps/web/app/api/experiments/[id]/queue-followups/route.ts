@@ -5,6 +5,7 @@ import { comments, experiments } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
+import { grantDefaultMentorMembership } from '@/lib/default-memberships';
 import { appendWorkflowEvent, experimentTurn, setExperimentStatus } from '@/lib/workflow';
 
 /**
@@ -113,6 +114,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       .returning({ id: experiments.id, title: experiments.title });
     const child = inserted[0]!;
     created.push(child);
+    await grantDefaultMentorMembership('experiment', child.id, session.user.id);
 
     // Resolve the source comment so it no longer shows in the Q/T panel.
     await db()

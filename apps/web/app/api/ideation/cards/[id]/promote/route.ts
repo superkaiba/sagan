@@ -5,6 +5,7 @@ import { experiments, ideaCards, todos } from '@sagan/db/schema';
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { db } from '@/lib/db';
+import { grantDefaultMentorMembership } from '@/lib/default-memberships';
 import { PROMOTION_KINDS, promotionTargetKind, promotionTodoText } from '@/lib/ideation';
 import { appendWorkflowEvent, experimentTurn } from '@/lib/workflow';
 
@@ -54,6 +55,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       .returning();
     const experiment = inserted[0]!;
     promotedId = experiment.id;
+    await grantDefaultMentorMembership('experiment', experiment.id, session.user.id);
     await appendWorkflowEvent({
       entityKind: 'experiment',
       entityId: experiment.id,

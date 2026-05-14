@@ -5,6 +5,7 @@ import { agentRunEvents, agentRuns, cleanResults, dailyLogEntries, experiments, 
 import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { db } from '@/lib/db';
+import { grantDefaultMentorMembership } from '@/lib/default-memberships';
 import { statusTone } from '@/lib/status';
 import { appendWorkflowEvent, experimentTurn, setExperimentStatus, type ExperimentStatus } from '@/lib/workflow';
 import type { EntityKind } from '@/lib/entity';
@@ -887,6 +888,7 @@ async function advanceIdea(input: z.infer<typeof advanceSchema>, actorUserId: st
       createdAt: experiments.createdAt,
     });
   const experiment = inserted[0]!;
+  await grantDefaultMentorMembership('experiment', experiment.id, actorUserId);
   await db()
     .update(ideaCards)
     .set({

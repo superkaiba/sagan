@@ -3,8 +3,9 @@ import { entityMemberships, users } from '@sagan/db/schema';
 import { db } from './db';
 import type { EntityKind } from './entity';
 
-function parseMentorEmails(): string[] {
-  const raw = process.env.SAGAN_DEFAULT_MENTOR_EMAIL?.trim();
+function parseMentorEmails(entityKind: EntityKind): string[] {
+  const kindKey = `SAGAN_DEFAULT_MENTOR_EMAIL_${entityKind.toUpperCase()}`;
+  const raw = (process.env[kindKey] ?? process.env.SAGAN_DEFAULT_MENTOR_EMAIL ?? '').trim();
   if (!raw) return [];
   return raw
     .split(',')
@@ -12,8 +13,8 @@ function parseMentorEmails(): string[] {
     .filter(Boolean);
 }
 
-async function lookupMentorUserIds(): Promise<string[]> {
-  const emails = parseMentorEmails();
+async function lookupMentorUserIds(entityKind: EntityKind): Promise<string[]> {
+  const emails = parseMentorEmails(entityKind);
   if (emails.length === 0) return [];
   const rows = await db()
     .select({ id: users.id })
@@ -27,7 +28,7 @@ export async function grantDefaultMentorMembership(
   entityId: string,
   createdByUserId?: string,
 ): Promise<void> {
-  const userIds = await lookupMentorUserIds();
+  const userIds = await lookupMentorUserIds(entityKind);
   if (userIds.length === 0) return;
   await db()
     .insert(entityMemberships)
@@ -55,7 +56,7 @@ export async function backfillDefaultMentorMembership(
   createdByUserId?: string,
 ): Promise<number> {
   if (entityIds.length === 0) return 0;
-  const userIds = await lookupMentorUserIds();
+  const userIds = await lookupMentorUserIds(entityKind);
   if (userIds.length === 0) return 0;
   const rows = userIds.flatMap((userId) =>
     entityIds.map((entityId) => ({

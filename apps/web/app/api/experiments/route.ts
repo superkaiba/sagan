@@ -7,6 +7,7 @@ import { db } from '@/lib/db';
 import { ForbiddenError, isOwner, requireEntityRead, requireOwner } from '@/lib/access';
 import { requireSession } from '@/lib/auth';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
+import { grantDefaultMentorMembership } from '@/lib/default-memberships';
 import { notifyUsers } from '@/lib/notifications';
 import {
   appendWorkflowEvent,
@@ -136,6 +137,8 @@ export async function POST(req: Request) {
         set: { role: 'collaborator', updatedAt: new Date() },
       });
   }
+
+  await grantDefaultMentorMembership('experiment', experiment.id, session.user.id);
 
   await appendWorkflowEvent({
     entityKind: 'experiment',

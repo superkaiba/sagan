@@ -160,6 +160,40 @@ export function Comments({ entityKind, entityId }: { entityKind: string; entityI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, !!anchorCtx]);
 
+  // Scroll the thread into view when NarrativeBody asks (user clicked the
+  // highlighted span in the document). Expand the thread first if it was
+  // collapsed, and flag a resolved root visible if needed, so the scroll
+  // target actually exists. The element is queried from `document` so the
+  // lookup works in both the docked sidebar and the popped-out window.
+  const scrollToThreadId = anchorCtx?.scrollToThreadId ?? null;
+  const clearThreadScrollRequest = anchorCtx?.clearThreadScrollRequest;
+  useEffect(() => {
+    if (!scrollToThreadId || !clearThreadScrollRequest) return;
+    const targetRoot = items.find((c) => c.id === scrollToThreadId);
+    if (targetRoot?.resolvedAt) setShowResolved(true);
+    setCollapsedIds((prev) => {
+      if (!prev.has(scrollToThreadId)) return prev;
+      const next = new Set(prev);
+      next.delete(scrollToThreadId);
+      return next;
+    });
+    // Wait one frame so the state changes above (showResolved, collapsedIds)
+    // are committed and the thread is actually mounted/expanded before we
+    // measure or scroll.
+    const frame = window.requestAnimationFrame(() => {
+      const node = document.querySelector<HTMLElement>(
+        `[data-comment-thread-id="${cssEscapeId(scrollToThreadId)}"]`,
+      );
+      if (node) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        node.classList.add('is-flash');
+        window.setTimeout(() => node.classList.remove('is-flash'), 1400);
+      }
+      clearThreadScrollRequest();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [scrollToThreadId, clearThreadScrollRequest, items]);
+
   async function postComment(
     text: string,
     parentCommentId?: string | null,
@@ -788,4 +822,11 @@ function sameStringSet(a: Set<string>, b: Set<string>) {
     if (!b.has(id)) return false;
   }
   return true;
+}
+
+function cssEscapeId(s: string): string {
+  if (typeof (window as unknown as { CSS?: { escape?: (s: string) => string } }).CSS?.escape === 'function') {
+    return (window as unknown as { CSS: { escape: (s: string) => string } }).CSS.escape(s);
+  }
+  return s.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
 }

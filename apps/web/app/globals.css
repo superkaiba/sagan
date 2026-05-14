@@ -671,6 +671,22 @@ mark.anchor-mark.is-flash {
   animation: sagan-anchor-flash 1.2s ease-in-out;
 }
 
+/* Flash a comment thread when a highlighted span in the narrative jumps to it. */
+@keyframes sagan-thread-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  20%,
+  60% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 60%, transparent);
+  }
+}
+
+[data-comment-thread-id].is-flash {
+  animation: sagan-thread-flash 1.2s ease-in-out;
+}
+
 /* Transient highlight while the user is composing a not-yet-posted comment.
  * Lives only between the floating-Comment click and the form submit (or
  * cancel). Visually matches the committed anchor so the transition is

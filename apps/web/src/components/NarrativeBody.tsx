@@ -92,6 +92,7 @@ export function useAnchorBehaviors(ref: RefObject<HTMLDivElement | null>) {
   const clearScrollRequest = ctx?.clearScrollRequest;
   const setPendingAnchor = ctx?.setPendingAnchor;
   const pendingAnchor = ctx?.pendingAnchor ?? null;
+  const requestScrollToThread = ctx?.requestScrollToThread;
 
   const measureAnchors = useCallback(() => {
     if (!setAnchorPositions) return;
@@ -171,6 +172,29 @@ export function useAnchorBehaviors(ref: RefObject<HTMLDivElement | null>) {
       el.removeEventListener('mouseout', onOut);
     };
   }, [setHoveredId, ref]);
+
+  // Mark click -> jump to associated comment thread. Skip if the click was
+  // part of a drag-select (selection is still expanded) so the user can still
+  // highlight text starting inside a mark and post a new anchored comment.
+  useEffect(() => {
+    if (!requestScrollToThread || !ref.current) return;
+    const el = ref.current;
+    function onClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      const m = target?.closest?.('mark[data-comment-id]') as HTMLElement | null;
+      if (!m) return;
+      const id = m.dataset.commentId;
+      if (!id) return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) return;
+      e.preventDefault();
+      requestScrollToThread?.(id);
+    }
+    el.addEventListener('click', onClick);
+    return () => {
+      el.removeEventListener('click', onClick);
+    };
+  }, [requestScrollToThread, ref]);
 
   // Scroll to mark when a comment requests it.
   useEffect(() => {

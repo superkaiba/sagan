@@ -34,9 +34,16 @@ interface AnchoredCommentsValue {
   setHoveredId: (id: string | null) => void;
   pendingAnchor: PendingAnchor | null;
   setPendingAnchor: (anchor: PendingAnchor | null) => void;
+  // mark -> narrative-body scroll: a comment card asks the narrative to
+  // scroll its highlighted span into view.
   scrollToCommentId: string | null;
   requestScrollTo: (id: string) => void;
   clearScrollRequest: () => void;
+  // narrative-body -> thread scroll: a clicked <mark> asks the comments
+  // panel to scroll the associated thread into view.
+  scrollToThreadId: string | null;
+  requestScrollToThread: (id: string) => void;
+  clearThreadScrollRequest: () => void;
 }
 
 const Ctx = createContext<AnchoredCommentsValue | null>(null);
@@ -53,9 +60,12 @@ export function AnchoredCommentsProvider({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [pendingAnchor, setPendingAnchor] = useState<PendingAnchor | null>(null);
   const [scrollToCommentId, setScrollToCommentId] = useState<string | null>(null);
+  const [scrollToThreadId, setScrollToThreadId] = useState<string | null>(null);
 
   const requestScrollTo = useCallback((id: string) => setScrollToCommentId(id), []);
   const clearScrollRequest = useCallback(() => setScrollToCommentId(null), []);
+  const requestScrollToThread = useCallback((id: string) => setScrollToThreadId(id), []);
+  const clearThreadScrollRequest = useCallback(() => setScrollToThreadId(null), []);
   const setAnchorPositions = useCallback((positions: AnchorPosition[]) => {
     setAnchorPositionRows((prev) => (sameAnchorPositions(prev, positions) ? prev : positions));
   }, []);
@@ -79,8 +89,24 @@ export function AnchoredCommentsProvider({
       scrollToCommentId,
       requestScrollTo,
       clearScrollRequest,
+      scrollToThreadId,
+      requestScrollToThread,
+      clearThreadScrollRequest,
     }),
-    [anchors, setAnchors, anchorPositions, setAnchorPositions, hoveredId, pendingAnchor, scrollToCommentId, requestScrollTo, clearScrollRequest],
+    [
+      anchors,
+      setAnchors,
+      anchorPositions,
+      setAnchorPositions,
+      hoveredId,
+      pendingAnchor,
+      scrollToCommentId,
+      requestScrollTo,
+      clearScrollRequest,
+      scrollToThreadId,
+      requestScrollToThread,
+      clearThreadScrollRequest,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -8,12 +8,57 @@ import { NewProjectForm } from './NewProjectForm';
 
 export const dynamic = 'force-dynamic';
 
-function previewFromMarkdown(md: string | null | undefined): string {
+function stripMarkdownInline(s: string): string {
+  return s
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function taglineFromMarkdown(md: string | null | undefined): string | null {
+  if (!md) return null;
+  // Match a leading italic single-line tagline, e.g. "*A cheap, computable distance metric…*"
+  const m = md.match(/^\s*\*([^*\n]+)\*\s*$/m);
+  return m?.[1] ? m[1].trim() : null;
+}
+
+function sectionContent(md: string, headingPatterns: RegExp[]): string | null {
+  for (const pattern of headingPatterns) {
+    const m = md.match(pattern);
+    if (m?.[1]) {
+      const content = m[1].trim();
+      if (content) return content;
+    }
+  }
+  return null;
+}
+
+function motivationFromMarkdown(md: string | null | undefined): string | null {
+  if (!md) return null;
+  // Priority order: "## Why" → "## Why it matters" → "## Question".
+  const content = sectionContent(md, [
+    /^##\s+Why\s*\n+([\s\S]*?)(?=\n##\s|$)/m,
+    /^##\s+Why it matters\s*\n+([\s\S]*?)(?=\n##\s|$)/m,
+    /^##\s+Question\s*\n+([\s\S]*?)(?=\n##\s|$)/m,
+  ]);
+  if (!content) return null;
+  const firstParagraph = content.split(/\n{2,}/)[0]?.trim();
+  if (!firstParagraph) return null;
+  return stripMarkdownInline(firstParagraph);
+}
+
+function contributionFromMarkdown(md: string | null | undefined): string | null {
+  if (!md) return null;
+  const m = md.match(/^#{2,3}\s+What this project adds\s*\n+([\s\S]*?)(?=\n#{1,3}\s|$)/m);
+  if (!m?.[1]) return null;
+  return stripMarkdownInline(m[1].trim());
+}
+
+function proseFromMarkdown(md: string | null | undefined): string {
   if (!md) return 'No project context has been written yet.';
-  // Prefer a leading italic tagline (e.g. "*A cheap, computable distance metric…*") if present.
-  const taglineMatch = md.match(/^\s*\*([^*\n]+)\*\s*$/m);
-  if (taglineMatch?.[1]) return taglineMatch[1].trim();
-  // Otherwise strip markdown noise and return the leading prose.
   const stripped = md
     .replace(/^#+\s+.*$/gm, '') // remove ATX headings
     .replace(/```[\s\S]*?```/g, '') // remove fenced code blocks
@@ -81,7 +126,12 @@ export default async function ProjectsPage() {
         />
       ) : (
         <div className="flex flex-col gap-3">
-          {allProjects.map((project) => (
+          {allProjects.map((project) => {
+            const tagline = taglineFromMarkdown(project.summaryMd);
+            const motivation = motivationFromMarkdown(project.summaryMd);
+            const contribution = contributionFromMarkdown(project.summaryMd);
+            const hasStructuredSections = Boolean(tagline || motivation || contribution);
+            return (
             <Panel key={project.id} className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -92,9 +142,26 @@ export default async function ProjectsPage() {
                   <Link href={`/e/project/${project.id}`} className="mt-3 block text-base font-semibold tracking-tight hover:text-[--color-accent]">
                     {project.title}
                   </Link>
-                  <p className="mt-1 line-clamp-3 text-sm leading-6 text-[--color-muted]">
-                    {previewFromMarkdown(project.summaryMd)}
-                  </p>
+                  {tagline ? (
+                    <p className="mt-1 text-sm italic leading-6 text-[--color-muted]">{tagline}</p>
+                  ) : null}
+                  {motivation ? (
+                    <div className="mt-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-[--color-muted]">Motivation</p>
+                      <p className="mt-1 line-clamp-4 text-sm leading-6">{motivation}</p>
+                    </div>
+                  ) : null}
+                  {contribution ? (
+                    <div className="mt-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-[--color-muted]">What this project adds</p>
+                      <p className="mt-1 line-clamp-4 text-sm leading-6">{contribution}</p>
+                    </div>
+                  ) : null}
+                  {!hasStructuredSections ? (
+                    <p className="mt-1 line-clamp-3 text-sm leading-6 text-[--color-muted]">
+                      {proseFromMarkdown(project.summaryMd)}
+                    </p>
+                  ) : null}
                 </div>
                 <Link href={`/e/project/${project.id}`} className={buttonClassName({ variant: 'secondary', size: 'sm' })}>
                   Open
@@ -122,7 +189,8 @@ export default async function ProjectsPage() {
                 </p>
               ) : null}
             </Panel>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

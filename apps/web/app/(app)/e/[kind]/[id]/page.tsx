@@ -6,6 +6,7 @@ import { ClarifyingQuestionsPanel } from '@/components/ClarifyingQuestionsPanel'
 import { Comments } from '@/components/Comments';
 import { PlanPanel } from '@/components/PlanPanel';
 import { PlanHistory } from '@/components/PlanHistory';
+import { WorkflowHistory } from '@/components/WorkflowHistory';
 import { ProposedFollowUps } from '@/components/ProposedFollowUps';
 import { ExperimentReviewPanel } from '@/components/ExperimentReviewPanel';
 import { EditableBody } from '@/components/EditableBody';
@@ -174,6 +175,10 @@ export default async function EntityPage({
 
         {kind === 'experiment' ? (
           <PlanHistory experimentId={entity.id} />
+        ) : null}
+
+        {kind === 'experiment' ? (
+          <WorkflowHistory experimentId={entity.id} />
         ) : null}
 
         {kind === 'lit_item' ? (

@@ -8,6 +8,7 @@ import { requireOwner } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { EXPERIMENT_STATUSES, experimentTurn, setExperimentStatus } from '@/lib/workflow';
 
+const EXPERIMENT_ORCHESTRATOR_PREFIX = 'experiment-orchestrator-for:';
 const EXPERIMENT_CLEAN_RESULT_PREFIX = 'experiment-clean-result-for:';
 const QUEUED_CHANNEL = 'agent_run_queued';
 
@@ -139,11 +140,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (transitioned) experiment = transitioned;
   }
 
-  // When the owner closes review by PATCHing `clean_result_drafting`, queue a
-  // single agent_run that promotes experiments.body into a clean_results row
-  // and runs the clean-result-critic pair. Idempotent: skips when an existing
-  // queued/running run with the same prefix is already in flight on this
-  // experiment.
+  // When the owner closes review by PATCHing `clean_result_drafting`, resume
+  // the single orchestrator prompt. Idempotent: skips when an existing
+  // queued/running orchestrator or legacy clean-result run is already in
+  // flight on this experiment.
   if (status === 'clean_result_drafting') {
     const existing = await db()
       .select({ id: agentRuns.id, status: agentRuns.status, request: agentRuns.request })
@@ -152,7 +152,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const alreadyQueued = existing.some(
       (r) =>
         (r.status === 'queued' || r.status === 'running') &&
-        r.request.startsWith(EXPERIMENT_CLEAN_RESULT_PREFIX),
+        (r.request.startsWith(EXPERIMENT_ORCHESTRATOR_PREFIX) ||
+          r.request.startsWith(EXPERIMENT_CLEAN_RESULT_PREFIX)),
     );
     if (!alreadyQueued) {
       const inserted = await db()
@@ -161,7 +162,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           kind: 'apply',
           provider: 'claude_code',
           status: 'queued',
-          request: `${EXPERIMENT_CLEAN_RESULT_PREFIX}${id}`,
+          request: `${EXPERIMENT_ORCHESTRATOR_PREFIX}${id}
+
+Owner clicked Done reviewing. Resume the single Sagan experiment orchestrator at clean_result_drafting and continue to awaiting_promotion.`,
           scopeEntityKind: 'experiment',
           scopeEntityId: id,
           approvalRequired: false,

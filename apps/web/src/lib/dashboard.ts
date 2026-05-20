@@ -174,6 +174,7 @@ export interface DashboardRunPod {
 export const PIPELINE_STAGES = [
   { key: 'later', title: 'Later' },
   { key: 'idea', title: 'Idea / Proposed' },
+  { key: 'clarifying', title: 'Clarifying' },
   { key: 'planning', title: 'Planning' },
   { key: 'approval', title: 'Awaiting approval' },
   { key: 'running', title: 'Running' },
@@ -826,7 +827,8 @@ function experimentStage(status: string, priority: string): PipelineStageKey {
     return 'later';
   }
   if (status === 'proposed') return 'idea';
-  if (status === 'clarifying' || status === 'awaiting_clarifications' || status === 'planning') return 'planning';
+  if (status === 'clarifying') return 'clarifying';
+  if (status === 'awaiting_clarifications' || status === 'planning') return 'planning';
   if (status === 'gate_pending' || status === 'plan_pending' || status === 'awaiting_approval') return 'approval';
   // `approved` and `queued` are blip states between the approval drag and the
   // orchestrator picking up the run (millisecond-scale via pg_notify) plus

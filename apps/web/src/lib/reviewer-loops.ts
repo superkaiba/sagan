@@ -61,6 +61,7 @@ export const KNOWN_MARKER_TYPES = [
   'epm:clean-result-critique-reconcile',
   'epm:clean-result-lint',
   'epm:follow-ups',
+  'epm:owner-review',
   'epm:awaiting-promotion',
   'epm:promoted',
   'epm:done',

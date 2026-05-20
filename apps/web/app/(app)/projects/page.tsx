@@ -8,6 +8,26 @@ import { NewProjectForm } from './NewProjectForm';
 
 export const dynamic = 'force-dynamic';
 
+function previewFromMarkdown(md: string | null | undefined): string {
+  if (!md) return 'No project context has been written yet.';
+  // Prefer a leading italic tagline (e.g. "*A cheap, computable distance metric…*") if present.
+  const taglineMatch = md.match(/^\s*\*([^*\n]+)\*\s*$/m);
+  if (taglineMatch?.[1]) return taglineMatch[1].trim();
+  // Otherwise strip markdown noise and return the leading prose.
+  const stripped = md
+    .replace(/^#+\s+.*$/gm, '') // remove ATX headings
+    .replace(/```[\s\S]*?```/g, '') // remove fenced code blocks
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // link text only
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
+    .replace(/\*([^*]+)\*/g, '$1') // italic
+    .replace(/`([^`]+)`/g, '$1') // inline code
+    .replace(/^[-*+]\s+/gm, '') // list bullets
+    .replace(/\n{2,}/g, ' · ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped || 'No project context has been written yet.';
+}
+
 export default async function ProjectsPage() {
   const [allProjects, allBeliefs, allExperiments, narratives] = await Promise.all([
     db().select().from(projects).orderBy(desc(projects.updatedAt)),
@@ -60,11 +80,11 @@ export default async function ProjectsPage() {
           message="Create a project context before sharing ideas with mentors or collaborators."
         />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="flex flex-col gap-3">
           {allProjects.map((project) => (
             <Panel key={project.id} className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status={project.status} />
                     {project.public || project.shareToken ? <StatusBadge status="shared" /> : null}
@@ -73,7 +93,7 @@ export default async function ProjectsPage() {
                     {project.title}
                   </Link>
                   <p className="mt-1 line-clamp-3 text-sm leading-6 text-[--color-muted]">
-                    {project.summaryMd ?? 'No project context has been written yet.'}
+                    {previewFromMarkdown(project.summaryMd)}
                   </p>
                 </div>
                 <Link href={`/e/project/${project.id}`} className={buttonClassName({ variant: 'secondary', size: 'sm' })}>

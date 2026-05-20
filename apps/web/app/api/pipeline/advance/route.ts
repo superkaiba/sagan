@@ -26,6 +26,7 @@ async function notifyPipelineChanged(payload: string) {
 const pipelineStageSchema = z.enum([
   'later',
   'idea',
+  'clarifying',
   'planning',
   'approval',
   'running',
@@ -66,6 +67,7 @@ const activeRunStatuses = ['queued', 'running', 'awaiting_approval', 'approved',
 const experimentStatusByStage: Record<PipelineStage, ExperimentStatus> = {
   later: 'proposed',
   idea: 'proposed',
+  clarifying: 'clarifying',
   planning: 'planning',
   approval: 'plan_pending',
   running: 'running',
@@ -218,6 +220,20 @@ function agentRequest(input: {
   // Planning-stage classifier: any card (todo, experiment, idea) routed to
   // planning runs the classifier first. The runner reads the verdict and
   // dispatches the downstream planner with conversion if needed.
+  if (
+    input.toStage === 'clarifying' &&
+    (input.kind === 'experiment' || input.kind === 'idea')
+  ) {
+    return [
+      `${movement} on the Pipeline board.`,
+      '',
+      `Clarify this experiment before planning: "${input.title}".`,
+      '',
+      'Focus on the hypothesis, expected information gain, minimum viable empirical protocol, compute budget, and the exact owner decision needed before planning.',
+      '',
+      'Do not draft the full run plan yet. Return concise clarifying questions or a short recommendation that the record is ready for planning.',
+    ].join('\n');
+  }
   if (
     input.toStage === 'planning' &&
     (input.kind === 'todo' || input.kind === 'experiment' || input.kind === 'idea')

@@ -33,7 +33,10 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
     .from(runArtifacts)
     .where(eq(runArtifacts.agentRunId, id))
     .orderBy(runArtifacts.createdAt);
-  const runpodAccounts = pods.length > 0 ? await loadRunPodAccountSummaries() : [];
+  // Account balance/spend telemetry is owner-only; public viewers get the
+  // pod list without the financial summaries.
+  const owner = session ? isOwner(session) : false;
+  const runpodAccounts = owner && pods.length > 0 ? await loadRunPodAccountSummaries() : [];
 
   // For experiment-scoped runs, the canonical plan lives on experiments
   // (since 0029). For non-experiment runs (todo plans) it lives on the
@@ -108,7 +111,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
           verifiedAt: artifact.verifiedAt?.toISOString() ?? null,
           createdAt: artifact.createdAt.toISOString(),
         }))}
-        canManageRun={session ? isOwner(session) : false}
+        canManageRun={owner}
       />
 
       <section className="space-y-3">

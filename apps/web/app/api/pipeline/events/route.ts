@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
 
 /**
  * SSE stream that emits a `changed` event whenever any dashboard-relevant
@@ -13,13 +12,9 @@ import { requireSession } from '@/lib/auth';
  * `pg_notify('pipeline_changed', ...)` — long-running consumers like the VM
  * services can subscribe to it directly; the dashboard polls.
  */
+// Public read (2026-07-06): the live-refresh tick is viewable without a
+// session — it only emits a max-updated-at signal, no entity data.
 export async function GET(req: Request) {
-  try {
-    await requireSession();
-  } catch {
-    return new Response('unauthorized', { status: 401 });
-  }
-
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder();

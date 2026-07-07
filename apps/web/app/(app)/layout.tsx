@@ -250,7 +250,7 @@ export default async function AppLayout({
         )}
 
         <div className="mt-auto space-y-3">
-          {fullDashboard && agentDispatchEnabled ? <ConversationDock /> : null}
+          {session && fullDashboard && agentDispatchEnabled ? <ConversationDock /> : null}
           {fullDashboard ? (
             <div className="flex items-center gap-2 rounded-[--radius-control] border border-[--color-border] bg-[--color-bg] px-3 py-2 text-xs text-[--color-muted]">
               <Command className="h-4 w-4" aria-hidden="true" />

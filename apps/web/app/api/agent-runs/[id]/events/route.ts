@@ -48,12 +48,9 @@ const TERMINAL_STATUSES = new Set([
  *   event: done
  *   data: { status: "completed" }
  */
+// Public read (2026-07-06): the run event stream is viewable without a
+// session, matching the public /agent/[id] page.
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    await requireSession();
-  } catch {
-    return new Response('unauthorized', { status: 401 });
-  }
   const { id } = await ctx.params;
 
   const stream = new ReadableStream({

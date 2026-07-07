@@ -19,7 +19,11 @@ Two changes shipped together:
   `/mentor/daily/[date]`) now render without a session.
 - Read-only GET APIs opened to anonymous callers so public pages work
   end to end: `comments`, `search`, `approvals/count`, `edges`,
-  `entity/[kind]/[id]`, `experiments/[id]/improve` (status).
+  `entity/[kind]/[id]`, `experiments/[id]/improve` (status),
+  `agent-runs/[id]/events` (SSE stream for the public run page).
+- Known quirk (deliberate): a signed-in non-owner account (mentor) still
+  gets the limited mentor view, so it sees *less* than an anonymous
+  visitor. Logging out shows the full public dashboard.
 
 **What stays gated:**
 
@@ -38,11 +42,13 @@ Hard-blocked routes (return `403 agent_dispatch_disabled`):
 `agent-runs` (POST), `agent-runs/[id]/{approve,launch-pod,retry}`,
 `conversations` (POST) + `conversations/[id]/send`, `comments/revise`,
 `narratives/[id]/improve`, `experiments/[id]/{improve,dispatch-planner,queue-followups}`,
-`pipeline/advance`, `daily-log/clean-result/{draft,question}` (inline
-Anthropic calls), `lit-review/run`, `weekly-digest/run`.
+`pipeline/advance`, `daily-log/clean-result/{draft,question}` and
+`projects/[id]/summary-log` (inline Anthropic calls), `lit-review/run`,
+`weekly-digest/run`.
 
 Soft-blocked (route works, Claude enqueue skipped): `@claude`/`@codex`
-comments still post but never dispatch; experiment PATCH to
+comments still post but never dispatch; resolving a comment thread no
+longer generates the inline AI summary; experiment PATCH to
 `clean_result_drafting` no longer resumes the orchestrator; project
 creation no longer enqueues a lit-review job.
 

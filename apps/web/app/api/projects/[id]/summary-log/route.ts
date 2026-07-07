@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { cleanResults, dailyLogEntries, experiments, projectNarratives, projects, todos } from '@sagan/db/schema';
 import { requireSession } from '@/lib/auth';
@@ -22,6 +23,7 @@ function bulletLines<T>(rows: T[], render: (row: T) => string, empty: string) {
 }
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   let session;
   try {
     session = await requireSession();

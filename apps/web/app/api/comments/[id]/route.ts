@@ -7,6 +7,7 @@ import { requireSession } from '@/lib/auth';
 import { ForbiddenError, isOwner, requireEntityComment } from '@/lib/access';
 import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { createJobRun, updateJobRunStatus } from '@/lib/job-runs';
+import { agentDispatchEnabled } from '@/lib/agent-dispatch';
 
 const patchSchema = z.object({
   body: z.string().min(1).max(10_000).optional(),
@@ -46,8 +47,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (parsed.data.autoContinueClaude !== undefined) {
     updates.autoContinueClaude = parsed.data.autoContinueClaude;
   }
-  const shouldSummarizeResolution = parsed.data.resolved === true;
-  if (shouldSummarizeResolution) {
+  // Resolving still works while agent dispatch is disabled; only the inline
+  // Anthropic summarization call is skipped.
+  const shouldSummarizeResolution = agentDispatchEnabled && parsed.data.resolved === true;
+  if (parsed.data.resolved === true) {
     updates.resolvedAt = new Date();
     updates.resolvedBy = session.user.id;
   } else if (parsed.data.resolved === false) {

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { requireSession } from '@/lib/auth';
 import { loadApprovalItems } from '@/lib/dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -8,12 +7,8 @@ export const dynamic = 'force-dynamic';
  * Lightweight endpoint used by the tab-title badge to poll the pending
  * approval count. Returns `{ count }` — no payload bodies, no entity ids.
  */
+// Public read (2026-07-06): the badge count works without a session.
 export async function GET() {
-  try {
-    await requireSession();
-  } catch {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
   const items = await loadApprovalItems(200);
   return NextResponse.json({ count: items.length });
 }

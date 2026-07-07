@@ -1,3 +1,4 @@
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -17,6 +18,7 @@ const reviseSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   let session;
   try {
     session = await requireOwner();

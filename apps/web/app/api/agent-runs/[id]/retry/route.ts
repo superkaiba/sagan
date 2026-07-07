@@ -1,3 +1,4 @@
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { agentRunEvents, agentRuns, cleanResults, experiments, todos } from '@sagan/db/schema';
@@ -18,6 +19,7 @@ const BLOCKED_TODO_TRANSITIONS: Record<string, (typeof todos.$inferSelect)['stat
 };
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   let session;
   try {
     session = await requireOwner();

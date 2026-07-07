@@ -1,3 +1,4 @@
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -29,12 +30,8 @@ const postSchema = z.object({
   quickFollowupCommentIds: z.array(z.string().uuid()).max(50).optional(),
 });
 
+// Public read (2026-07-06): improve-run status is viewable without a session.
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    await requireOwner();
-  } catch {
-    return NextResponse.json({ error: 'owner_required' }, { status: 403 });
-  }
   const { id } = await ctx.params;
 
   const rows = await db().select({ id: experiments.id }).from(experiments).where(eq(experiments.id, id)).limit(1);
@@ -68,6 +65,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   let session;
   try {
     session = await requireOwner();

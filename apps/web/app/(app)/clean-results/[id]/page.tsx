@@ -8,25 +8,20 @@ import { CommentableBody } from '@/components/CommentableBody';
 import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { EditableBody } from '@/components/EditableBody';
 import { EditableTitle } from '@/components/EditableTitle';
-import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
-import { requireSession } from '@/lib/auth';
+import { isOwner } from '@/lib/access';
+import { getSession } from '@/lib/auth';
 import { CleanResultActions } from './CleanResultActions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CleanResultPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await requireSession();
-  try {
-    await requireEntityRead(session, 'clean_result', id);
-  } catch (err) {
-    if (err instanceof ForbiddenError) return notFound();
-    throw err;
-  }
+  // Public read (2026-07-06): clean results render without a session.
+  const session = await getSession();
   const rows = await db().select().from(cleanResults).where(eq(cleanResults.id, id)).limit(1);
   const result = rows[0];
   if (!result) return notFound();
-  const owner = isOwner(session);
+  const owner = session ? isOwner(session) : false;
 
   return (
     <AnchoredCommentsProvider>

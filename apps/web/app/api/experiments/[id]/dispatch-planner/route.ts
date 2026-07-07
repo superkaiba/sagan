@@ -1,3 +1,4 @@
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { agentRuns, comments, experiments, users } from '@sagan/db/schema';
@@ -30,6 +31,7 @@ const ACTIVE_RUN_STATUSES = ['queued', 'running', 'awaiting_approval', 'approved
 // existing markAwaitingApproval routing in services/runner/src/session.ts.
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   let session;
   try {
     session = await requireOwner();

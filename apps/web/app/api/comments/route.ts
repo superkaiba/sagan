@@ -1,9 +1,10 @@
+import { agentDispatchEnabled } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { agentRuns, chatSessions, comments, users } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
+import { getSession, requireSession } from '@/lib/auth';
 import { isEntityKind } from '@/lib/entity';
 import type { EntityKind } from '@/lib/entity';
 import { ForbiddenError, requireEntityComment, requireEntityRead } from '@/lib/access';
@@ -19,26 +20,15 @@ import {
 
 const QUEUED_CHANNEL = 'agent_run_queued';
 
+// Public read (2026-07-06): comment threads are viewable without a session.
+// Posting (POST below) still requires auth.
 export async function GET(req: Request) {
-  let session;
-  try {
-    session = await requireSession();
-  } catch {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
+  const session = await getSession();
   const url = new URL(req.url);
   const entityKind = url.searchParams.get('entityKind') ?? '';
   const entityId = url.searchParams.get('entityId') ?? '';
   if (!isEntityKind(entityKind)) {
     return NextResponse.json({ error: 'invalid_kind' }, { status: 400 });
-  }
-  try {
-    await requireEntityRead(session, entityKind, entityId);
-  } catch (err) {
-    if (err instanceof ForbiddenError) {
-      return NextResponse.json({ error: err.message }, { status: 403 });
-    }
-    throw err;
   }
   const rows = await db()
     .select({
@@ -71,7 +61,7 @@ export async function GET(req: Request) {
     .leftJoin(agentRuns, eq(comments.agentRunId, agentRuns.id))
     .where(and(eq(comments.entityKind, entityKind), eq(comments.entityId, entityId)))
     .orderBy(asc(comments.createdAt));
-  return NextResponse.json({ comments: rows, viewerUserId: session.user.id });
+  return NextResponse.json({ comments: rows, viewerUserId: session?.user.id ?? null });
 }
 
 const createSchema = z.object({
@@ -183,7 +173,8 @@ export async function POST(req: Request) {
   const autoContinueClaude = Boolean(parentInfo?.autoContinueClaude || requestedAgent);
   const dispatchAgent: CommentAgentName | null =
     requestedAgent ?? (autoContinueClaude ? (parentInfo?.autoContinueAgent ?? 'Claude') : null);
-  const shouldDispatch = Boolean(dispatchAgent);
+  // Comment still posts while agent dispatch is disabled; Claude just never picks it up.
+  const shouldDispatch = agentDispatchEnabled && Boolean(dispatchAgent);
   const newCommentAnchoredQuote = normalizedParentCommentId
     ? (parentInfo?.rootAnchoredQuote ?? null)
     : (parsed.data.anchoredQuote?.trim() || null);

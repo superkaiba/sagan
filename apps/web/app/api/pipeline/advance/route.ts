@@ -1,3 +1,4 @@
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -524,6 +525,7 @@ function unsupported(stage: PipelineStage, kind: PipelineKind) {
 }
 
 export async function POST(req: Request) {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   let session;
   try {
     session = await requireOwner();

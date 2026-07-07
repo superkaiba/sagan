@@ -1,3 +1,4 @@
+import { agentDispatchEnabled } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -73,22 +74,25 @@ export async function POST(req: Request) {
   // Auto-enqueue a deep-research lit review for the new project. The runner
   // subscribes to NOTIFY('project_lit_review_run') and writes the result back
   // as a draft project_narratives row plus a daily_log_entries note.
-  try {
-    const correlationId = createCorrelationId('project_lit_review');
-    const job = await createJobRun({
-      kind: 'project_lit_review',
-      requestedBy: session.user.id,
-      requestPayload: {
-        projectId: project.id,
-        title: project.title,
-        summaryMd: project.summaryMd ?? null,
-        correlationId,
-      },
-    });
-    await db().execute(sql`SELECT pg_notify('project_lit_review_run', ${job.id})`);
-  } catch (err) {
-    // Don't block project creation if enqueueing fails.
-    console.error('[projects] failed to enqueue project_lit_review', err);
+  // Skipped entirely while agent dispatch is disabled.
+  if (agentDispatchEnabled) {
+    try {
+      const correlationId = createCorrelationId('project_lit_review');
+      const job = await createJobRun({
+        kind: 'project_lit_review',
+        requestedBy: session.user.id,
+        requestPayload: {
+          projectId: project.id,
+          title: project.title,
+          summaryMd: project.summaryMd ?? null,
+          correlationId,
+        },
+      });
+      await db().execute(sql`SELECT pg_notify('project_lit_review_run', ${job.id})`);
+    } catch (err) {
+      // Don't block project creation if enqueueing fails.
+      console.error('[projects] failed to enqueue project_lit_review', err);
+    }
   }
   return NextResponse.json({ project: inserted[0] });
 }

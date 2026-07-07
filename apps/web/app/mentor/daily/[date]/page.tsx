@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { cleanResults, dailyLogEntries, experiments } from '@sagan/db/schema';
 import { getSession } from '@/lib/auth';
@@ -17,8 +17,8 @@ export default async function MentorDailyPage({
 }) {
   const { date } = await params;
   if (!ISO_DATE_RE.test(date)) return notFound();
+  // Public read (2026-07-06): the mentor daily view renders without a session.
   const session = await getSession();
-  if (!session) redirect(`/login?next=/mentor/daily/${date}`);
 
   const entries = await db()
     .select()

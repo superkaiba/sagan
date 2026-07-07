@@ -28,8 +28,8 @@ import { LitPriorityControl, type LitPriority } from '@/components/LitPriorityCo
 import { StartIdeationButton } from '@/components/StartIdeationButton';
 import { AgentActivityPanel } from '@/components/AgentActivityPanel';
 import { NarrativePublishControl } from '@/components/NarrativePublishControl';
-import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
-import { requireSession } from '@/lib/auth';
+import { isOwner } from '@/lib/access';
+import { getSession } from '@/lib/auth';
 import { isIdeationSourceKind } from '@/lib/ideation';
 import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
 import { ProcessStateBadge } from '@/components/ProcessStateBadge';
@@ -64,16 +64,11 @@ export default async function EntityPage({
 }) {
   const { kind, id } = await params;
   if (!isEntityKind(kind)) return notFound();
-  const session = await requireSession();
-  try {
-    await requireEntityRead(session, kind, id);
-  } catch (err) {
-    if (err instanceof ForbiddenError) return notFound();
-    throw err;
-  }
+  // Public read (2026-07-06): entity pages render without a session.
+  const session = await getSession();
   const entity = await loadEntity(kind, id);
   if (!entity) return notFound();
-  const owner = isOwner(session);
+  const owner = session ? isOwner(session) : false;
   const processRunRows = await db()
     .select({
       id: agentRuns.id,

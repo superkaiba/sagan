@@ -1,3 +1,4 @@
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
@@ -6,6 +7,7 @@ import { appendDailyLogTrailBestEffort } from '@/lib/daily-log-trail';
 import { createCorrelationId, createJobRun } from '@/lib/job-runs';
 
 export async function POST() {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   let session;
   try {
     session = await requireSession();

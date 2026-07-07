@@ -1,3 +1,4 @@
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
@@ -12,6 +13,7 @@ const CHANNEL = 'lit_review_run';
  * to NOTIFY('lit_review_run') and invokes runLitReview() out-of-band.
  */
 export async function POST() {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   let session;
   try {
     session = await requireSession();

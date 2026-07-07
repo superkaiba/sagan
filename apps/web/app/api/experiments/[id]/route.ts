@@ -1,3 +1,4 @@
+import { agentDispatchEnabled } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -144,7 +145,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // the single orchestrator prompt. Idempotent: skips when an existing
   // queued/running orchestrator or legacy clean-result run is already in
   // flight on this experiment.
-  if (status === 'clean_result_drafting') {
+  if (agentDispatchEnabled && status === 'clean_result_drafting') {
     const existing = await db()
       .select({ id: agentRuns.id, status: agentRuns.status, request: agentRuns.request })
       .from(agentRuns)

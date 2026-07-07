@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { sql, ilike, or } from 'drizzle-orm';
 import { beliefs, cleanResults, experiments, litItems, projects, todos } from '@sagan/db/schema';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
 import type { EntityKind } from '@/lib/entity';
 
 interface Hit {
@@ -12,12 +11,8 @@ interface Hit {
   meta: string;
 }
 
+// Public read (2026-07-06): search works without a session.
 export async function GET(req: Request) {
-  try {
-    await requireSession();
-  } catch {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
   const url = new URL(req.url);
   const q = (url.searchParams.get('q') ?? '').trim();
   if (!q) return NextResponse.json({ hits: [] });

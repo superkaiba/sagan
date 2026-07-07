@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { agentRuns, agentRunEvents, experiments, podLifecycle, runArtifacts } from '@sagan/db/schema';
 import { db } from '@/lib/db';
 import { isOwner } from '@/lib/access';
-import { requireSession } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { loadRunPodAccountSummaries } from '@/lib/runpod-api';
 import { Comments } from '@/components/Comments';
 import { RunStream } from './RunStream';
@@ -12,7 +12,8 @@ import { AgentRunRequest } from './AgentRunRequest';
 export const dynamic = 'force-dynamic';
 
 export default async function AgentRunPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSession();
+  // Public read (2026-07-06): agent run pages render without a session.
+  const session = await getSession();
   const { id } = await params;
   const runs = await db().select().from(agentRuns).where(eq(agentRuns.id, id)).limit(1);
   const run = runs[0];
@@ -107,7 +108,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
           verifiedAt: artifact.verifiedAt?.toISOString() ?? null,
           createdAt: artifact.createdAt.toISOString(),
         }))}
-        canManageRun={isOwner(session)}
+        canManageRun={session ? isOwner(session) : false}
       />
 
       <section className="space-y-3">

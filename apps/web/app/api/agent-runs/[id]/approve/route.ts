@@ -1,3 +1,4 @@
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
@@ -12,6 +13,7 @@ const APPROVED_CHANNEL = 'agent_run_approved';
 const approveSchema = z.object({ note: z.string().max(2_000).optional() });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   let session;
   try {
     session = await requireOwner();

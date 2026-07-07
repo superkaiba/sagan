@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import Link from 'next/link';
-import { AlertTriangle, ArrowUpCircle, ChevronDown, ClipboardCheck, Command, Inbox, LogOut, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowUpCircle, ChevronDown, ClipboardCheck, Command, Inbox, LogIn, LogOut, type LucideIcon } from 'lucide-react';
 import { getSession } from '@/lib/auth';
+import { agentDispatchEnabled } from '@/lib/agent-dispatch';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ApprovalTitleBadge } from '@/components/ApprovalTitleBadge';
 import { AppNav } from '@/components/AppNav';
@@ -68,12 +69,14 @@ export default async function AppLayout({
   children: React.ReactNode;
   modal?: React.ReactNode;
 }) {
+  // 2026-07-06: no login required — anonymous visitors get the full
+  // read-only dashboard. Signed-in non-owner accounts keep their limited
+  // mentor view; mutations are still auth-gated in the API handlers.
   const session = await getSession();
-  if (!session) redirect('/login');
   const pathname = (await headers()).get('x-sagan-pathname');
-  const fullDashboard = hasFullDashboardAccess(session);
+  const fullDashboard = session ? hasFullDashboardAccess(session) : true;
 
-  if (!fullDashboard && !canOpenLimitedDashboardPath(pathname)) {
+  if (session && !fullDashboard && !canOpenLimitedDashboardPath(pathname)) {
     redirect('/mentor/updates');
   }
 
@@ -107,16 +110,27 @@ export default async function AppLayout({
           </a>
         ) : null}
         <div className="ml-auto flex items-center gap-2">
-          <form action="/api/auth/logout" method="post">
-            <button
-              type="submit"
-              aria-label="Sign out"
-              title="Sign out"
+          {session ? (
+            <form action="/api/auth/logout" method="post">
+              <button
+                type="submit"
+                aria-label="Sign out"
+                title="Sign out"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-[--radius-control] border border-[--color-border] bg-[--color-panel] text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
+              >
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </form>
+          ) : (
+            <Link
+              href="/login"
+              aria-label="Sign in"
+              title="Sign in"
               className="inline-flex h-9 w-9 items-center justify-center rounded-[--radius-control] border border-[--color-border] bg-[--color-panel] text-[--color-muted] hover:bg-[--color-hover] hover:text-[--color-fg]"
             >
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </form>
+              <LogIn className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          )}
         </div>
       </header>
 
@@ -131,7 +145,7 @@ export default async function AppLayout({
           <Link href="/pipeline" className="block text-lg font-bold tracking-[-0.025em]">
             Sagan
           </Link>
-          <p className="mt-1 truncate text-xs text-[--color-muted]">{session.user.email}</p>
+          <p className="mt-1 truncate text-xs text-[--color-muted]">{session ? session.user.email : 'Public view'}</p>
         </div>
 
         {fullDashboard ? (
@@ -236,7 +250,7 @@ export default async function AppLayout({
         )}
 
         <div className="mt-auto space-y-3">
-          {fullDashboard ? <ConversationDock /> : null}
+          {fullDashboard && agentDispatchEnabled ? <ConversationDock /> : null}
           {fullDashboard ? (
             <div className="flex items-center gap-2 rounded-[--radius-control] border border-[--color-border] bg-[--color-bg] px-3 py-2 text-xs text-[--color-muted]">
               <Command className="h-4 w-4" aria-hidden="true" />
@@ -246,12 +260,19 @@ export default async function AppLayout({
           ) : null}
           <ThemeControl />
           <FontPicker />
-          <form action="/api/auth/logout" method="post">
-            <button type="submit" className={buttonClassName({ variant: 'secondary', size: 'md', className: 'w-full' })}>
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-              Sign out
-            </button>
-          </form>
+          {session ? (
+            <form action="/api/auth/logout" method="post">
+              <button type="submit" className={buttonClassName({ variant: 'secondary', size: 'md', className: 'w-full' })}>
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+                Sign out
+              </button>
+            </form>
+          ) : (
+            <Link href="/login" className={buttonClassName({ variant: 'secondary', size: 'md', className: 'w-full' })}>
+              <LogIn className="h-4 w-4" aria-hidden="true" />
+              Sign in
+            </Link>
+          )}
         </div>
       </aside>
 

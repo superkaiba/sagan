@@ -1,13 +1,16 @@
+import { redirect } from 'next/navigation';
 import { listApiTokens } from '@sagan/auth';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { PageHeader, Panel } from '@/components/ui';
 import { ApiTokensClient, type ListedApiToken } from './ApiTokensClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ApiTokensPage() {
-  const session = await requireSession();
+  // Secret management stays login-gated even though the dashboard is public.
+  const session = await getSession();
+  if (!session) redirect('/login?next=/api-tokens');
   const rows = await listApiTokens(db(), session.user.id);
   const tokens: ListedApiToken[] = rows.map((r) => ({
     id: r.id,

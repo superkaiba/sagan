@@ -1,12 +1,16 @@
 import Link from 'next/link';
-import { requireOwner } from '@/lib/access';
+import { redirect } from 'next/navigation';
+import { isOwner } from '@/lib/access';
+import { getSession } from '@/lib/auth';
 import { loadHealthSummary } from '@/lib/health';
 import { effectiveRunPodRate, estimateRunPodSpendUsd, formatUsd, formatUsdPerHour } from '@/lib/runpod-cost';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HealthPage() {
-  await requireOwner();
+  // Admin health stays owner-gated even though the dashboard is public.
+  const session = await getSession();
+  if (!session || !isOwner(session)) redirect('/login?next=/admin/health');
   const health = await loadHealthSummary();
 
   return (

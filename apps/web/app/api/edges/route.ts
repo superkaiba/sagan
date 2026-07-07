@@ -36,12 +36,8 @@ const TYPE_VALUES = [
   'inspiration',
 ] as const;
 
+// Public read (2026-07-06): edges are viewable without a session.
 export async function GET(req: Request) {
-  try {
-    await requireSession();
-  } catch {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
   const url = new URL(req.url);
   const kind = url.searchParams.get('entityKind') ?? '';
   const id = url.searchParams.get('entityId') ?? '';

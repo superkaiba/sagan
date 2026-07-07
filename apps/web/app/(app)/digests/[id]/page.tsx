@@ -6,8 +6,8 @@ import { db } from '@/lib/db';
 import { AnchoredCommentsProvider } from '@/components/AnchoredCommentsContext';
 import { CommentableBody } from '@/components/CommentableBody';
 import { Comments } from '@/components/Comments';
-import { ForbiddenError, isOwner, requireEntityRead } from '@/lib/access';
-import { requireSession } from '@/lib/auth';
+import { isOwner } from '@/lib/access';
+import { getSession } from '@/lib/auth';
 import { DigestEditor } from './DigestEditor';
 
 export const dynamic = 'force-dynamic';
@@ -18,13 +18,8 @@ export default async function DigestEditPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await requireSession();
-  try {
-    await requireEntityRead(session, 'weekly_digest', id);
-  } catch (err) {
-    if (err instanceof ForbiddenError) return notFound();
-    throw err;
-  }
+  // Public read (2026-07-06): digests render without a session.
+  const session = await getSession();
   const rows = await db().select().from(weeklyDigests).where(eq(weeklyDigests.id, id)).limit(1);
   const row = rows[0];
   if (!row) return notFound();
@@ -51,7 +46,7 @@ export default async function DigestEditPage({
           ) : null}
         </p>
       </header>
-      {isOwner(session) ? (
+      {session && isOwner(session) ? (
         <DigestEditor id={row.id} initialBody={row.bodyMd} sent={!!row.sentAt} />
       ) : (
         <section className="whitespace-pre-wrap rounded-lg border border-[--color-border] bg-[--color-muted-bg] p-4 text-sm">

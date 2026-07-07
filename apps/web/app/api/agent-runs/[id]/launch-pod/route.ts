@@ -1,3 +1,4 @@
+import { agentDispatchEnabled, agentDispatchDisabledResponse } from '@/lib/agent-dispatch';
 import { NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { agentRunEvents, agentRuns, experiments } from '@sagan/db/schema';
@@ -20,6 +21,7 @@ const APPROVED_CHANNEL = 'agent_run_approved';
  * skips re-queuing it; pod dispatch happens directly.
  */
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!agentDispatchEnabled) return agentDispatchDisabledResponse();
   try {
     await requireOwner();
   } catch {
